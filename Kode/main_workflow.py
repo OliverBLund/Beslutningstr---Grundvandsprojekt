@@ -15,7 +15,7 @@ import pandas as pd
 import os
 import warnings
 from shapely.errors import ShapelyDeprecationWarning
-from config import validate_input_files, get_output_path
+from config import validate_input_files, get_output_path, print_workflow_settings_summary, validate_workflow_settings
 
 # Import step modules
 from step1_all_gvfk import run_step1
@@ -32,6 +32,19 @@ def main():
     """
     print("Starting Groundwater Contamination Analysis Workflow")
     print("=" * 60)
+    
+    # Display current workflow settings
+    print_workflow_settings_summary()
+    
+    # Validate workflow settings
+    is_valid, messages = validate_workflow_settings()
+    if not is_valid:
+        print("\nERROR: Invalid workflow configuration detected:")
+        for message in messages:
+            if message.startswith("ERROR"):
+                print(f"  {message}")
+        print("Please fix configuration errors in config.py before proceeding.")
+        return False
     
     # Validate input files before starting
     if not validate_input_files():

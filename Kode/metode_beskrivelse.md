@@ -1,6 +1,26 @@
+---
+title: "Metodebeskrivelse: Analyse af V1/V2-lokaliteters Afstand til Vandløb i Grundvandsforekomster"
+author: "Your Name"
+date: "August 2025"
+header-includes:
+  - \usepackage{graphicx}
+  - \usepackage{titling}
+  - \pretitle{\begin{center}\includegraphics[width=0.3\textwidth]{C:\Users\s194420\OneDrive - Danmarks Tekniske Universitet\Poul Løgstrup Bjergs filer - Work_Projects_Oliver Lund\Beslutningstræ - Grundvands projekt\dtulogo.png}}
+  - \posttitle{\end{center}\vspace{2em}}
+---
 # Metodebeskrivelse: Analyse af V1/V2-lokaliteters Afstand til Vandløb i Grundvandsforekomster
 
-## Datagrundlag
+##  **Indholdsfortegnelse**
+1. [Datagrundlag](#datagrundlag)
+2. [Analysetrin](#analysetrin)
+   1. [Trin 1: Optælling af Grundvandsforekomster](#trin-1-optælling-af-grundvandsforekomster)
+   2. [Trin 2: Grundvandsforekomster med Vandløbskontakt](#trin-2-grundvandsforekomster-med-vandløbskontakt)
+   3. [Trin 3: V1/V2-lokaliteter med Aktive Forureninger i GVFK med Vandløbskontakt](#trin-3-v1v2-lokaliteter-med-aktive-forureninger-i-gvfk-med-vandløbskontakt)
+   4. [Trin 4: Afstandsanalyse til Vandløb](#trin-4-afstandsanalyse-til-vandløb)
+   5. [Trin 5: Risikovurdering (500m Tærskel)](#trin-5-risikovurdering-500m-tærskel)
+3. [Samlet Overblik](#samlet-overblik)
+
+## **Datagrundlag**
 Analysen er baseret på følgende datafiler:
 
 ### Shape-filer:
@@ -10,17 +30,17 @@ Analysen er baseret på følgende datafiler:
 - `V2FLADER.shp`: V2-lokaliteter som polygoner (33.040 polygoner, 21.269 unikke lokaliteter)
 
 ### CSV-filer (med detaljerede attributter):
-- `Data/v1_gvfk_forurening.csv`: V1-lokaliteter med GVFK-relationer og forureningsdata (84.601 rækker)
-- `Data/v2_gvfk_forurening.csv`: V2-lokaliteter med GVFK-relationer og forureningsdata (134.636 rækker)
+- `Data/v1_gvfk_forurening.csv`: V1-lokaliteter med GVFK-relationer og forureningsdata, samt branche og aktivitet kobling (84.601 rækker)
+- `Data/v2_gvfk_forurening.csv`: V2-lokaliteter med GVFK-relationer og forureningsdata, samt branche og aktivitet kobling (134.636 rækker)
 
-**Vigtige kolonner til risikovurdering:**
-- `Lokalitetensbranche`: Branche/industri-information
-- `Lokalitetensaktivitet`: Aktivitetstype
-- `Lokalitetensstoffer`: Forureningsstoffer (kun lokaliteter med data medtages)
+##### **Vigtige kolonner til risikovurdering:**
+   - `Lokalitetensbranche`: Branche/industri-information
+   - `Lokalitetensaktivitet`: Aktivitetstype
+   - `Lokalitetensstoffer`: Forureningsstoffer (kun lokaliteter med data medtages)
 
-## Analysetrin
+## **Analysetrin**
 
-### Trin 1: Optælling af Grundvandsforekomster
+### **Trin 1: Optælling af Grundvandsforekomster**
 **Formål**: Identificere det totale antal unikke grundvandsforekomster (GVFK).
 
 **Metode**:
@@ -31,7 +51,7 @@ Analysen er baseret på følgende datafiler:
 **Aktuelle Resultater**:
 - **2.043 unikke grundvandsforekomster** identificeret
 
-### Trin 2: Grundvandsforekomster med Vandløbskontakt
+### **Trin 2: Grundvandsforekomster med Vandløbskontakt**
 **Formål**: Identificere hvilke grundvandsforekomster der har kontakt med vandløb.
 
 **Metode**:
@@ -43,10 +63,14 @@ Analysen er baseret på følgende datafiler:
 **Aktuelle Resultater**:
 - **593 GVFK har kontakt med vandløb** (29,0% af alle GVFK)
 - 588 GVFK-geometrier gemt med vandløbskontakt
+- Forskel mellem 593 og 588 skyldes: 
+   - Fejl i navne mellem ba3_grundvand_geometri.shp filen og     Rivers_gvf_rev20230825_kontakt.shp. 
 - Disse GVFK danner grundlag for videre analyse af V1/V2-lokaliteter
 
-### Trin 3: V1/V2-lokaliteter med Aktive Forureninger i GVFK med Vandløbskontakt
-**Formål**: Identificere V1/V2-lokaliteter med aktive forureninger i grundvandsforekomster med vandløbskontakt.
+### **Trin 3: V1/V2-lokaliteter med Aktive Forureninger i GVFK med Vandløbskontakt**
+**Formål**: Identificere V1/V2-lokaliteter med aktive forureninger i grundvandsforekomster med vandløbskontakt. For at sikre en-til-mange relationen mellem lokaltieter og gvfk, udføres denne analyse ved at finde lokalitet-gvfk kombinationer.
+
+**Eksempel**: Lokalitet "12345" kan være knyttet til flere GVFK'er, såsom "GVFK_A" og "GVFK_B", hvilket resulterer i to kombinationer: (12345, GVFK_A) og (12345, GVFK_B).
 
 **Metode**:
 1. **Indlæsning og filtrering af CSV-data**:
@@ -63,6 +87,7 @@ Analysen er baseret på følgende datafiler:
    - Kobling af CSV-data med geometri baseret på lokalitetsnummer
 
 3. **Deduplikering**:
+   Deduplikering er vigtigt for at sikre, at hver lokalitet-GVFK kombination kun optræder én gang i datasættet.
    - V1: 21.697 → **8.269 unikke lokalitet-GVFK kombinationer** efter deduplikering
    - V2: 79.893 → **28.694 unikke lokalitet-GVFK kombinationer** efter deduplikering
    - Fjernelse af 4.572 duplikerede lokalitet-GVFK kombinationer mellem V1 og V2
@@ -89,7 +114,7 @@ Analysen er baseret på følgende datafiler:
 - Sikrer at kun steder med potentiel påvirkning af grundvand medtages
 - Reducerer datamængde til de mest relevante lokaliteter for risikovurdering
 
-### Trin 4: Afstandsanalyse til Vandløb
+### **Trin 4: Afstandsanalyse til Vandløb**
 **Formål**: Beregne afstande mellem V1/V2-lokaliteter og nærmeste vandløbsstrækninger inden for samme GVFK.
 
 **Metode**:
@@ -111,7 +136,7 @@ Analysen er baseret på følgende datafiler:
 4. **Resultater gemmes i**:
    - `step4_distance_results.csv`: Alle lokalitet-GVFK kombinationer med afstande
    - `step4_valid_distances.csv`: Kun kombinationer med gyldige afstande
-   - `step4_final_distances_for_risk_assessment.csv`: **Endelige afstande per lokalitet** ⭐
+   - `step4_final_distances_for_risk_assessment.csv`: **Endelige afstande per lokalitet**
    - `unique_lokalitet_distances.csv`: For visualiseringer
    - `v1v2_sites_with_distances.shp`: Shapefil med alle data
    - `step4_site_level_summary.csv`: Sammenfattende lokalitet-niveau statistik
@@ -135,7 +160,7 @@ Analysen er baseret på følgende datafiler:
 - V1 og V2: 4.572 lokalitet-GVFK kombinationer  
 - V1: 3.697 lokalitet-GVFK kombinationer
 
-## Trin 5: Risikovurdering (500m Tærskel)
+## **Trin 5: Risikovurdering (500m Tærskel)**
 **Formål**: Identificere lokaliteter med høj risiko baseret på afstand og forureningsdata.
 
 **Inddata fra Trin 4**:
@@ -170,7 +195,7 @@ Analysen er baseret på følgende datafiler:
 - Gennemsnitligt 2,6 GVFK per multi-GVFK lokalitet
 - Maksimum 5 GVFK påvirket af én lokalitet
 
-## Samlet Overblik
+## **Samlet Overblik**
 - **Datagrundlag**: **2.043 grundvandsforekomster** i Danmark
 - **Vandløbskontakt**: **593 GVFK** (29,0%) har kontakt med vandløb
 - **Aktiv forureningsfiltrering**: 
@@ -187,4 +212,4 @@ Analysen er baseret på følgende datafiler:
 - Bevarer vigtige attributter til risikovurdering
 - Beregner præcise afstande inden for samme GVFK
 - Identificerer minimale afstande per lokalitet for risikoprioritering
-- Kvantificerer risiko baseret på afstand og forureningskarakteristika 
+- Kvantificerer risiko baseret på afstand og forureningskarakteristika

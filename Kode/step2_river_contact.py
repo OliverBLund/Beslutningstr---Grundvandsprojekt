@@ -10,7 +10,7 @@ import warnings
 from shapely.errors import ShapelyDeprecationWarning
 from config import (
     GRUNDVAND_PATH, RIVERS_PATH, get_output_path, ensure_results_directory,
-    DISTANCE_CALCULATION_SETTINGS
+    WORKFLOW_SETTINGS
 )
 
 # Suppress shapely deprecation warnings
@@ -37,7 +37,7 @@ def run_step2():
         return [], 0, None
     
     # Filter to rivers with contact
-    contact_value = DISTANCE_CALCULATION_SETTINGS['contact_filter_value']
+    contact_value = WORKFLOW_SETTINGS['contact_filter_value']
     if 'Kontakt' in rivers.columns:
         rivers_with_contact = rivers[rivers['Kontakt'] == contact_value]
         print(f"River segments with Kontakt = {contact_value}: {len(rivers_with_contact)}")

@@ -10,7 +10,7 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import os
-from config import RIVERS_PATH, GRUNDVAND_PATH, get_output_path
+from config import RIVERS_PATH, GRUNDVAND_PATH, get_output_path, WORKFLOW_SETTINGS
 
 def run_step4(v1v2_combined):
     """
@@ -75,7 +75,8 @@ def run_step4(v1v2_combined):
     
     # Progress tracking
     total_combinations = len(v1v2_combined)
-    print_interval = max(1, total_combinations // 10)  # Print progress every 10%
+    progress_percent = WORKFLOW_SETTINGS['progress_interval_percent']
+    print_interval = max(1, total_combinations * progress_percent // 100)  # Print progress based on config
     
     for idx, row in v1v2_combined.iterrows():
         if idx % print_interval == 0:

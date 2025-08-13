@@ -11,6 +11,8 @@ import os
 from shapely.ops import nearest_points
 from config import get_output_path
 
+
+
 def create_map(v1v2_with_distances, rivers_with_contact, valid_results, gvfk_polygons):
     """
     Create an interactive map showing GVFK polygons, V1/V2 sites, river segments, and distance connections.

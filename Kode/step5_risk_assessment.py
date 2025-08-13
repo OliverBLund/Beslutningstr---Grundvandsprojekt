@@ -9,17 +9,18 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import os
-from config import get_output_path, ensure_results_directory, GRUNDVAND_PATH
+from config import get_output_path, ensure_results_directory, GRUNDVAND_PATH, WORKFLOW_SETTINGS
 
 def run_step5():
     """
-    Execute Step 5: Risk assessment of V1/V2 localities within 500m of rivers.
+    Execute Step 5: Risk assessment of V1/V2 localities within configurable distance of rivers.
     
     Returns:
         tuple: (high_risk_sites_df, analysis_summary)
     """
-    print("\nStep 5: Risk Assessment of High-Risk V1/V2 Sites")
-    print("Filtering to localities within 500m of rivers and analyzing contamination characteristics")
+    risk_threshold_m = WORKFLOW_SETTINGS['risk_threshold_m']
+    print(f"\nStep 5: Risk Assessment of High-Risk V1/V2 Sites")
+    print(f"Filtering to localities within {risk_threshold_m}m of rivers and analyzing contamination characteristics")
     
     # Ensure output directory exists
     ensure_results_directory()
@@ -39,8 +40,7 @@ def run_step5():
         print(f"Error loading Step 4 results: {e}")
         return None, None
     
-    # Apply 500m distance filter
-    risk_threshold_m = 500
+    # Apply configurable distance filter
     high_risk_sites = distance_results[
         distance_results['Final_Distance_m'] <= risk_threshold_m
     ].copy()

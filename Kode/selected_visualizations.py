@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 from matplotlib.patches import FancyArrowPatch
+from config import WORKFLOW_SETTINGS
 
 def create_site_density_heatmap(results_path):
     """
@@ -338,8 +339,8 @@ def create_distance_histogram_with_thresholds(results_path):
                 # Generic label if no type info
                 type_labels = ['Alle lokaliteter']
             
-            # Define thresholds in meters - 5 key thresholds
-            thresholds = [500, 1000, 1500, 2000, 2500]
+            # Use configurable thresholds from config
+            thresholds = WORKFLOW_SETTINGS['additional_thresholds_m']
             
             # Calculate percentage of sites within each threshold
             percentages = []
@@ -606,7 +607,7 @@ def create_progression_plot(figures_path, required_files):
             'all_gvfk': 'All GVFKs',
             'river_gvfk': 'GVFKs with River Contact',
             'v1v2_gvfk': 'GVFKs with V1/V2 Sites',
-            'high_risk_gvfk': 'High-Risk GVFKs (≤500m)'
+            'high_risk_gvfk': f'High-Risk GVFKs (≤{WORKFLOW_SETTINGS["risk_threshold_m"]}m)'
         }
         
         for i, (name, data) in enumerate(datasets.items()):
@@ -646,7 +647,7 @@ if __name__ == "__main__":
         "all_gvfk": os.path.join(results_path, "step1_all_gvfk.shp"),
         "river_gvfk": os.path.join(results_path, "step2_gvfk_with_rivers.shp"),
         "v1v2_gvfk": os.path.join(results_path, "step3_gvfk_with_v1v2.shp"),
-        "high_risk_gvfk": os.path.join(results_path, "step5_gvfk_high_risk_500m.shp")
+        "high_risk_gvfk": os.path.join(results_path, f"step5_gvfk_high_risk_{WORKFLOW_SETTINGS['risk_threshold_m']}m.shp")
     }
     figures_path = os.path.join(results_path, "Figures")
     create_progression_plot(figures_path, required_files)
