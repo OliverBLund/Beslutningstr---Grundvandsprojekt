@@ -47,6 +47,13 @@ OUTPUT_FILES_TEMPLATES = {
     'step5_contamination_breakdown': 'step5_contamination_breakdown_{risk_threshold_m}m.csv',
     'step5_gvfk_high_risk': 'step5_gvfk_high_risk_{risk_threshold_m}m.shp',
     
+    # Step 5 Compound-Specific Analysis
+    'step5_compound_specific_sites': 'step5_compound_specific_high_risk_sites.csv',
+    'step5_compound_analysis_summary': 'step5_compound_specific_analysis_summary.csv',
+    'step5_compound_breakdown': 'step5_compound_specific_breakdown.csv',
+    'step5_compound_gvfk_high_risk': 'step5_compound_specific_gvfk_high_risk.shp',
+    'step5_compound_distance_mapping': 'step5_compound_distance_mapping.csv',
+    
     # Workflow summary
     'workflow_summary': 'workflow_summary.csv'
 }
@@ -69,6 +76,36 @@ WORKFLOW_SETTINGS = {
     'validate_geometries': True,                # Check for valid geometries before processing
     'expected_crs': 'EPSG:25832',              # Expected CRS (UTM32 EUREF89 for Denmark)
     'allow_empty_contamination': False,        # Whether to include sites without contamination data
+}
+
+# COMPOUND-SPECIFIC RISK ASSESSMENT SETTINGS
+COMPOUND_RISK_DISTANCES = {
+    # High mobility compounds (longer distances)
+    'Tetrachlorethylen': 800,                   # Chlorinated solvent - very mobile
+    'Trichlorethylen': 800,                     # Chlorinated solvent - very mobile
+    'Benzin': 600,                              # Gasoline - high mobility
+    'Olie-benzin': 600,                         # Oil-gasoline mixture
+    
+    # Medium mobility petroleum products
+    'Olieprodukter': 400,                       # General oil products
+    'Fyringsolie': 350,                         # Heating oil
+    'Olie': 350,                                # General oil
+    'Diesel': 350,                              # Diesel fuel
+    
+    # Lower mobility compounds
+    'Tungmetaller': 200,                        # Heavy metals - limited mobility
+    'Bly': 150,                                 # Lead - low mobility
+    'Nikkel': 200,                              # Nickel - limited mobility
+    'Kobber': 150,                              # Copper - low mobility
+    'Zink': 200,                                # Zinc - somewhat mobile
+    
+    # Special cases
+    'Lossepladsperkolat': 500,                  # Landfill leachate - mixed compounds
+    'PAH': 250,                                 # Polycyclic aromatic hydrocarbons - moderate mobility
+    'BTEX': 500,                                # Benzene, toluene, ethylbenzene, xylene - mobile
+    
+    # Default for unspecified compounds
+    'default': 300,                             # Conservative default for unknown compounds
 }
 
 # Legacy OUTPUT_FILES for backward compatibility - will use default threshold

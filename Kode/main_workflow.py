@@ -107,28 +107,48 @@ def main():
         # Step 5: Risk assessment of high-risk sites (≤500m)
         print("\n" + "=" * 60)
         try:
-            high_risk_sites, risk_analysis = run_step5()
-            if high_risk_sites is None:
+            general_results, compound_results = run_step5()
+            
+            # Extract data from both results
+            general_sites, general_analysis = general_results
+            compound_sites, compound_analysis = compound_results
+            
+            if general_sites is None and compound_sites is None:
                 print("Step 5 failed. Could not load distance results for risk assessment.")
-                results['step5'] = {'high_risk_sites': None, 'risk_analysis': None, 'high_risk_gvfk_count': 0}
+                results['step5'] = {
+                    'general_high_risk_sites': None, 
+                    'general_analysis': None, 
+                    'compound_high_risk_sites': None,
+                    'compound_analysis': None,
+                    'high_risk_gvfk_count': 0
+                }
             else:
-                # Extract GVFK count from All_Affected_GVFKs column
+                # Use general results for backward compatibility in summary statistics
+                high_risk_sites = general_sites if general_sites is not None else pd.DataFrame()
+                
+                # Extract GVFK count from general results for consistency
                 high_risk_gvfk_count = 0
-                if 'All_Affected_GVFKs' in high_risk_sites.columns:
-                    all_gvfks = set()
-                    for gvfk_list in high_risk_sites['All_Affected_GVFKs'].dropna():
-                        if pd.isna(gvfk_list) or gvfk_list == '':
-                            continue
-                        gvfks = [gvfk.strip() for gvfk in str(gvfk_list).split(';') if gvfk.strip()]
-                        all_gvfks.update(gvfks)
-                    high_risk_gvfk_count = len(all_gvfks)
-                elif 'Closest_GVFK' in high_risk_sites.columns:
-                    high_risk_gvfk_count = high_risk_sites['Closest_GVFK'].nunique()
+                if not high_risk_sites.empty:
+                    if 'All_Affected_GVFKs' in high_risk_sites.columns:
+                        all_gvfks = set()
+                        for gvfk_list in high_risk_sites['All_Affected_GVFKs'].dropna():
+                            if pd.isna(gvfk_list) or gvfk_list == '':
+                                continue
+                            gvfks = [gvfk.strip() for gvfk in str(gvfk_list).split(';') if gvfk.strip()]
+                            all_gvfks.update(gvfks)
+                        high_risk_gvfk_count = len(all_gvfks)
+                    elif 'Closest_GVFK' in high_risk_sites.columns:
+                        high_risk_gvfk_count = high_risk_sites['Closest_GVFK'].nunique()
                 
                 results['step5'] = {
-                    'high_risk_sites': high_risk_sites, 
-                    'risk_analysis': risk_analysis,
-                    'high_risk_gvfk_count': high_risk_gvfk_count
+                    'general_high_risk_sites': general_sites,
+                    'general_analysis': general_analysis,
+                    'compound_high_risk_sites': compound_sites,
+                    'compound_analysis': compound_analysis,
+                    'high_risk_gvfk_count': high_risk_gvfk_count,
+                    # Backward compatibility
+                    'high_risk_sites': high_risk_sites,
+                    'risk_analysis': general_analysis
                 }
                 
         except ImportError:
@@ -175,9 +195,19 @@ def generate_workflow_summary(results):
     
     # Step 5 statistics
     high_risk_site_count = 0
+    compound_high_risk_site_count = 0
     high_risk_gvfk_count = 0
-    if 'step5' in results and results['step5']['high_risk_sites'] is not None:
-        high_risk_site_count = len(results['step5']['high_risk_sites'])
+    
+    if 'step5' in results:
+        # General assessment results
+        if results['step5']['general_high_risk_sites'] is not None:
+            high_risk_site_count = len(results['step5']['general_high_risk_sites'])
+        
+        # Compound-specific assessment results
+        if results['step5']['compound_high_risk_sites'] is not None:
+            compound_high_risk_site_count = len(results['step5']['compound_high_risk_sites'])
+        
+        # GVFK count (from general assessment for consistency)
         high_risk_gvfk_count = results['step5'].get('high_risk_gvfk_count', 0)
     
     # Distance statistics (if available) - load from corrected final distances file
@@ -230,9 +260,13 @@ def generate_workflow_summary(results):
         print(f"Median final distance per site: {distance_stats['median_final_distance_m']:.1f}m")
     
     if high_risk_site_count > 0:
-        print(f"High-risk sites (≤500m from rivers): {high_risk_site_count} ({(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
-    else:
-        print("Step 5 risk assessment: Not completed")
+        print(f"High-risk sites - General assessment (≤500m): {high_risk_site_count} ({(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
+    
+    if compound_high_risk_site_count > 0:
+        print(f"High-risk sites - Compound-specific assessment: {compound_high_risk_site_count} ({(compound_high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
+    
+    if high_risk_site_count == 0 and compound_high_risk_site_count == 0:
+        print("Step 5 risk assessment: Not completed successfully")
     
     # Create summary DataFrame
     summary_data = {
@@ -243,7 +277,8 @@ def generate_workflow_summary(results):
             'Step 3: Unique V1/V2 Sites (Localities)',
             'Step 3: Total Site-GVFK Combinations',
             'Step 5: GVFKs with High-Risk Sites (≤500m)',
-            'Step 5: High-Risk Sites (≤500m from rivers)'
+            'Step 5: High-Risk Sites - General Assessment (≤500m)',
+            'Step 5: High-Risk Sites - Compound-Specific Assessment'
         ],
         'Count': [
             total_gvfk,
@@ -252,7 +287,8 @@ def generate_workflow_summary(results):
             unique_sites,
             total_site_gvfk_combinations,
             high_risk_gvfk_count,
-            high_risk_site_count
+            high_risk_site_count,
+            compound_high_risk_site_count
         ],
         'Percentage_of_Total_GVFKs': [
             '100.0%',
@@ -261,7 +297,8 @@ def generate_workflow_summary(results):
             'N/A (Site-level)',
             'N/A (Combination-level)',
             f"{(high_risk_gvfk_count/total_gvfk*100):.1f}%",
-            f"{(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites"
+            f"{(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites",
+            f"{(compound_high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites"
         ]
     }
     
@@ -342,7 +379,14 @@ def create_visualizations_if_available(results):
         print("To create visualizations, run 'python selected_visualizations.py' manually.")
     
     # Create Step 5 visualizations if high-risk sites are available
-    if 'step5' in results and results['step5']['high_risk_sites'] is not None:
+    step5_has_results = False
+    if 'step5' in results:
+        general_sites = results['step5'].get('general_high_risk_sites')
+        compound_sites = results['step5'].get('compound_high_risk_sites')
+        if (general_sites is not None and not general_sites.empty) or (compound_sites is not None and not compound_sites.empty):
+            step5_has_results = True
+    
+    if step5_has_results:
         print("Creating Step 5 risk assessment visualizations...")
         try:
             from step5_visualizations import create_step5_visualizations

@@ -1,57 +1,92 @@
 """
-Step 5: Risk Assessment and Analysis of High-Risk V1/V2 Sites
+Step 5: Two-Part Risk Assessment and Analysis of High-Risk V1/V2 Sites
 
-This step filters the distance results to identify localities within 500m of rivers
-and performs detailed analysis of contamination characteristics for risk assessment.
+Part A: General risk assessment using universal distance threshold
+Part B: Compound-specific risk assessment using tailored distance thresholds per compound type
+
+This step provides both broad screening and detailed compound-specific risk classification.
 """
 
 import pandas as pd
 import geopandas as gpd
 import numpy as np
 import os
-from config import get_output_path, ensure_results_directory, GRUNDVAND_PATH, WORKFLOW_SETTINGS
+from config import (get_output_path, ensure_results_directory, GRUNDVAND_PATH, 
+                   WORKFLOW_SETTINGS, COMPOUND_RISK_DISTANCES)
 
 def run_step5():
     """
-    Execute Step 5: Risk assessment of V1/V2 localities within configurable distance of rivers.
+    Execute Step 5: Two-part risk assessment of V1/V2 localities.
+    
+    Part A: General assessment with universal threshold
+    Part B: Compound-specific assessment with tailored thresholds
     
     Returns:
-        tuple: (high_risk_sites_df, analysis_summary)
+        tuple: (general_results, compound_results)
+            general_results: (high_risk_sites_df, analysis_summary)
+            compound_results: (compound_high_risk_sites_df, compound_analysis_summary)
     """
-    risk_threshold_m = WORKFLOW_SETTINGS['risk_threshold_m']
-    print(f"\nStep 5: Risk Assessment of High-Risk V1/V2 Sites")
-    print(f"Filtering to localities within {risk_threshold_m}m of rivers and analyzing contamination characteristics")
+    print(f"\nStep 5: Two-Part Risk Assessment of High-Risk V1/V2 Sites")
+    print("=" * 60)
     
     # Ensure output directory exists
     ensure_results_directory()
     
-    # Load Step 4 results
+    # Load Step 4 results once for both analyses
     step4_file = get_output_path('step4_final_distances_for_risk_assessment')
     
     if not os.path.exists(step4_file):
         print(f"ERROR: Step 4 results not found at {step4_file}")
         print("Please run Step 4 first to generate distance data.")
-        return None, None
+        return (None, None), (None, None)
     
     try:
         distance_results = pd.read_csv(step4_file)
         print(f"Loaded Step 4 results: {len(distance_results)} unique localities")
     except Exception as e:
         print(f"Error loading Step 4 results: {e}")
-        return None, None
+        return (None, None), (None, None)
+    
+    # Part A: General Risk Assessment
+    print(f"\nPART A: GENERAL RISK ASSESSMENT")
+    print("-" * 40)
+    general_results = run_general_risk_assessment(distance_results)
+    
+    # Part B: Compound-Specific Risk Assessment  
+    print(f"\nPART B: COMPOUND-SPECIFIC RISK ASSESSMENT")
+    print("-" * 40)
+    compound_results = run_compound_specific_assessment(distance_results)
+    
+    # Generate comparison summary
+    _generate_comparison_summary(general_results, compound_results)
+    
+    return general_results, compound_results
+
+def run_general_risk_assessment(distance_results):
+    """
+    Part A: General risk assessment using universal distance threshold.
+    
+    Args:
+        distance_results (DataFrame): Step 4 distance results
+        
+    Returns:
+        tuple: (high_risk_sites_df, analysis_summary)
+    """
+    risk_threshold_m = WORKFLOW_SETTINGS['risk_threshold_m']
+    print(f"Using universal threshold: {risk_threshold_m}m")
     
     # Apply configurable distance filter
     high_risk_sites = distance_results[
         distance_results['Final_Distance_m'] <= risk_threshold_m
     ].copy()
     
-    print(f"\nRisk filtering results:")
+    print(f"\nGeneral risk filtering results:")
     print(f"Total localities with distances: {len(distance_results)}")
     print(f"High-risk localities (≤{risk_threshold_m}m): {len(high_risk_sites)}")
     print(f"Percentage high-risk: {len(high_risk_sites)/len(distance_results)*100:.1f}%")
     
     if high_risk_sites.empty:
-        print("No high-risk sites found within 500m threshold.")
+        print(f"No high-risk sites found within {risk_threshold_m}m threshold.")
         return high_risk_sites, {}
     
     # Perform contamination analysis
@@ -61,6 +96,485 @@ def run_step5():
     high_risk_gvfk_names = _save_step5_results(high_risk_sites, analysis_summary, risk_threshold_m)
     
     return high_risk_sites, analysis_summary
+
+def run_compound_specific_assessment(distance_results):
+    """
+    Part B: Compound-specific risk assessment using tailored distance thresholds.
+    
+    Args:
+        distance_results (DataFrame): Step 4 distance results
+        
+    Returns:
+        tuple: (compound_high_risk_sites_df, compound_analysis_summary)
+    """
+    print(f"Using compound-specific distance thresholds")
+    print(f"Available compound distances: {len(COMPOUND_RISK_DISTANCES)} compounds configured")
+    
+    # Apply compound-specific distance assessment
+    compound_high_risk_sites = _apply_compound_specific_filtering(distance_results)
+    
+    if compound_high_risk_sites.empty:
+        print("No high-risk sites found using compound-specific thresholds.")
+        return compound_high_risk_sites, {}
+    
+    print(f"\nCompound-specific risk filtering results:")
+    print(f"Total localities with distances: {len(distance_results)}")
+    print(f"High-risk localities (compound-specific): {len(compound_high_risk_sites)}")
+    print(f"Percentage high-risk: {len(compound_high_risk_sites)/len(distance_results)*100:.1f}%")
+    
+    # Perform compound-specific contamination analysis
+    compound_analysis_summary = _analyze_compound_specific_characteristics(compound_high_risk_sites)
+    
+    # Save compound-specific results
+    _save_compound_specific_results(compound_high_risk_sites, compound_analysis_summary)
+    
+    return compound_high_risk_sites, compound_analysis_summary
+
+def _apply_compound_specific_filtering(distance_results):
+    """
+    Apply compound-specific distance thresholds to identify high-risk sites.
+    
+    Args:
+        distance_results (DataFrame): Step 4 distance results
+        
+    Returns:
+        DataFrame: Sites that exceed compound-specific risk thresholds
+    """
+    print("Applying compound-specific distance filtering...")
+    
+    # Initialize results list
+    high_risk_records = []
+    compound_assignments = []
+    
+    for idx, row in distance_results.iterrows():
+        site_distance = row['Final_Distance_m']
+        contamination_substances = row.get('Lokalitetensstoffer', '')
+        
+        if pd.isna(contamination_substances) or contamination_substances == '':
+            continue
+            
+        # Parse compounds (handle semicolon/comma separation)
+        compounds = []
+        for sep in [';', ',']:
+            if sep in str(contamination_substances):
+                compounds = [c.strip() for c in str(contamination_substances).split(sep) if c.strip()]
+                break
+        else:
+            compounds = [str(contamination_substances).strip()]
+        
+        # Check each compound against its specific threshold
+        site_is_high_risk = False
+        applied_thresholds = []
+        
+        for compound in compounds:
+            # Get compound-specific threshold (case-insensitive matching)
+            compound_threshold = None
+            
+            # Try exact match first
+            if compound in COMPOUND_RISK_DISTANCES:
+                compound_threshold = COMPOUND_RISK_DISTANCES[compound]
+            else:
+                # Try case-insensitive partial matching
+                for config_compound, threshold in COMPOUND_RISK_DISTANCES.items():
+                    if config_compound.lower() in compound.lower() or compound.lower() in config_compound.lower():
+                        compound_threshold = threshold
+                        break
+                
+                # Use default if no match found
+                if compound_threshold is None:
+                    compound_threshold = COMPOUND_RISK_DISTANCES['default']
+            
+            applied_thresholds.append(f"{compound}:{compound_threshold}m")
+            
+            # Check if site exceeds this compound's threshold
+            if site_distance <= compound_threshold:
+                site_is_high_risk = True
+        
+        # If site is high-risk for any compound, include it
+        if site_is_high_risk:
+            # Add compound-specific information to the record
+            row_copy = row.copy()
+            row_copy['Applied_Compound_Thresholds'] = '; '.join(applied_thresholds)
+            row_copy['Compound_Specific_Risk'] = True
+            
+            high_risk_records.append(row_copy)
+            compound_assignments.append({
+                'Lokalitet_': row['Lokalitet_'],
+                'Compounds': '; '.join(compounds),
+                'Applied_Thresholds': '; '.join(applied_thresholds),
+                'Distance_m': site_distance
+            })
+    
+    if high_risk_records:
+        compound_high_risk_sites = pd.DataFrame(high_risk_records)
+        
+        # Save compound assignment details
+        compound_assignments_df = pd.DataFrame(compound_assignments)
+        assignment_path = get_output_path('step5_compound_distance_mapping')
+        compound_assignments_df.to_csv(assignment_path, index=False)
+        print(f"Saved compound-distance mapping to: {assignment_path}")
+        
+        return compound_high_risk_sites
+    else:
+        return pd.DataFrame()
+
+def _generate_comparison_summary(general_results, compound_results):
+    """
+    Generate a comparison summary between general and compound-specific assessments.
+    
+    Args:
+        general_results (tuple): (high_risk_sites_df, analysis_summary)
+        compound_results (tuple): (compound_high_risk_sites_df, compound_analysis_summary)
+    """
+    print(f"\nCOMPARISON SUMMARY")
+    print("=" * 40)
+    
+    general_sites, general_analysis = general_results
+    compound_sites, compound_analysis = compound_results
+    
+    if general_sites is not None and compound_sites is not None:
+        print(f"General assessment ({WORKFLOW_SETTINGS['risk_threshold_m']}m): {len(general_sites)} high-risk sites")
+        print(f"Compound-specific assessment: {len(compound_sites)} high-risk sites")
+        
+        # Sites only in general assessment
+        if not general_sites.empty and not compound_sites.empty:
+            general_only = set(general_sites['Lokalitet_']) - set(compound_sites['Lokalitet_'])
+            compound_only = set(compound_sites['Lokalitet_']) - set(general_sites['Lokalitet_'])
+            both = set(general_sites['Lokalitet_']) & set(compound_sites['Lokalitet_'])
+            
+            print(f"Sites only in general assessment: {len(general_only)}")
+            print(f"Sites only in compound-specific assessment: {len(compound_only)}")
+            print(f"Sites in both assessments: {len(both)}")
+        
+        elif not general_sites.empty:
+            print("Only general assessment produced results")
+        elif not compound_sites.empty:
+            print("Only compound-specific assessment produced results")
+    else:
+        print("One or both assessments failed to produce results")
+
+def _analyze_compound_specific_characteristics(compound_high_risk_sites):
+    """
+    Analyze characteristics of compound-specific high-risk sites.
+    
+    Args:
+        compound_high_risk_sites (DataFrame): Sites identified through compound-specific filtering
+        
+    Returns:
+        dict: Analysis summary with compound-specific statistics
+    """
+    print(f"\nAnalyzing compound-specific characteristics for {len(compound_high_risk_sites)} high-risk sites...")
+    
+    analysis = {
+        'assessment_type': 'compound_specific',
+        'total_high_risk_sites': len(compound_high_risk_sites),
+        'distance_stats': {},
+        'compound_threshold_stats': {},
+        'site_type_distribution': {},
+        'contamination_analysis': {}
+    }
+    
+    # Distance statistics
+    if 'Final_Distance_m' in compound_high_risk_sites.columns:
+        distances = compound_high_risk_sites['Final_Distance_m']
+        analysis['distance_stats'] = {
+            'min_distance_m': distances.min(),
+            'max_distance_m': distances.max(),
+            'mean_distance_m': distances.mean(),
+            'median_distance_m': distances.median(),
+            'std_distance_m': distances.std()
+        }
+        
+        print(f"Distance statistics for compound-specific high-risk sites:")
+        print(f"  Range: {distances.min():.1f}m - {distances.max():.1f}m")
+        print(f"  Mean: {distances.mean():.1f}m, Median: {distances.median():.1f}m")
+    
+    # Compound threshold analysis
+    if 'Applied_Compound_Thresholds' in compound_high_risk_sites.columns:
+        # Parse applied thresholds to get statistics
+        all_compound_thresholds = []
+        for threshold_str in compound_high_risk_sites['Applied_Compound_Thresholds'].dropna():
+            if pd.notna(threshold_str) and str(threshold_str).strip():
+                thresholds = [t.strip() for t in str(threshold_str).split(';') if t.strip()]
+                all_compound_thresholds.extend(thresholds)
+        
+        if all_compound_thresholds:
+            # Extract just the compounds and distances
+            compounds_used = []
+            distances_used = []
+            for thresh in all_compound_thresholds:
+                if ':' in thresh:
+                    compound, dist_str = thresh.split(':', 1)
+                    compounds_used.append(compound.strip())
+                    try:
+                        dist_val = float(dist_str.replace('m', '').strip())
+                        distances_used.append(dist_val)
+                    except:
+                        pass
+            
+            analysis['compound_threshold_stats'] = {
+                'total_compound_applications': len(all_compound_thresholds),
+                'unique_compounds_used': len(set(compounds_used)),
+                'most_common_compounds': pd.Series(compounds_used).value_counts().head(10).to_dict(),
+                'threshold_distances_used': {
+                    'min_threshold': min(distances_used) if distances_used else 0,
+                    'max_threshold': max(distances_used) if distances_used else 0,
+                    'mean_threshold': np.mean(distances_used) if distances_used else 0
+                }
+            }
+            
+            print(f"\nCompound threshold statistics:")
+            print(f"  Total compound-threshold applications: {len(all_compound_thresholds)}")
+            print(f"  Unique compounds used: {len(set(compounds_used))}")
+            print(f"  Threshold range: {min(distances_used) if distances_used else 0:.0f}m - {max(distances_used) if distances_used else 0:.0f}m")
+            
+            print(f"  Top 5 compounds by usage:")
+            for compound, count in pd.Series(compounds_used).value_counts().head(5).items():
+                print(f"    {compound}: {count} sites")
+    
+    # Site type distribution (similar to general analysis)
+    if 'Site_Type' in compound_high_risk_sites.columns:
+        site_type_counts = compound_high_risk_sites['Site_Type'].value_counts()
+        analysis['site_type_distribution'] = site_type_counts.to_dict()
+        
+        print(f"\nSite type distribution:")
+        for site_type, count in site_type_counts.items():
+            percentage = count / len(compound_high_risk_sites) * 100
+            print(f"  {site_type}: {count} ({percentage:.1f}%)")
+    
+    # Contamination analysis (reuse existing logic but note it's compound-specific)
+    contamination_cols = ['Lokalitetensbranche', 'Lokalitetensaktivitet', 'Lokalitetensstoffer']
+    
+    for col in contamination_cols:
+        if col in compound_high_risk_sites.columns:
+            analysis['contamination_analysis'][col] = _analyze_contamination_column(
+                compound_high_risk_sites, col, len(compound_high_risk_sites)
+            )
+    
+    return analysis
+
+def _save_compound_specific_results(compound_high_risk_sites, compound_analysis_summary):
+    """
+    Save compound-specific risk assessment results.
+    
+    Args:
+        compound_high_risk_sites (DataFrame): Compound-specific high-risk sites
+        compound_analysis_summary (dict): Compound-specific analysis results
+    """
+    print(f"\nSaving compound-specific results...")
+    
+    # Save compound-specific high-risk sites
+    compound_sites_path = get_output_path('step5_compound_specific_sites')
+    compound_high_risk_sites.to_csv(compound_sites_path, index=False)
+    print(f"- Compound-specific high-risk sites: {compound_sites_path}")
+    
+    # Save compound-specific analysis summary
+    compound_summary_data = []
+    
+    # Distance statistics
+    if 'distance_stats' in compound_analysis_summary:
+        for stat, value in compound_analysis_summary['distance_stats'].items():
+            compound_summary_data.append({
+                'Category': 'Distance Statistics',
+                'Metric': stat,
+                'Value': f"{value:.2f}" if isinstance(value, float) else str(value),
+                'Unit': 'm' if 'distance' in stat else ''
+            })
+    
+    # Compound threshold statistics
+    if 'compound_threshold_stats' in compound_analysis_summary:
+        thresh_stats = compound_analysis_summary['compound_threshold_stats']
+        
+        compound_summary_data.append({
+            'Category': 'Compound Threshold Usage',
+            'Metric': 'total_applications',
+            'Value': str(thresh_stats.get('total_compound_applications', 0)),
+            'Unit': 'compound-threshold pairs'
+        })
+        
+        compound_summary_data.append({
+            'Category': 'Compound Threshold Usage',
+            'Metric': 'unique_compounds',
+            'Value': str(thresh_stats.get('unique_compounds_used', 0)),
+            'Unit': 'unique compounds'
+        })
+        
+        if 'threshold_distances_used' in thresh_stats:
+            thresh_distances = thresh_stats['threshold_distances_used']
+            for metric, value in thresh_distances.items():
+                compound_summary_data.append({
+                    'Category': 'Threshold Distance Statistics',
+                    'Metric': metric,
+                    'Value': f"{value:.1f}" if isinstance(value, float) else str(value),
+                    'Unit': 'm'
+                })
+    
+    # Site type distribution
+    if 'site_type_distribution' in compound_analysis_summary:
+        for site_type, count in compound_analysis_summary['site_type_distribution'].items():
+            percentage = count / compound_analysis_summary['total_high_risk_sites'] * 100
+            compound_summary_data.append({
+                'Category': 'Site Type Distribution',
+                'Metric': site_type,
+                'Value': f"{count} ({percentage:.1f}%)",
+                'Unit': 'sites'
+            })
+    
+    compound_summary_df = pd.DataFrame(compound_summary_data)
+    compound_summary_path = get_output_path('step5_compound_analysis_summary')
+    compound_summary_df.to_csv(compound_summary_path, index=False)
+    print(f"- Compound-specific analysis summary: {compound_summary_path}")
+    
+    # Save detailed compound breakdown
+    compound_breakdown_data = []
+    
+    # Compound usage breakdown
+    if 'compound_threshold_stats' in compound_analysis_summary:
+        thresh_stats = compound_analysis_summary['compound_threshold_stats']
+        if 'most_common_compounds' in thresh_stats:
+            for compound, count in thresh_stats['most_common_compounds'].items():
+                # Get the threshold used for this compound
+                compound_threshold = COMPOUND_RISK_DISTANCES.get(compound, COMPOUND_RISK_DISTANCES['default'])
+                
+                compound_breakdown_data.append({
+                    'Compound': compound,
+                    'Sites_Count': count,
+                    'Threshold_Used_m': compound_threshold,
+                    'Percentage_of_Compound_Sites': f"{count/compound_analysis_summary['total_high_risk_sites']*100:.1f}%"
+                })
+    
+    if compound_breakdown_data:
+        compound_breakdown_df = pd.DataFrame(compound_breakdown_data)
+        compound_breakdown_path = get_output_path('step5_compound_breakdown')
+        compound_breakdown_df.to_csv(compound_breakdown_path, index=False)
+        print(f"- Compound-specific breakdown: {compound_breakdown_path}")
+    
+    # Create compound-specific GVFK shapefile
+    _create_compound_specific_gvfk_shapefile(compound_high_risk_sites)
+    
+    print(f"\nCompound-specific analysis completed successfully!")
+    print(f"Found {len(compound_high_risk_sites)} compound-specific high-risk sites")
+
+def _create_compound_specific_gvfk_shapefile(compound_high_risk_sites):
+    """
+    Create a filtered GVFK shapefile for compound-specific high-risk sites.
+    
+    Args:
+        compound_high_risk_sites (DataFrame): Compound-specific high-risk sites
+    """
+    print(f"\nCreating compound-specific GVFK shapefile...")
+    
+    # Get unique GVFK names from compound-specific sites
+    compound_gvfk_names = set()
+    
+    if 'All_Affected_GVFKs' in compound_high_risk_sites.columns:
+        for gvfk_list in compound_high_risk_sites['All_Affected_GVFKs'].dropna():
+            if pd.isna(gvfk_list) or gvfk_list == '':
+                continue
+            gvfks = [gvfk.strip() for gvfk in str(gvfk_list).split(';') if gvfk.strip()]
+            compound_gvfk_names.update(gvfks)
+    elif 'Closest_GVFK' in compound_high_risk_sites.columns:
+        compound_gvfk_names = set(compound_high_risk_sites['Closest_GVFK'].dropna().unique())
+    else:
+        print("ERROR: No GVFK name column found in compound-specific high-risk sites data")
+        return
+    
+    print(f"Found {len(compound_gvfk_names)} unique GVFKs containing compound-specific high-risk sites")
+    
+    # Load and filter GVFK shapefile
+    try:
+        all_gvfk = gpd.read_file(GRUNDVAND_PATH)
+        compound_gvfk_polygons = all_gvfk[all_gvfk['Navn'].isin(compound_gvfk_names)].copy()
+        
+        # Save compound-specific GVFK shapefile
+        compound_gvfk_path = get_output_path('step5_compound_gvfk_high_risk')
+        compound_gvfk_polygons.to_file(compound_gvfk_path)
+        print(f"Saved compound-specific GVFK shapefile to: {compound_gvfk_path}")
+        
+    except Exception as e:
+        print(f"ERROR: Could not create compound-specific GVFK shapefile: {e}")
+
+def _analyze_contamination_column(sites_df, col, total_sites):
+    """
+    Helper function to analyze a contamination column with proper separation handling.
+    
+    Args:
+        sites_df (DataFrame): Sites dataframe
+        col (str): Column name to analyze
+        total_sites (int): Total number of sites for percentage calculations
+        
+    Returns:
+        dict: Analysis results for the column
+    """
+    non_null_count = sites_df[col].notna().sum()
+    
+    if non_null_count == 0:
+        return {'total_sites_with_data': 0}
+    
+    # Handle semicolon-separated values
+    if col in ['Lokalitetensbranche', 'Lokalitetensaktivitet']:
+        all_categories = []
+        sites_with_category = {}
+        
+        for idx, value in sites_df[col].dropna().items():
+            if pd.notna(value) and str(value).strip():
+                categories = [cat.strip() for cat in str(value).split(';') if cat.strip()]
+                all_categories.extend(categories)
+                
+                for cat in categories:
+                    if cat not in sites_with_category:
+                        sites_with_category[cat] = set()
+                    sites_with_category[cat].add(idx)
+        
+        category_counts = pd.Series(all_categories).value_counts()
+        category_site_counts = {cat: len(sites) for cat, sites in sites_with_category.items()}
+        
+        return {
+            'total_sites_with_data': non_null_count,
+            'total_category_instances': len(all_categories),
+            'unique_categories': len(category_counts),
+            'top_categories_by_occurrence': category_counts.head(10).to_dict(),
+            'top_categories_by_sites': dict(sorted(category_site_counts.items(), 
+                                                 key=lambda x: x[1], reverse=True)[:10])
+        }
+    
+    else:
+        # Handle separated substance values
+        if ';' in str(sites_df[col].dropna().iloc[0]) or ',' in str(sites_df[col].dropna().iloc[0]):
+            all_substances = []
+            sites_with_substance = {}
+            
+            for idx, value in sites_df[col].dropna().items():
+                if pd.notna(value) and str(value).strip():
+                    substances = [s.strip() for s in str(value).replace(';', ',').split(',') if s.strip()]
+                    all_substances.extend(substances)
+                    
+                    for substance in substances:
+                        if substance not in sites_with_substance:
+                            sites_with_substance[substance] = set()
+                        sites_with_substance[substance].add(idx)
+            
+            substance_counts = pd.Series(all_substances).value_counts()
+            substance_site_counts = {sub: len(sites) for sub, sites in sites_with_substance.items()}
+            
+            return {
+                'total_sites_with_data': non_null_count,
+                'total_substance_instances': len(all_substances),
+                'unique_substances': len(substance_counts),
+                'top_substances_by_occurrence': substance_counts.head(10).to_dict(),
+                'top_substances_by_sites': dict(sorted(substance_site_counts.items(), 
+                                                     key=lambda x: x[1], reverse=True)[:10])
+            }
+        else:
+            # Single values
+            unique_values = sites_df[col].nunique()
+            top_categories = sites_df[col].value_counts().head(10)
+            
+            return {
+                'total_with_data': non_null_count,
+                'unique_categories': unique_values,
+                'top_categories': top_categories.to_dict()
+            }
 
 def _analyze_contamination_characteristics(high_risk_sites, threshold_m):
     """
@@ -108,114 +622,51 @@ def _analyze_contamination_characteristics(high_risk_sites, threshold_m):
             percentage = count / len(high_risk_sites) * 100
             print(f"  {site_type}: {count} ({percentage:.1f}%)")
     
-    # Contamination analysis with proper handling of semicolon-separated values
+    # Contamination analysis using helper function
     contamination_cols = ['Lokalitetensbranche', 'Lokalitetensaktivitet', 'Lokalitetensstoffer']
     
     for col in contamination_cols:
         if col in high_risk_sites.columns:
-            # Count non-null values
-            non_null_count = high_risk_sites[col].notna().sum()
+            analysis['contamination_analysis'][col] = _analyze_contamination_column(
+                high_risk_sites, col, len(high_risk_sites)
+            )
             
-            if non_null_count > 0:
-                # Handle semicolon-separated values properly
-                if col in ['Lokalitetensbranche', 'Lokalitetensaktivitet']:
-                    # These columns contain semicolon-separated multiple values
-                    all_categories = []
-                    sites_with_category = {}  # Track which sites have each category
-                    
-                    for idx, value in high_risk_sites[col].dropna().items():
-                        if pd.notna(value) and str(value).strip():
-                            # Split by semicolon and clean up
-                            categories = [cat.strip() for cat in str(value).split(';') if cat.strip()]
-                            all_categories.extend(categories)
-                            
-                            # Track sites for each category (to avoid double counting sites)
-                            for cat in categories:
-                                if cat not in sites_with_category:
-                                    sites_with_category[cat] = set()
-                                sites_with_category[cat].add(idx)
-                    
-                    # Count occurrences and unique sites per category
-                    category_counts = pd.Series(all_categories).value_counts()
-                    category_site_counts = {cat: len(sites) for cat, sites in sites_with_category.items()}
-                    
-                    analysis['contamination_analysis'][col] = {
-                        'total_sites_with_data': non_null_count,
-                        'total_category_instances': len(all_categories),
-                        'unique_categories': len(category_counts),
-                        'top_categories_by_occurrence': category_counts.head(10).to_dict(),
-                        'top_categories_by_sites': dict(sorted(category_site_counts.items(), 
-                                                             key=lambda x: x[1], reverse=True)[:10])
-                    }
-                    
-                    print(f"\n{col} analysis (semicolon-separated values):")
-                    print(f"  Sites with data: {non_null_count}/{len(high_risk_sites)} ({non_null_count/len(high_risk_sites)*100:.1f}%)")
-                    print(f"  Total category instances: {len(all_categories)}")
-                    print(f"  Unique categories: {len(category_counts)}")
-                    print(f"  Average categories per site: {len(all_categories)/non_null_count:.1f}")
-                    print(f"  Top 5 categories by occurrence:")
-                    for category, count in category_counts.head(5).items():
-                        sites_count = category_site_counts[category]
-                        print(f"    {category}: {count} instances ({sites_count} sites)")
+            # Print summary for this column
+            col_analysis = analysis['contamination_analysis'][col]
+            if 'total_sites_with_data' in col_analysis and col_analysis['total_sites_with_data'] > 0:
+                non_null_count = col_analysis['total_sites_with_data']
+                print(f"\n{col} analysis:")
+                print(f"  Sites with data: {non_null_count}/{len(high_risk_sites)} ({non_null_count/len(high_risk_sites)*100:.1f}%)")
                 
-                else:
-                    # Handle single-value columns (like Lokalitetensstoffer) as before but also check for separators
-                    if ';' in str(high_risk_sites[col].dropna().iloc[0]) or ',' in str(high_risk_sites[col].dropna().iloc[0]):
-                        # This column also has separated values
-                        all_substances = []
-                        sites_with_substance = {}
-                        
-                        for idx, value in high_risk_sites[col].dropna().items():
-                            if pd.notna(value) and str(value).strip():
-                                # Split by semicolon or comma and clean up
-                                substances = [s.strip() for s in str(value).replace(';', ',').split(',') if s.strip()]
-                                all_substances.extend(substances)
-                                
-                                for substance in substances:
-                                    if substance not in sites_with_substance:
-                                        sites_with_substance[substance] = set()
-                                    sites_with_substance[substance].add(idx)
-                        
-                        substance_counts = pd.Series(all_substances).value_counts()
-                        substance_site_counts = {sub: len(sites) for sub, sites in sites_with_substance.items()}
-                        
-                        analysis['contamination_analysis'][col] = {
-                            'total_sites_with_data': non_null_count,
-                            'total_substance_instances': len(all_substances),
-                            'unique_substances': len(substance_counts),
-                            'top_substances_by_occurrence': substance_counts.head(10).to_dict(),
-                            'top_substances_by_sites': dict(sorted(substance_site_counts.items(), 
-                                                                 key=lambda x: x[1], reverse=True)[:10])
-                        }
-                        
-                        print(f"\n{col} analysis (separated values):")
-                        print(f"  Sites with data: {non_null_count}/{len(high_risk_sites)} ({non_null_count/len(high_risk_sites)*100:.1f}%)")
-                        print(f"  Total substance instances: {len(all_substances)}")
-                        print(f"  Unique substances: {len(substance_counts)}")
-                        print(f"  Average substances per site: {len(all_substances)/non_null_count:.1f}")
-                        print(f"  Top 5 substances by occurrence:")
-                        for substance, count in substance_counts.head(5).items():
-                            sites_count = substance_site_counts[substance]
-                            print(f"    {substance}: {count} instances ({sites_count} sites)")
+                # Handle different analysis types
+                if 'total_category_instances' in col_analysis:
+                    print(f"  Total category instances: {col_analysis['total_category_instances']}")
+                    print(f"  Unique categories: {col_analysis['unique_categories']}")
+                    print(f"  Average categories per site: {col_analysis['total_category_instances']/non_null_count:.1f}")
                     
-                    else:
-                        # Handle as single value column (legacy approach)
-                        unique_values = high_risk_sites[col].nunique()
-                        top_categories = high_risk_sites[col].value_counts().head(10)
-                        
-                        analysis['contamination_analysis'][col] = {
-                            'total_with_data': non_null_count,
-                            'unique_categories': unique_values,
-                            'top_categories': top_categories.to_dict()
-                        }
-                        
-                        print(f"\n{col} analysis:")
-                        print(f"  Sites with data: {non_null_count}/{len(high_risk_sites)} ({non_null_count/len(high_risk_sites)*100:.1f}%)")
-                        print(f"  Unique categories: {unique_values}")
-                        print(f"  Top 5 categories:")
-                        for category, count in top_categories.head(5).items():
-                            percentage = count / non_null_count * 100
-                            print(f"    {category}: {count} ({percentage:.1f}%)")
+                    if 'top_categories_by_occurrence' in col_analysis:
+                        print(f"  Top 5 categories by occurrence:")
+                        for category, count in list(col_analysis['top_categories_by_occurrence'].items())[:5]:
+                            sites_count = col_analysis.get('top_categories_by_sites', {}).get(category, count)
+                            print(f"    {category}: {count} instances ({sites_count} sites)")
+                
+                elif 'total_substance_instances' in col_analysis:
+                    print(f"  Total substance instances: {col_analysis['total_substance_instances']}")
+                    print(f"  Unique substances: {col_analysis['unique_substances']}")
+                    print(f"  Average substances per site: {col_analysis['total_substance_instances']/non_null_count:.1f}")
+                    
+                    if 'top_substances_by_occurrence' in col_analysis:
+                        print(f"  Top 5 substances by occurrence:")
+                        for substance, count in list(col_analysis['top_substances_by_occurrence'].items())[:5]:
+                            sites_count = col_analysis.get('top_substances_by_sites', {}).get(substance, count)
+                            print(f"    {substance}: {count} instances ({sites_count} sites)")
+                
+                elif 'top_categories' in col_analysis:
+                    print(f"  Unique categories: {col_analysis['unique_categories']}")
+                    print(f"  Top 5 categories:")
+                    for category, count in list(col_analysis['top_categories'].items())[:5]:
+                        percentage = count / non_null_count * 100
+                        print(f"    {category}: {count} ({percentage:.1f}%)")
     
     # Multi-GVFK analysis
     if 'Total_GVFKs_Affected' in high_risk_sites.columns:
