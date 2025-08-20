@@ -22,19 +22,9 @@ def safe_save_figure(figures_path, filename_base, dpi=300):
     png_path = os.path.join(figures_path, f"{filename_base}.png")
     pdf_path = os.path.join(figures_path, f"{filename_base}.pdf")
     
-    # Try to save PNG
-    try:
-        plt.savefig(png_path, dpi=dpi, bbox_inches='tight')
-    except Exception as e:
-        print(f"  - Warning: Could not save PNG {filename_base}: {e}")
-    
-    # Try to save PDF
-    try:
-        plt.savefig(pdf_path, bbox_inches='tight')
-    except PermissionError:
-        print(f"  - Warning: PDF {filename_base} might be open elsewhere, skipping PDF save")
-    except Exception as e:
-        print(f"  - Warning: Could not save PDF {filename_base}: {e}")
+    # Save PNG and PDF
+    plt.savefig(png_path, dpi=dpi, bbox_inches='tight')
+    plt.savefig(pdf_path, bbox_inches='tight')
 
 def create_step5_visualizations(results_path="Resultater", threshold_m=500):
     """

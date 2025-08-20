@@ -24,19 +24,18 @@ def create_map(v1v2_with_distances, rivers_with_contact, valid_results, gvfk_pol
         valid_results (DataFrame): Distance calculation results
         gvfk_polygons (GeoDataFrame): GVFK polygon geometries
     """
-    try:
-        print("Creating interactive map...")
-        
-        # Convert to WGS84 for web mapping
-        v1v2_web = v1v2_with_distances.to_crs('EPSG:4326')
-        rivers_web = rivers_with_contact.to_crs('EPSG:4326')
-        gvfk_web = gvfk_polygons.to_crs('EPSG:4326')
-        
-        print(f"Using {len(valid_results)} site-GVFK combinations for visualization")
-        
-        if v1v2_web.empty:
-            print("No valid sites for mapping")
-            return
+    print("Creating interactive map...")
+    
+    # Convert to WGS84 for web mapping
+    v1v2_web = v1v2_with_distances.to_crs('EPSG:4326')
+    rivers_web = rivers_with_contact.to_crs('EPSG:4326')
+    gvfk_web = gvfk_polygons.to_crs('EPSG:4326')
+    
+    print(f"Using {len(valid_results)} site-GVFK combinations for visualization")
+    
+    if v1v2_web.empty:
+        print("No valid sites for mapping")
+        return
             
         # Get bounds for map centering
         bounds = v1v2_web.total_bounds
@@ -196,17 +195,14 @@ def create_map(v1v2_with_distances, rivers_with_contact, valid_results, gvfk_pol
                 
                 for _, river in matching_rivers.iterrows():
                     # Calculate closest points between site and river
-                    try:
-                        distance_calc = site_geom.distance(river.geometry)
-                        if distance_calc < min_distance_calc:
-                            min_distance_calc = distance_calc
-                            
-                            # Get closest points
-                            closest_points = nearest_points(site_geom, river.geometry)
-                            closest_point_on_site = closest_points[0]
-                            closest_point_on_river = closest_points[1]
-                    except Exception as e:
-                        continue
+                    distance_calc = site_geom.distance(river.geometry)
+                    if distance_calc < min_distance_calc:
+                        min_distance_calc = distance_calc
+                        
+                        # Get closest points
+                        closest_points = nearest_points(site_geom, river.geometry)
+                        closest_point_on_site = closest_points[0]
+                        closest_point_on_river = closest_points[1]
                 
                 # Add line connecting closest points
                 if closest_point_on_site and closest_point_on_river:
@@ -280,8 +276,4 @@ def create_map(v1v2_with_distances, rivers_with_contact, valid_results, gvfk_pol
         map_path = get_output_path('interactive_distance_map')
         m.save(map_path)
         print(f"Interactive map saved to: {map_path}")
-        print(f"Open the file in a web browser to explore the distance calculations!")
-        
-    except Exception as e:
-        print(f"Error creating interactive map: {e}")
-        print("Continuing without map visualization...") 
+        print(f"Open the file in a web browser to explore the distance calculations!") 

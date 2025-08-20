@@ -125,12 +125,8 @@ def run_step4(v1v2_combined):
             min_distance = float('inf')
             
             for _, river in matching_rivers.iterrows():
-                try:
-                    distance = site_geom.distance(river.geometry)
-                    min_distance = min(min_distance, distance)
-                except Exception as e:
-                    print(f"Error calculating distance for lokalitet {lokalitet_id} to river: {e}")
-                    continue
+                distance = site_geom.distance(river.geometry)
+                min_distance = min(min_distance, distance)
             
             if min_distance == float('inf'):
                 result['Distance_to_River_m'] = None
@@ -413,8 +409,5 @@ def _create_and_save_interactive_map(v1v2_combined, rivers_with_contact, valid_r
     
     if not sampled_combinations.empty:
         # Import and use the interactive map creation function
-        try:
-            from create_interactive_map import create_map
-            create_map(sampled_combinations, rivers_with_contact, sampled_results, relevant_gvfk_polygons)
-        except ImportError:
-            print("Interactive map module not found. Skipping map creation.") 
+        from create_interactive_map import create_map
+        create_map(sampled_combinations, rivers_with_contact, sampled_results, relevant_gvfk_polygons) 

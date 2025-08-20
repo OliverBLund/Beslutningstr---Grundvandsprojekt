@@ -521,81 +521,71 @@ def run_step5_category_thresholds(step4_csv_path: Optional[str] = None):
     print("Creating professional visualizations...")
     
     # 1. Main dashboard
-    try:
-        dashboard_fig = create_category_threshold_dashboard(cat_summary, sub_summary, long_df)
-        dashboard_path = get_output_path('step5_category_dashboard_png')
-        dashboard_fig.savefig(dashboard_path, dpi=300, bbox_inches='tight')
-        plt.close(dashboard_fig)
-        print(f"Saved category dashboard: {dashboard_path}")
-    except Exception as e:
-        print(f"Dashboard creation failed: {e}")
+    dashboard_fig = create_category_threshold_dashboard(cat_summary, sub_summary, long_df)
+    dashboard_path = get_output_path('step5_category_dashboard_png')
+    dashboard_fig.savefig(dashboard_path, dpi=300, bbox_inches='tight')
+    plt.close(dashboard_fig)
+    print(f"Saved category dashboard: {dashboard_path}")
     
     # 2. Detailed category analysis
-    try:
-        detailed_fig = create_category_detailed_analysis(sub_summary, long_df)
-        if detailed_fig:
-            detailed_path = get_output_path('step5_category_detailed_png')
-            detailed_fig.savefig(detailed_path, dpi=300, bbox_inches='tight')
-            plt.close(detailed_fig)
-            print(f"Saved detailed analysis: {detailed_path}")
-    except Exception as e:
-        print(f"Detailed analysis creation failed: {e}")
+    detailed_fig = create_category_detailed_analysis(sub_summary, long_df)
+    if detailed_fig:
+        detailed_path = get_output_path('step5_category_detailed_png')
+        detailed_fig.savefig(detailed_path, dpi=300, bbox_inches='tight')
+        plt.close(detailed_fig)
+        print(f"Saved detailed analysis: {detailed_path}")
     
     # 3. Simple overview plot (keeping the original as backup)
-    try:
-        overview_fig, ax = setup_professional_figure(figsize=(12, 8),
-                                                    title="Category-Based Distance Threshold Overview",
-                                                    subtitle="Within-threshold substance counts by contamination category")
+    overview_fig, ax = setup_professional_figure(figsize=(12, 8),
+                                                title="Category-Based Distance Threshold Overview",
+                                                subtitle="Within-threshold substance counts by contamination category")
+    
+    plot_df = cat_summary.sort_values('within_tokens', ascending=False)
+    
+    # Use risk-based colors
+    colors = []
+    for _, row in plot_df.iterrows():
+        category = row['Category']
+        if category in COMPOUND_DISTANCE_MAPPING:
+            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
+            colors.append(RISK_COLORS.get(distance, COLORS['neutral']))
+        else:
+            colors.append(COLORS['neutral'])
+    
+    bars = ax.barh(range(len(plot_df)), plot_df['within_tokens'], color=colors, alpha=0.8)
+    
+    # Customize
+    ax.set_yticks(range(len(plot_df)))
+    ax.set_yticklabels([cat.replace('_', ' ').title() for cat in plot_df['Category']])
+    ax.set_xlabel('Within-threshold substance tokens (count)')
+    ax.invert_yaxis()
+    
+    # Add count and percentage labels
+    for i, category in enumerate(plot_df.index):
+        # Use direct array access to avoid Scalar type issues
+        count = plot_df['within_tokens'].iloc[i]
+        total = plot_df['total_tokens'].iloc[i]
+        pct = (count / total * 100) if total > 0 else 0
         
-        plot_df = cat_summary.sort_values('within_tokens', ascending=False)
-        
-        # Use risk-based colors
-        colors = []
-        for _, row in plot_df.iterrows():
-            category = row['Category']
-            if category in COMPOUND_DISTANCE_MAPPING:
-                distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
-                colors.append(RISK_COLORS.get(distance, COLORS['neutral']))
-            else:
-                colors.append(COLORS['neutral'])
-        
-        bars = ax.barh(range(len(plot_df)), plot_df['within_tokens'], color=colors, alpha=0.8)
-        
-        # Customize
-        ax.set_yticks(range(len(plot_df)))
-        ax.set_yticklabels([cat.replace('_', ' ').title() for cat in plot_df['Category']])
-        ax.set_xlabel('Within-threshold substance tokens (count)')
-        ax.invert_yaxis()
-        
-        # Add count and percentage labels
-        for i, category in enumerate(plot_df.index):
-            # Use direct array access to avoid Scalar type issues
-            count = plot_df['within_tokens'].iloc[i]
-            total = plot_df['total_tokens'].iloc[i]
-            pct = (count / total * 100) if total > 0 else 0
-            
-            ax.text(count + max(plot_df['within_tokens']) * 0.01, i,
-                   f'{count} ({pct:.1f}%)', va='center', fontweight='bold', fontsize=10)
-        
-        # Add risk level legend
-        legend_elements = [
-            mpatches.Patch(color=RISK_COLORS[30], label='30m threshold'),
-            mpatches.Patch(color=RISK_COLORS[50], label='50m threshold'),
-            mpatches.Patch(color=RISK_COLORS[100], label='100m threshold'),
-            mpatches.Patch(color=RISK_COLORS[200], label='200m threshold'),
-            mpatches.Patch(color=RISK_COLORS[500], label='500m threshold')
-        ]
-        ax.legend(handles=legend_elements, loc='lower right', frameon=True, 
-                 fancybox=True, shadow=True)
-        
-        overview_fig.tight_layout()
-        plot_path = get_output_path('step5_category_overview_png')
-        overview_fig.savefig(plot_path, dpi=300, bbox_inches='tight')
-        plt.close(overview_fig)
-        print(f"Saved category overview plot: {plot_path}")
-        
-    except Exception as e:
-        print(f"Overview plot generation failed: {e}")
+        ax.text(count + max(plot_df['within_tokens']) * 0.01, i,
+               f'{count} ({pct:.1f}%)', va='center', fontweight='bold', fontsize=10)
+    
+    # Add risk level legend
+    legend_elements = [
+        mpatches.Patch(color=RISK_COLORS[30], label='30m threshold'),
+        mpatches.Patch(color=RISK_COLORS[50], label='50m threshold'),
+        mpatches.Patch(color=RISK_COLORS[100], label='100m threshold'),
+        mpatches.Patch(color=RISK_COLORS[200], label='200m threshold'),
+        mpatches.Patch(color=RISK_COLORS[500], label='500m threshold')
+    ]
+    ax.legend(handles=legend_elements, loc='lower right', frameon=True, 
+             fancybox=True, shadow=True)
+    
+    overview_fig.tight_layout()
+    plot_path = get_output_path('step5_category_overview_png')
+    overview_fig.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close(overview_fig)
+    print(f"Saved category overview plot: {plot_path}")
 
     return {
         'flags_csv': flags_path,

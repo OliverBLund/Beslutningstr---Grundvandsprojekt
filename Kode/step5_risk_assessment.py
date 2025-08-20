@@ -21,15 +21,10 @@ def run_step5():
     # Load Step 4 results
     step4_file = get_output_path('step4_final_distances_for_risk_assessment')
     if not os.path.exists(step4_file):
-        print(f"ERROR: Step 4 results not found. Please run Step 4 first.")
-        return (None, None), (None, None)
+        raise FileNotFoundError("Step 4 results not found. Please run Step 4 first.")
     
-    try:
-        distance_results = pd.read_csv(step4_file)
-        print(f"Loaded {len(distance_results)} localities from Step 4")
-    except Exception as e:
-        print(f"Error loading Step 4 results: {e}")
-        return (None, None), (None, None)
+    distance_results = pd.read_csv(step4_file)
+    print(f"Loaded {len(distance_results)} localities from Step 4")
     
     # Run both assessments
     general_results = run_general_risk_assessment(distance_results)
@@ -270,69 +265,59 @@ def _save_compound_specific_results(compound_high_risk_sites, compound_analysis_
 
 def _create_high_risk_gvfk_shapefile(high_risk_sites, threshold_m):
     """Create shapefile of high-risk GVFK polygons."""
-    try:
-        grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
-        
-        # Get high-risk GVFK names
-        high_risk_gvfk_names = set()
-        for _, row in high_risk_sites.iterrows():
-            gvfk_list = str(row.get('All_Affected_GVFKs', ''))
-            if gvfk_list and gvfk_list != 'nan':
-                gvfks = [g.strip() for g in gvfk_list.split(';') if g.strip()]
-                high_risk_gvfk_names.update(gvfks)
-            elif 'Closest_GVFK' in row:
-                closest_gvfk = str(row['Closest_GVFK'])
-                if closest_gvfk and closest_gvfk != 'nan':
-                    high_risk_gvfk_names.add(closest_gvfk)
-        
-        # Filter GVFK polygons
-        site_id_col = _resolve_site_id_col(grundvand_gdf)
-        high_risk_gvfk_polygons = grundvand_gdf[
-            grundvand_gdf[site_id_col].isin(high_risk_gvfk_names)
-        ].copy()
-        
-        if not high_risk_gvfk_polygons.empty:
-            output_path = get_output_path('step5_gvfk_high_risk', threshold_m)
-            high_risk_gvfk_polygons.to_file(output_path)
-        
-        return high_risk_gvfk_names
-        
-    except Exception as e:
-        print(f"Warning: Could not create high-risk GVFK shapefile: {e}")
-        return set()
+    grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
+    
+    # Get high-risk GVFK names
+    high_risk_gvfk_names = set()
+    for _, row in high_risk_sites.iterrows():
+        gvfk_list = str(row.get('All_Affected_GVFKs', ''))
+        if gvfk_list and gvfk_list != 'nan':
+            gvfks = [g.strip() for g in gvfk_list.split(';') if g.strip()]
+            high_risk_gvfk_names.update(gvfks)
+        elif 'Closest_GVFK' in row:
+            closest_gvfk = str(row['Closest_GVFK'])
+            if closest_gvfk and closest_gvfk != 'nan':
+                high_risk_gvfk_names.add(closest_gvfk)
+    
+    # Filter GVFK polygons
+    site_id_col = _resolve_site_id_col(grundvand_gdf)
+    high_risk_gvfk_polygons = grundvand_gdf[
+        grundvand_gdf[site_id_col].isin(high_risk_gvfk_names)
+    ].copy()
+    
+    if not high_risk_gvfk_polygons.empty:
+        output_path = get_output_path('step5_gvfk_high_risk', threshold_m)
+        high_risk_gvfk_polygons.to_file(output_path)
+    
+    return high_risk_gvfk_names
 
 def _create_compound_specific_gvfk_shapefile(compound_high_risk_sites):
     """Create shapefile of compound-specific high-risk GVFK polygons."""
-    try:
-        grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
-        
-        # Get high-risk GVFK names
-        high_risk_gvfk_names = set()
-        for _, row in compound_high_risk_sites.iterrows():
-            gvfk_list = str(row.get('All_Affected_GVFKs', ''))
-            if gvfk_list and gvfk_list != 'nan':
-                gvfks = [g.strip() for g in gvfk_list.split(';') if g.strip()]
-                high_risk_gvfk_names.update(gvfks)
-            elif 'Closest_GVFK' in row:
-                closest_gvfk = str(row['Closest_GVFK'])
-                if closest_gvfk and closest_gvfk != 'nan':
-                    high_risk_gvfk_names.add(closest_gvfk)
-        
-        # Filter GVFK polygons
-        site_id_col = _resolve_site_id_col(grundvand_gdf)
-        high_risk_gvfk_polygons = grundvand_gdf[
-            grundvand_gdf[site_id_col].isin(high_risk_gvfk_names)
-        ].copy()
-        
-        if not high_risk_gvfk_polygons.empty:
-            output_path = get_output_path('step5_compound_gvfk_high_risk')
-            high_risk_gvfk_polygons.to_file(output_path)
-        
-        return high_risk_gvfk_names
-        
-    except Exception as e:
-        print(f"Warning: Could not create compound-specific GVFK shapefile: {e}")
-        return set()
+    grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
+    
+    # Get high-risk GVFK names
+    high_risk_gvfk_names = set()
+    for _, row in compound_high_risk_sites.iterrows():
+        gvfk_list = str(row.get('All_Affected_GVFKs', ''))
+        if gvfk_list and gvfk_list != 'nan':
+            gvfks = [g.strip() for g in gvfk_list.split(';') if g.strip()]
+            high_risk_gvfk_names.update(gvfks)
+        elif 'Closest_GVFK' in row:
+            closest_gvfk = str(row['Closest_GVFK'])
+            if closest_gvfk and closest_gvfk != 'nan':
+                high_risk_gvfk_names.add(closest_gvfk)
+    
+    # Filter GVFK polygons
+    site_id_col = _resolve_site_id_col(grundvand_gdf)
+    high_risk_gvfk_polygons = grundvand_gdf[
+        grundvand_gdf[site_id_col].isin(high_risk_gvfk_names)
+    ].copy()
+    
+    if not high_risk_gvfk_polygons.empty:
+        output_path = get_output_path('step5_compound_gvfk_high_risk')
+        high_risk_gvfk_polygons.to_file(output_path)
+    
+    return high_risk_gvfk_names
 
 def _resolve_site_id_col(df):
     """Resolve the site ID column name in the dataframe."""
@@ -372,47 +357,31 @@ def run_comprehensive_step5():
         'error_message': None
     }
     
-    try:
-        # Run standard assessments
-        general_results, compound_results = run_step5()
-        comprehensive_results['general_results'] = general_results
-        comprehensive_results['compound_results'] = compound_results
-        
-        gen_sites, _ = general_results
-        if gen_sites is None:
-            comprehensive_results['error_message'] = "General risk assessment failed"
-            return comprehensive_results
-        
-        # Run category-based analysis
-        print("\nRunning category-based threshold analysis...")
-        try:
-            from step5_compound_threshold_counts import run_step5_category_thresholds
-            category_results = run_step5_category_thresholds()
-            comprehensive_results['category_results'] = category_results
-            print("✓ Category-based analysis completed")
-        except Exception as e:
-            print(f"WARNING: Category-based analysis failed: {e}")
-            comprehensive_results['error_message'] = f"Category analysis failed: {e}"
-        
-        # Run visualizations
-        print("\nCreating Step 5 visualizations...")
-        try:
-            from step5_visualizations import create_step5_visualizations
-            threshold_m = WORKFLOW_SETTINGS['risk_threshold_m']
-            create_step5_visualizations(threshold_m=threshold_m)
-            print("✓ Step 5 visualizations completed")
-        except Exception as e:
-            print(f"WARNING: Step 5 visualizations failed: {e}")
-            if comprehensive_results['error_message'] is None:
-                comprehensive_results['error_message'] = f"Visualizations failed: {e}"
-        
-        comprehensive_results['success'] = True
-        print(f"\n✓ COMPREHENSIVE STEP 5 ANALYSIS COMPLETED")
-        
-    except Exception as e:
-        print(f"ERROR: Comprehensive Step 5 analysis failed: {e}")
-        comprehensive_results['error_message'] = str(e)
-        comprehensive_results['success'] = False
+    # Run standard assessments
+    general_results, compound_results = run_step5()
+    comprehensive_results['general_results'] = general_results
+    comprehensive_results['compound_results'] = compound_results
+    
+    gen_sites, _ = general_results
+    if gen_sites is None:
+        raise ValueError("General risk assessment failed")
+    
+    # Run category-based analysis
+    print("\nRunning category-based threshold analysis...")
+    from step5_compound_threshold_counts import run_step5_category_thresholds
+    category_results = run_step5_category_thresholds()
+    comprehensive_results['category_results'] = category_results
+    print("✓ Category-based analysis completed")
+    
+    # Run visualizations
+    print("\nCreating Step 5 visualizations...")
+    from step5_visualizations import create_step5_visualizations
+    threshold_m = WORKFLOW_SETTINGS['risk_threshold_m']
+    create_step5_visualizations(threshold_m=threshold_m)
+    print("✓ Step 5 visualizations completed")
+    
+    comprehensive_results['success'] = True
+    print(f"\n✓ COMPREHENSIVE STEP 5 ANALYSIS COMPLETED")
     
     return comprehensive_results
 
