@@ -4,7 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 from matplotlib.patches import FancyArrowPatch
-from config import WORKFLOW_SETTINGS
+from config import WORKFLOW_SETTINGS, get_output_path
 
 def create_site_density_heatmap(results_path):
     """
@@ -13,9 +13,9 @@ def create_site_density_heatmap(results_path):
     """
     print("Creating enhanced site density heatmap showing unique locations...")
     
-    # Create figures directory if it doesn't exist
-    figures_path = os.path.join(results_path, "Figures")
-    os.makedirs(figures_path, exist_ok=True)
+    # Use config-based path for Step 4 visualizations (heatmap shows all sites from distance analysis)
+    from config import get_visualization_path
+    figures_path = get_visualization_path('step4')
     
     try:
         # Try to load the unique locations with distances first
@@ -37,7 +37,7 @@ def create_site_density_heatmap(results_path):
             print("Distance analysis files not found. Loading from Step3 data...")
             
             # Load V1/V2 sites from step 3
-            v1v2_sites = gpd.read_file(os.path.join(results_path, "step3_v1v2_sites.shp"))
+            v1v2_sites = gpd.read_file(get_output_path('step3_v1v2_sites'))
             
             if 'Lokalitets' in v1v2_sites.columns:
                 # Create a temporary dataframe with unique locations only
@@ -58,8 +58,9 @@ def create_site_density_heatmap(results_path):
             else:
                 unique_sites_df = v1v2_sites.copy()
         
-        # Load Denmark boundary for reference
-        gvfk = gpd.read_file(os.path.join(results_path, "step1_all_gvfk.shp"))
+        # Load Denmark boundary for reference (use original groundvand file)
+        from config import GRUNDVAND_PATH
+        gvfk = gpd.read_file(GRUNDVAND_PATH)
         denmark_boundary = gvfk.unary_union
         
         # Create figure with better size for Denmark's shape - make it larger
@@ -75,7 +76,7 @@ def create_site_density_heatmap(results_path):
             # Distance analysis produces CSV files without geometry
             # We need to merge with the original sites data to get geometries
             
-            v1v2_sites = gpd.read_file(os.path.join(results_path, "step3_v1v2_sites.shp"))
+            v1v2_sites = gpd.read_file(get_output_path('step3_v1v2_sites'))
             
             if 'Lokalitets' in v1v2_sites.columns:
                 # Rename for consistency
@@ -268,13 +269,13 @@ def create_distance_histogram_with_thresholds(results_path):
     """
     print("Creating distance histogram with thresholds...")
     
-    # Define paths
-    figures_path = os.path.join(results_path, "Figures", "Step4_Distance_Analysis")
-    os.makedirs(figures_path, exist_ok=True)
+    # Use config-based path for Step 4 visualizations
+    from config import get_visualization_path, get_output_path
+    figures_path = get_visualization_path('step4')
     
-    # Define paths for both unique locations and all geometries files
-    unique_distance_file = os.path.join(results_path, "unique_lokalitet_distances.csv")
-    all_distance_file = os.path.join(results_path, "step4_valid_distances.csv")
+    # Define paths for both unique locations and all geometries files using config
+    unique_distance_file = get_output_path('unique_lokalitet_distances')
+    all_distance_file = get_output_path('step4_valid_distances')
     
     # Prioritize using unique locations data
     if os.path.exists(unique_distance_file):
@@ -642,14 +643,16 @@ if __name__ == "__main__":
     create_distance_histogram_with_thresholds(results_path)
 
     print("Creating progression plot...")
-    # Define required files for progression plot
+    # Define required files for progression plot using config paths
+    from config import get_output_path, get_visualization_path, GRUNDVAND_PATH
     required_files = {
-        "all_gvfk": os.path.join(results_path, "step1_all_gvfk.shp"),
-        "river_gvfk": os.path.join(results_path, "step2_gvfk_with_rivers.shp"),
-        "v1v2_gvfk": os.path.join(results_path, "step3_gvfk_with_v1v2.shp"),
-        "high_risk_gvfk": os.path.join(results_path, f"step5_gvfk_high_risk_{WORKFLOW_SETTINGS['risk_threshold_m']}m.shp")
+        "all_gvfk": GRUNDVAND_PATH,  # Use original file since Step 1 no longer creates output
+        "river_gvfk": get_output_path('step2_river_gvfk'),
+        "v1v2_gvfk": get_output_path('step3_gvfk_polygons'),
+        "high_risk_gvfk": get_output_path('step5_gvfk_high_risk')
     }
-    figures_path = os.path.join(results_path, "Figures")
+    figures_path = get_visualization_path('workflow')
     create_progression_plot(figures_path, required_files)
 
-    print("\nSelected visualizations have been created successfully. Check the 'Resultater/Figures' directory.") 
+    print(f"\nSelected visualizations have been created successfully.")
+    print(f"Check step-specific folders in: {os.path.join(results_path, 'Step*_*', 'Figures')}") 

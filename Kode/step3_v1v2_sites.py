@@ -31,92 +31,62 @@ def run_step3(rivers_gvfk):
     Returns:
         tuple: (gvfk_with_v1v2_names_set, v1v2_combined_geodataframe)
     """
-    print("\nStep 3: Finding GVFKs with river contact that have V1 and/or V2 sites with active contaminations")
-    print("Using hybrid CSV+shapefile approach to preserve site-GVFK relationships")
-    print("Filtering to only sites with documented contamination substances")
+    print("Step 3: Finding GVFKs with V1/V2 sites (active contaminations only)")
     
     # Ensure output directory exists
     ensure_results_directory()
     
     # Load CSV files with complete site-GVFK relationships
-    print("Loading V1 and V2 CSV files for relationships...")
-    try:
-        v1_csv = pd.read_csv(V1_CSV_PATH)
-        print(f"V1 CSV loaded: {len(v1_csv)} total site-GVFK combinations")
-        
-        # Filter to only sites with active contaminations (documented contamination substances)
-        if 'Lokalitetensstoffer' in v1_csv.columns:
-            v1_csv_before = len(v1_csv)
-            v1_csv = v1_csv.dropna(subset=['Lokalitetensstoffer'])
-            v1_csv = v1_csv[v1_csv['Lokalitetensstoffer'].str.strip() != '']  # Remove empty strings
-            print(f"V1 CSV after filtering to active contaminations only: {len(v1_csv)} (removed {v1_csv_before - len(v1_csv)})")
-        else:
-            print("WARNING: 'Lokalitetensstoffer' column not found in V1 CSV")
-    except Exception as e:
-        print(f"Error loading V1 CSV: {e}")
-        v1_csv = pd.DataFrame()
+    v1_csv = pd.read_csv(V1_CSV_PATH)
     
-    try:
-        v2_csv = pd.read_csv(V2_CSV_PATH)
-        print(f"V2 CSV loaded: {len(v2_csv)} total site-GVFK combinations")
-        
-        # Filter to only sites with active contaminations (documented contamination substances)
-        if 'Lokalitetensstoffer' in v2_csv.columns:
-            v2_csv_before = len(v2_csv)
-            v2_csv = v2_csv.dropna(subset=['Lokalitetensstoffer'])
-            v2_csv = v2_csv[v2_csv['Lokalitetensstoffer'].str.strip() != '']  # Remove empty strings
-            print(f"V2 CSV after filtering to active contaminations only: {len(v2_csv)} (removed {v2_csv_before - len(v2_csv)})")
-        else:
-            print("WARNING: 'Lokalitetensstoffer' column not found in V2 CSV")
-    except Exception as e:
-        print(f"Error loading V2 CSV: {e}")
-        v2_csv = pd.DataFrame()
+    # Filter to only sites with active contaminations (documented contamination substances)
+    if 'Lokalitetensstoffer' in v1_csv.columns:
+        v1_csv_before = len(v1_csv)
+        v1_csv = v1_csv.dropna(subset=['Lokalitetensstoffer'])
+        v1_csv = v1_csv[v1_csv['Lokalitetensstoffer'].str.strip() != '']  # Remove empty strings
+        print(f"V1 sites with contamination: {len(v1_csv)} (filtered from {v1_csv_before})")
+    else:
+        raise ValueError("'Lokalitetensstoffer' column not found in V1 CSV")
+    
+    v2_csv = pd.read_csv(V2_CSV_PATH)
+    
+    # Filter to only sites with active contaminations (documented contamination substances)
+    if 'Lokalitetensstoffer' in v2_csv.columns:
+        v2_csv_before = len(v2_csv)
+        v2_csv = v2_csv.dropna(subset=['Lokalitetensstoffer'])
+        v2_csv = v2_csv[v2_csv['Lokalitetensstoffer'].str.strip() != '']  # Remove empty strings
+        print(f"V2 sites with contamination: {len(v2_csv)} (filtered from {v2_csv_before})")
+    else:
+        raise ValueError("'Lokalitetensstoffer' column not found in V2 CSV")
     
     if v1_csv.empty and v2_csv.empty:
-        print("No CSV data found. Cannot proceed.")
-        return set(), gpd.GeoDataFrame()
+        raise ValueError("No sites with contamination found in V1 or V2 data")
     
     # Load shapefile geometries and dissolve by locality
-    print("Loading and dissolving shapefile geometries by locality...")
-    
-    # Find locality ID column
     locality_col = None
     
     # Process V1 geometries
-    v1_geom = gpd.GeoDataFrame()
-    try:
-        v1_shp = gpd.read_file(V1_SHP_PATH)
-        print(f"V1 shapefile loaded: {len(v1_shp)} polygons")
-        
-        # Find locality ID column
-        for col in ['Lokalitet_', 'Lokalitets', 'Lokalitetsnr', 'LokNr']:
-            if col in v1_shp.columns:
-                locality_col = col
-                break
-        
-        if locality_col is None:
-            print("ERROR: No locality column found in V1 shapefile")
-            return set(), gpd.GeoDataFrame()
-        
-        # Dissolve V1 geometries by locality to handle multipolygons
-        v1_geom = v1_shp.dissolve(by=locality_col, as_index=False)
-        print(f"V1 geometries dissolved: {len(v1_geom)} unique localities")
-        
-    except Exception as e:
-        print(f"Error loading V1 shapefile: {e}")
+    v1_shp = gpd.read_file(V1_SHP_PATH)
+    
+    # Find locality ID column
+    for col in ['Lokalitet_', 'Lokalitets', 'Lokalitetsnr', 'LokNr']:
+        if col in v1_shp.columns:
+            locality_col = col
+            break
+    
+    if locality_col is None:
+        raise ValueError("No locality column found in V1 shapefile")
+    
+    # Dissolve V1 geometries by locality to handle multipolygons
+    v1_geom = v1_shp.dissolve(by=locality_col, as_index=False)
+    print(f"V1 geometries: {len(v1_geom)} unique localities")
     
     # Process V2 geometries
-    v2_geom = gpd.GeoDataFrame()
-    try:
-        v2_shp = gpd.read_file(V2_SHP_PATH)
-        print(f"V2 shapefile loaded: {len(v2_shp)} polygons")
-        
-        # Dissolve V2 geometries by locality
-        v2_geom = v2_shp.dissolve(by=locality_col, as_index=False)
-        print(f"V2 geometries dissolved: {len(v2_geom)} unique localities")
-        
-    except Exception as e:
-        print(f"Error loading V2 shapefile: {e}")
+    v2_shp = gpd.read_file(V2_SHP_PATH)
+    
+    # Dissolve V2 geometries by locality
+    v2_geom = v2_shp.dissolve(by=locality_col, as_index=False)
+    print(f"V2 geometries: {len(v2_geom)} unique localities")
     
     # Process V1 data
     v1_combined_list = []
@@ -159,25 +129,21 @@ def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type
     Returns:
         list: List containing processed GeoDataFrame if successful, empty list otherwise
     """
-    print(f"Combining {site_type} CSV relationships with dissolved geometries...")
-    
     # Standardize locality column name (CSV uses 'Lokalitetsnr', we need 'Lokalitet_')
     if 'Lokalitetsnr' in csv_data.columns and 'Lokalitet_' not in csv_data.columns:
         csv_data = csv_data.rename(columns={'Lokalitetsnr': 'Lokalitet_'})
-        print(f"{site_type} CSV: Renamed 'Lokalitetsnr' to 'Lokalitet_' for consistency")
     
     # Filter CSV to only GVFKs with river contact
     rivers_gvfk_set = set(rivers_gvfk)
     filtered_csv = csv_data[csv_data['Navn'].isin(rivers_gvfk_set)].copy()
-    print(f"{site_type} site-GVFK combinations in river-contact GVFKs: {len(filtered_csv)}")
+    print(f"{site_type} sites in river-contact GVFKs: {len(filtered_csv)}")
     
     if filtered_csv.empty:
         return []
     
-    # IMPORTANT: Deduplicate by lokalitet-GVFK combination before processing
-    print(f"Deduplicating {site_type} by unique lokalitet-GVFK combinations...")
+    # Deduplicate by lokalitet-GVFK combination before processing
     unique_csv = filtered_csv.drop_duplicates(subset=['Lokalitet_', 'Navn']).copy()
-    print(f"{site_type} after deduplication: {len(unique_csv)} unique lokalitet-GVFK combinations (reduced from {len(filtered_csv)})")
+    print(f"{site_type} unique lokalitet-GVFK combinations: {len(unique_csv)}")
     
     # Add site type column
     unique_csv['Lokalitete'] = site_type
@@ -186,10 +152,6 @@ def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type
     step5_columns = ['Lokalitetensbranche', 'Lokalitetensaktivitet', 'Lokalitetensstoffer', 
                      'Lokalitetsnavn', 'Lokalitetetsforureningsstatus', 'Regionsnavn', 'Kommunenavn']
     available_step5_columns = [col for col in step5_columns if col in unique_csv.columns]
-    if available_step5_columns:
-        print(f"{site_type} preserving columns for Step 5: {available_step5_columns}")
-    else:
-        print(f"{site_type} WARNING: No Step 5 columns found in CSV data")
     
     # Join with dissolved geometries
     csv_with_geom = unique_csv.merge(
@@ -230,15 +192,12 @@ def _combine_and_deduplicate_v1v2(v1_combined_list, v2_combined_list):
     v1v2_combined_raw = pd.concat(all_combined, ignore_index=True)
     print(f"Combined V1 and V2 data: {len(v1v2_combined_raw)} total rows")
     
-    # CRITICAL FIX: Final deduplication to handle sites in both V1 and V2
-    print("Performing final deduplication of lokalitet-GVFK combinations...")
-    
-    # Identify which sites appear in both V1 and V2 for same GVFK
+    # Final deduplication to handle sites in both V1 and V2
     duplicates = v1v2_combined_raw.groupby(['Lokalitet_', 'Navn']).size()
     duplicate_combinations = duplicates[duplicates > 1]
     
     if len(duplicate_combinations) > 0:
-        print(f"Found {len(duplicate_combinations)} lokalitet-GVFK combinations that appear in both V1 and V2")
+        print(f"Sites in both V1 and V2: {len(duplicate_combinations)} combinations")
         
         # For duplicate combinations, keep one record but update site type to 'V1 og V2'
         v1v2_deduped_list = []
@@ -261,18 +220,15 @@ def _combine_and_deduplicate_v1v2(v1_combined_list, v2_combined_list):
         v1v2_combined = pd.concat(v1v2_deduped_list, ignore_index=True)
         
     else:
-        print("No duplicate lokalitet-GVFK combinations found")
         v1v2_combined = v1v2_combined_raw.copy()
     
-    print(f"After final deduplication: {len(v1v2_combined)} unique lokalitet-GVFK combinations")
+    print(f"Unique lokalitet-GVFK combinations: {len(v1v2_combined)}")
     
     # Verify no duplicates remain
     final_check = v1v2_combined.groupby(['Lokalitet_', 'Navn']).size()
     remaining_duplicates = (final_check > 1).sum()
     if remaining_duplicates > 0:
         print(f"ERROR: {remaining_duplicates} duplicate combinations still remain!")
-    else:
-        print("✓ All lokalitet-GVFK combinations are now unique")
     
     return v1v2_combined
 
@@ -292,47 +248,35 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names):
     unique_sites = v1v2_combined['Lokalitet_'].nunique()
     total_site_gvfk_combinations = len(v1v2_combined)
     
-    print(f"\nSummary:")
-    print(f"Unique V1/V2 sites (localities): {unique_sites}")
-    print(f"Total site-GVFK combinations: {total_site_gvfk_combinations}")
-    print(f"Average GVFKs per site: {total_site_gvfk_combinations/unique_sites:.1f}")
+    print(f"Unique V1/V2 sites: {unique_sites}")
+    print(f"Site-GVFK combinations: {total_site_gvfk_combinations}")
     print(f"GVFKs with V1/V2 sites: {len(gvfk_with_v1v2_names)}")
     
     # Count by site type
     if 'Lokalitete' in v1v2_combined.columns:
         # Count unique sites by type (not site-GVFK combinations)
         site_type_counts = v1v2_combined.drop_duplicates('Lokalitet_')['Lokalitete'].value_counts()
-        print("\nUnique sites by type:")
         for site_type, count in site_type_counts.items():
-            print(f"- {site_type}: {count}")
+            print(f"- {site_type} sites: {count}")
     
     # Save V1/V2 site-GVFK combinations
-    try:
-        v1v2_sites_path = get_output_path('step3_v1v2_sites')
-        v1v2_combined.to_file(v1v2_sites_path)
-        print(f"\nSaved V1/V2 site-GVFK combinations to: {v1v2_sites_path}")
-    except Exception as e:
-        print(f"Error saving V1/V2 sites: {e}")
+    v1v2_sites_path = get_output_path('step3_v1v2_sites')
+    v1v2_combined.to_file(v1v2_sites_path)
+    print(f"Saved V1/V2 site-GVFK combinations: {len(v1v2_combined)} records")
     
     # Save GVFK polygons that contain V1/V2 sites
-    try:
-        gvf = gpd.read_file(GRUNDVAND_PATH)
-        gvfk_with_v1v2_polygons = gvf[gvf['Navn'].isin(gvfk_with_v1v2_names)]
-        
-        gvfk_polygons_path = get_output_path('step3_gvfk_polygons')
-        gvfk_with_v1v2_polygons.to_file(gvfk_polygons_path)
-        print(f"Saved GVFK polygons with V1/V2 sites to: {gvfk_polygons_path}")
-    except Exception as e:
-        print(f"Error saving GVFK polygons: {e}")
+    gvf = gpd.read_file(GRUNDVAND_PATH)
+    gvfk_with_v1v2_polygons = gvf[gvf['Navn'].isin(gvfk_with_v1v2_names)]
+    
+    gvfk_polygons_path = get_output_path('step3_gvfk_polygons')
+    gvfk_with_v1v2_polygons.to_file(gvfk_polygons_path)
+    print(f"Saved GVFK polygons: {len(gvfk_with_v1v2_polygons)} records")
     
     # Save CSV with detailed relationships
-    try:
-        csv_output = v1v2_combined.drop('geometry', axis=1) if 'geometry' in v1v2_combined.columns else v1v2_combined
-        relationships_path = get_output_path('step3_relationships')
-        csv_output.to_csv(relationships_path, index=False)
-        print(f"Saved detailed site-GVFK relationships to: {relationships_path}")
-    except Exception as e:
-        print(f"Error saving relationships CSV: {e}")
+    csv_output = v1v2_combined.drop('geometry', axis=1) if 'geometry' in v1v2_combined.columns else v1v2_combined
+    relationships_path = get_output_path('step3_relationships')
+    csv_output.to_csv(relationships_path, index=False)
+    print(f"Saved detailed relationships: {len(csv_output)} records")
 
 if __name__ == "__main__":
     # Allow running this step independently

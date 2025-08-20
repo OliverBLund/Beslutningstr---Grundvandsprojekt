@@ -46,12 +46,12 @@ def create_step5_visualizations(results_path="Resultater", threshold_m=500):
     """
     print(f"Creating Step 5 visualizations for sites ≤{threshold_m}m from rivers...")
     
-    # Define paths
-    figures_path = os.path.join(results_path, "Figures", "Step5_Risk_Analysis")
-    os.makedirs(figures_path, exist_ok=True)
+    # Use config-based path for Step 5 visualizations
+    from config import get_visualization_path, get_output_path
+    figures_path = get_visualization_path('step5')
     
-    # Load high-risk sites data
-    high_risk_file = os.path.join(results_path, f"step5_high_risk_sites_{threshold_m}m.csv")
+    # Load high-risk sites data using config path
+    high_risk_file = get_output_path('step5_high_risk_sites', threshold_m)
     
     if not os.path.exists(high_risk_file):
         print(f"High-risk sites file not found: {high_risk_file}")

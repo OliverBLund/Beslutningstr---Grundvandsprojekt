@@ -5,9 +5,30 @@ Contains all paths, settings, and constants used across the workflow steps.
 
 import os
 
-# Base paths
-BASE_PATH = os.path.join(".", "Data", "shp files")
-RESULTS_PATH = os.path.join(".", "Resultater")
+# Base paths - Use absolute paths to avoid working directory issues
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root (parent of Kode)
+BASE_PATH = os.path.join(PROJECT_ROOT, "Data", "shp files")
+RESULTS_PATH = os.path.join(PROJECT_ROOT, "Resultater")
+
+# Step-specific result folders
+STEP_FOLDERS = {
+    'step1': os.path.join(RESULTS_PATH, "Step1_GVFK_Base"),
+    'step2': os.path.join(RESULTS_PATH, "Step2_River_Contact"),
+    'step3': os.path.join(RESULTS_PATH, "Step3_V1V2_Sites"),
+    'step4': os.path.join(RESULTS_PATH, "Step4_Distances"),
+    'step5': os.path.join(RESULTS_PATH, "Step5_Risk_Assessment"),
+    'workflow': os.path.join(RESULTS_PATH, "Workflow_Summary"),
+}
+
+# Visualization subfolders for each step
+VISUALIZATION_FOLDERS = {
+    'step1': os.path.join(STEP_FOLDERS['step1'], "Figures"),
+    'step2': os.path.join(STEP_FOLDERS['step2'], "Figures"),
+    'step3': os.path.join(STEP_FOLDERS['step3'], "Figures"),
+    'step4': os.path.join(STEP_FOLDERS['step4'], "Figures"),
+    'step5': os.path.join(STEP_FOLDERS['step5'], "Figures"),
+    'workflow': os.path.join(STEP_FOLDERS['workflow'], "Figures"),
+}
 
 # Input data paths
 GRUNDVAND_PATH = os.path.join(BASE_PATH, "VP3Genbesøg_grundvand_geometri.shp")
@@ -17,8 +38,8 @@ RIVERS_PATH = os.path.join(BASE_PATH, "Rivers_gvf_rev20230825_kontakt.shp")
 # Updated to use:
 # - Main CSV files from Data/ directory (contain Step 5 columns: Lokalitetensbranche, Lokalitetensaktivitet, Lokalitetensstoffer)
 # - V1FLADER/V2FLADER shapefiles (pre-dissolved, more comprehensive coverage)
-V1_CSV_PATH = os.path.join(".", "Data", "v1_gvfk_forurening.csv")
-V2_CSV_PATH = os.path.join(".", "Data", "v2_gvfk_forurening.csv")
+V1_CSV_PATH = os.path.join(PROJECT_ROOT, "Data", "v1_gvfk_forurening.csv")
+V2_CSV_PATH = os.path.join(PROJECT_ROOT, "Data", "v2_gvfk_forurening.csv")
 V1_SHP_PATH = os.path.join(BASE_PATH, "V1FLADER.shp")
 V2_SHP_PATH = os.path.join(BASE_PATH, "V2FLADER.shp")
 #V1_SHP_PATH = os.path.join(BASE_PATH, "V1_gvfk_forurening.shp")
@@ -26,36 +47,50 @@ V2_SHP_PATH = os.path.join(BASE_PATH, "V2FLADER.shp")
 # Output file names with dynamic threshold placeholders
 
 OUTPUT_FILES_TEMPLATES = {
-    # Steps 1-4: No threshold dependency
-    'step1_gvfk': 'step1_all_gvfk.shp',
-    'step2_river_gvfk': 'step2_gvfk_with_rivers.shp',
-    'step3_v1v2_sites': 'step3_v1v2_sites.shp',
-    'step3_gvfk_polygons': 'step3_gvfk_with_v1v2.shp',
-    'step3_relationships': 'step3_site_gvfk_relationships.csv',
-    'step4_distance_results': 'step4_distance_results.csv',
-    'step4_valid_distances': 'step4_valid_distances.csv',
-    'step4_final_distances_for_risk_assessment': 'step4_final_distances_for_risk_assessment.csv',
-    'unique_lokalitet_distances': 'unique_lokalitet_distances.csv',
-    'unique_lokalitet_distances_shp': 'unique_lokalitet_distances.shp',
-    'v1v2_sites_with_distances_shp': 'v1v2_sites_with_distances.shp',
-    'step4_site_level_summary': 'step4_site_level_summary.csv',
-    'interactive_distance_map': 'interactive_distance_map.html',
+    # Step 1: GVFK Base Data
+    'step1_gvfk': os.path.join('Step1_GVFK_Base', 'step1_all_gvfk.shp'),
     
-    # Step 5: Threshold-dependent files (use {risk_threshold_m} placeholder)
-    'step5_high_risk_sites': 'step5_high_risk_sites_{risk_threshold_m}m.csv',
-    'step5_analysis_summary': 'step5_analysis_summary_{risk_threshold_m}m.csv',
-    'step5_contamination_breakdown': 'step5_contamination_breakdown_{risk_threshold_m}m.csv',
-    'step5_gvfk_high_risk': 'step5_gvfk_high_risk_{risk_threshold_m}m.shp',
+    # Step 2: River Contact Analysis  
+    'step2_river_gvfk': os.path.join('Step2_River_Contact', 'step2_gvfk_with_rivers.shp'),
     
-    # Step 5 Compound-Specific Analysis
-    'step5_compound_specific_sites': 'step5_compound_specific_high_risk_sites.csv',
-    'step5_compound_analysis_summary': 'step5_compound_specific_analysis_summary.csv',
-    'step5_compound_breakdown': 'step5_compound_specific_breakdown.csv',
-    'step5_compound_gvfk_high_risk': 'step5_compound_specific_gvfk_high_risk.shp',
-    'step5_compound_distance_mapping': 'step5_compound_distance_mapping.csv',
+    # Step 3: V1/V2 Sites Analysis
+    'step3_v1v2_sites': os.path.join('Step3_V1V2_Sites', 'step3_v1v2_sites.shp'),
+    'step3_gvfk_polygons': os.path.join('Step3_V1V2_Sites', 'step3_gvfk_with_v1v2.shp'),
+    'step3_relationships': os.path.join('Step3_V1V2_Sites', 'step3_site_gvfk_relationships.csv'),
     
-    # Workflow summary
-    'workflow_summary': 'workflow_summary.csv'
+    # Step 4: Distance Analysis
+    'step4_distance_results': os.path.join('Step4_Distances', 'step4_distance_results.csv'),
+    'step4_valid_distances': os.path.join('Step4_Distances', 'step4_valid_distances.csv'),
+    'step4_final_distances_for_risk_assessment': os.path.join('Step4_Distances', 'step4_final_distances_for_risk_assessment.csv'),
+    'unique_lokalitet_distances': os.path.join('Step4_Distances', 'unique_lokalitet_distances.csv'),
+    'unique_lokalitet_distances_shp': os.path.join('Step4_Distances', 'unique_lokalitet_distances.shp'),
+    'v1v2_sites_with_distances_shp': os.path.join('Step4_Distances', 'v1v2_sites_with_distances.shp'),
+    'step4_site_level_summary': os.path.join('Step4_Distances', 'step4_site_level_summary.csv'),
+    'interactive_distance_map': os.path.join('Step4_Distances', 'interactive_distance_map.html'),
+    
+    # Step 5: Risk Assessment (Threshold-dependent files use {risk_threshold_m} placeholder)
+    'step5_high_risk_sites': os.path.join('Step5_Risk_Assessment', 'step5_high_risk_sites_{risk_threshold_m}m.csv'),
+    'step5_analysis_summary': os.path.join('Step5_Risk_Assessment', 'step5_analysis_summary_{risk_threshold_m}m.csv'),
+    'step5_contamination_breakdown': os.path.join('Step5_Risk_Assessment', 'step5_contamination_breakdown_{risk_threshold_m}m.csv'),
+    'step5_gvfk_high_risk': os.path.join('Step5_Risk_Assessment', 'step5_gvfk_high_risk_{risk_threshold_m}m.shp'),
+    
+    # Step 5: Compound-Specific Analysis
+    'step5_compound_specific_sites': os.path.join('Step5_Risk_Assessment', 'Compound_Specific', 'step5_compound_specific_high_risk_sites.csv'),
+    'step5_compound_analysis_summary': os.path.join('Step5_Risk_Assessment', 'Compound_Specific', 'step5_compound_specific_analysis_summary.csv'),
+    'step5_compound_breakdown': os.path.join('Step5_Risk_Assessment', 'Compound_Specific', 'step5_compound_specific_breakdown.csv'),
+    'step5_compound_gvfk_high_risk': os.path.join('Step5_Risk_Assessment', 'Compound_Specific', 'step5_compound_specific_gvfk_high_risk.shp'),
+    'step5_compound_distance_mapping': os.path.join('Step5_Risk_Assessment', 'Compound_Specific', 'step5_compound_distance_mapping.csv'),
+    
+    # Step 5: Category (keyword) Based Analysis
+    'step5_category_flags': os.path.join('Step5_Risk_Assessment', 'Category_Analysis', 'step5_category_flags.csv'),
+    'step5_category_summary': os.path.join('Step5_Risk_Assessment', 'Category_Analysis', 'step5_category_summary.csv'),
+    'step5_category_substance_summary': os.path.join('Step5_Risk_Assessment', 'Category_Analysis', 'step5_category_substance_summary.csv'),
+    'step5_category_overview_png': os.path.join('Step5_Risk_Assessment', 'Category_Analysis', 'step5_category_overview.png'),
+    'step5_category_dashboard_png': os.path.join('Step5_Risk_Assessment', 'Category_Analysis', 'step5_category_dashboard.png'),
+    'step5_category_detailed_png': os.path.join('Step5_Risk_Assessment', 'Category_Analysis', 'step5_category_detailed_analysis.png'),
+    
+    # Workflow Summary
+    'workflow_summary': os.path.join('Workflow_Summary', 'workflow_summary.csv')
 }
 
 # WORKFLOW ANALYSIS PARAMETERS - Centralized control for all analysis settings
@@ -139,8 +174,23 @@ SITE_TYPE_COLORS = {
 }
 
 def ensure_results_directory():
-    """Create results directory if it doesn't exist."""
+    """Create results directory and all step-specific subdirectories if they don't exist."""
+    # Create main results directory
     os.makedirs(RESULTS_PATH, exist_ok=True)
+    
+    # Create all step-specific subdirectories
+    for step_name, step_path in STEP_FOLDERS.items():
+        os.makedirs(step_path, exist_ok=True)
+    
+    # Create all visualization subdirectories
+    for step_name, viz_path in VISUALIZATION_FOLDERS.items():
+        os.makedirs(viz_path, exist_ok=True)
+    
+    # Create Step 5 subdirectories for compound-specific and category analysis
+    step5_compound_path = os.path.join(STEP_FOLDERS['step5'], 'Compound_Specific')
+    step5_category_path = os.path.join(STEP_FOLDERS['step5'], 'Category_Analysis')
+    os.makedirs(step5_compound_path, exist_ok=True)
+    os.makedirs(step5_category_path, exist_ok=True)
 
 def get_output_path(file_key, risk_threshold_m=None):
     """
@@ -158,8 +208,31 @@ def get_output_path(file_key, risk_threshold_m=None):
         risk_threshold_m = WORKFLOW_SETTINGS['risk_threshold_m']
     
     filename_template = OUTPUT_FILES_TEMPLATES[file_key]
-    filename = filename_template.format(risk_threshold_m=risk_threshold_m)
-    return os.path.join(RESULTS_PATH, filename)
+    relative_path = filename_template.format(risk_threshold_m=risk_threshold_m)
+    full_path = os.path.join(RESULTS_PATH, relative_path)
+    
+    # Ensure the directory exists
+    output_dir = os.path.dirname(full_path)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    return full_path
+
+def get_visualization_path(step_name):
+    """
+    Get the visualization folder path for a specific step.
+    
+    Args:
+        step_name (str): Step name ('step1', 'step2', etc.)
+    
+    Returns:
+        str: Full path to step's visualization folder
+    """
+    if step_name not in VISUALIZATION_FOLDERS:
+        raise ValueError(f"Unknown step: {step_name}. Available steps: {list(VISUALIZATION_FOLDERS.keys())}")
+    
+    viz_path = VISUALIZATION_FOLDERS[step_name]
+    os.makedirs(viz_path, exist_ok=True)
+    return viz_path
 
 def get_output_filename(file_key, risk_threshold_m=None):
     """
@@ -252,8 +325,18 @@ def print_workflow_settings_summary():
     print("WORKFLOW CONFIGURATION SUMMARY")
     print("=" * 60)
     
+    # Output Folder Structure
+    print(f"Output Folder Structure:")
+    print(f"  Main Results: {RESULTS_PATH}")
+    for step_name, step_path in STEP_FOLDERS.items():
+        step_display = step_name.replace('_', ' ').title()
+        print(f"    {step_display}: {os.path.relpath(step_path)}")
+    print(f"    Step 5 Subfolders:")
+    print(f"      Compound Specific: Step5_Risk_Assessment/Compound_Specific")
+    print(f"      Category Analysis: Step5_Risk_Assessment/Category_Analysis")
+    
     # Risk Assessment Settings
-    print(f"Risk Assessment:")
+    print(f"\nRisk Assessment:")
     print(f"  Primary threshold: {WORKFLOW_SETTINGS['risk_threshold_m']}m")
     print(f"  Additional thresholds: {WORKFLOW_SETTINGS['additional_thresholds_m']}")
     print(f"  Require contamination data: {WORKFLOW_SETTINGS['require_contamination_data']}")

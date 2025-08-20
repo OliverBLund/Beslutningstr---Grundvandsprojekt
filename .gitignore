@@ -8,3 +8,10 @@
 /notat.docx
 /Præsentationer
 /Resultater
+
+*.pyc
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.cpython-312*

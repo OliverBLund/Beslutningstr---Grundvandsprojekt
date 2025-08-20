@@ -21,7 +21,7 @@ from config import validate_input_files, get_output_path, print_workflow_setting
 from step1_all_gvfk import run_step1
 from step2_river_contact import run_step2
 from step3_v1v2_sites import run_step3
-from step5_risk_assessment import run_step5
+from step5_risk_assessment import run_step5, run_comprehensive_step5
 
 # Suppress shapely deprecation warnings
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -30,16 +30,13 @@ def main():
     """
     Run the complete groundwater analysis workflow.
     """
-    print("Starting Groundwater Contamination Analysis Workflow")
-    print("=" * 60)
-    
-    # Display current workflow settings
-    print_workflow_settings_summary()
+    print("Groundwater Contamination Analysis Workflow")
+    print("=" * 50)
     
     # Validate workflow settings
     is_valid, messages = validate_workflow_settings()
     if not is_valid:
-        print("\nERROR: Invalid workflow configuration detected:")
+        print("ERROR: Invalid workflow configuration detected:")
         for message in messages:
             if message.startswith("ERROR"):
                 print(f"  {message}")
@@ -48,7 +45,7 @@ def main():
     
     # Validate input files before starting
     if not validate_input_files():
-        print("Some required input files are missing. Please check file paths in config.py")
+        print("ERROR: Some required input files are missing. Check file paths in config.py")
         return False
     
     # Initialize results storage
@@ -56,19 +53,17 @@ def main():
     
     try:
         # Step 1: Count total GVFK
-        print("\n" + "=" * 60)
         gvf, total_gvfk = run_step1()
         if gvf is None:
-            print("Step 1 failed. Cannot proceed.")
+            print("ERROR: Step 1 failed. Cannot proceed.")
             return False
         
         results['step1'] = {'gvf': gvf, 'total_gvfk': total_gvfk}
         
         # Step 2: Count GVFK with river contact
-        print("\n" + "=" * 60)
         rivers_gvfk, river_contact_count, gvf_with_rivers = run_step2()
         if not rivers_gvfk:
-            print("Step 2 failed or found no GVFK with river contact. Cannot proceed.")
+            print("ERROR: Step 2 failed or found no GVFK with river contact. Cannot proceed.")
             return False
         
         results['step2'] = {
@@ -78,10 +73,9 @@ def main():
         }
         
         # Step 3: Count GVFK with river contact and V1/V2 sites
-        print("\n" + "=" * 60)
         gvfk_with_v1v2_names, v1v2_sites = run_step3(rivers_gvfk)
         if v1v2_sites.empty:
-            print("Step 3 failed or found no V1/V2 sites. Cannot proceed to distance calculation.")
+            print("ERROR: Step 3 failed or found no V1/V2 sites. Cannot proceed to distance calculation.")
             return False
         
         results['step3'] = {
@@ -90,39 +84,43 @@ def main():
         }
         
         # Step 4: Calculate distances (import dynamically as it's large)
-        print("\n" + "=" * 60)
         try:
             from step4_distances import run_step4
             distance_results = run_step4(v1v2_sites)
             if distance_results is None:
-                print("Step 4 failed. Distance calculation unsuccessful.")
+                print("ERROR: Step 4 failed. Distance calculation unsuccessful.")
                 return False
             
             results['step4'] = {'distance_results': distance_results}
-            
+        
         except ImportError:
-            print("Step 4 module not found. Creating simplified workflow summary without distances.")
+            print("WARNING: Step 4 module not found. Creating simplified workflow summary without distances.")
             results['step4'] = {'distance_results': None}
         
-        # Step 5: Risk assessment of high-risk sites (≤500m)
-        print("\n" + "=" * 60)
+        # Step 5: Comprehensive Risk Assessment (General + Compound-Specific + Category Analysis)
         try:
-            general_results, compound_results = run_step5()
+            # Use comprehensive analysis that includes all Step 5 components
+            comprehensive_results = run_comprehensive_step5()
             
-            # Extract data from both results
-            general_sites, general_analysis = general_results
-            compound_sites, compound_analysis = compound_results
-            
-            if general_sites is None and compound_sites is None:
-                print("Step 5 failed. Could not load distance results for risk assessment.")
+            if not comprehensive_results['success']:
+                print(f"ERROR: Step 5 failed - {comprehensive_results.get('error_message', 'Unknown error')}")
                 results['step5'] = {
                     'general_high_risk_sites': None, 
                     'general_analysis': None, 
                     'compound_high_risk_sites': None,
                     'compound_analysis': None,
+                    'category_results': None,
                     'high_risk_gvfk_count': 0
                 }
             else:
+                # Extract data from comprehensive results
+                general_results = comprehensive_results['general_results']
+                compound_results = comprehensive_results['compound_results']
+                category_results = comprehensive_results['category_results']
+                
+                general_sites, general_analysis = general_results
+                compound_sites, compound_analysis = compound_results
+                
                 # Use general results for backward compatibility in summary statistics
                 high_risk_sites = general_sites if general_sites is not None else pd.DataFrame()
                 
@@ -145,27 +143,25 @@ def main():
                     'general_analysis': general_analysis,
                     'compound_high_risk_sites': compound_sites,
                     'compound_analysis': compound_analysis,
+                    'category_results': category_results,
                     'high_risk_gvfk_count': high_risk_gvfk_count,
+                    'success': True,
                     # Backward compatibility
                     'high_risk_sites': high_risk_sites,
                     'risk_analysis': general_analysis
                 }
                 
         except ImportError:
-            print("Step 5 module not found.")
+            print("WARNING: Step 5 module not found.")
             results['step5'] = {'high_risk_sites': None, 'risk_analysis': None, 'high_risk_gvfk_count': 0}
         
         # Generate workflow summary
-        print("\n" + "=" * 60)
         generate_workflow_summary(results)
         
         # Create visualizations if requested
-        print("\n" + "=" * 60)
         create_visualizations_if_available(results)
         
-        print("\n" + "=" * 60)
-        print("WORKFLOW COMPLETED SUCCESSFULLY")
-        print("=" * 60)
+        print("\nWorkflow completed successfully!")
         return True
         
     except Exception as e:
@@ -265,6 +261,10 @@ def generate_workflow_summary(results):
     if compound_high_risk_site_count > 0:
         print(f"High-risk sites - Compound-specific assessment: {compound_high_risk_site_count} ({(compound_high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
     
+    # Report category analysis results if available
+    if 'step5' in results and results['step5'].get('category_results') is not None:
+        print(f"Category-based analysis: Completed with professional visualizations")
+    
     if high_risk_site_count == 0 and compound_high_risk_site_count == 0:
         print("Step 5 risk assessment: Not completed successfully")
     
@@ -324,7 +324,7 @@ def generate_workflow_summary(results):
     workflow_summary = pd.DataFrame(summary_data)
     summary_path = get_output_path('workflow_summary')
     workflow_summary.to_csv(summary_path, index=False)
-    print(f"\nSummary saved to: {summary_path}")
+    print(f"Summary saved to: {summary_path}")
 
 def create_visualizations_if_available(results):
     """
@@ -333,35 +333,34 @@ def create_visualizations_if_available(results):
     Args:
         results (dict): Dictionary containing results from all workflow steps
     """
-    print("Checking for visualization modules...")
+    print("Creating visualizations...")
     
     try:
         # Try to import and run selected visualizations
         from selected_visualizations import create_site_density_heatmap, create_distance_histogram_with_thresholds, create_progression_plot
         
-        print("Creating selected visualizations...")
         results_path = "Resultater"
         
         # Create density heatmap
         try:
             create_site_density_heatmap(results_path)
         except Exception as e:
-            print(f"Could not create density heatmap: {e}")
+            print(f"WARNING: Could not create density heatmap - {e}")
         
         # Create distance histogram if distance data is available
         if results['step4']['distance_results'] is not None:
             try:
                 create_distance_histogram_with_thresholds(results_path)
             except Exception as e:
-                print(f"Could not create distance histogram: {e}")
+                print(f"WARNING: Could not create distance histogram - {e}")
         
         # Create GVFK progression plot
-        print("Creating GVFK progression plot...")
         try:
             import os
+            from config import GRUNDVAND_PATH
             # Define required files for progression plot including Step 5
             required_files = {
-                "all_gvfk": os.path.join(results_path, "step1_all_gvfk.shp"),
+                "all_gvfk": GRUNDVAND_PATH,  # Use original file since Step 1 no longer creates output
                 "river_gvfk": os.path.join(results_path, "step2_gvfk_with_rivers.shp"),
                 "v1v2_gvfk": os.path.join(results_path, "step3_gvfk_with_v1v2.shp"),
                 "high_risk_gvfk": os.path.join(results_path, "step5_gvfk_high_risk_500m.shp")
@@ -370,12 +369,10 @@ def create_visualizations_if_available(results):
             os.makedirs(figures_path, exist_ok=True)
             create_progression_plot(figures_path, required_files)
         except Exception as e:
-            print(f"Could not create progression plot: {e}")
-        
-        print("Visualizations completed successfully.")
+            print(f"WARNING: Could not create progression plot - {e}")
         
     except ImportError:
-        print("Selected visualizations module not found. Skipping visualization creation.")
+        print("WARNING: Selected visualizations module not found. Skipping visualization creation.")
         print("To create visualizations, run 'python selected_visualizations.py' manually.")
     
     # Create Step 5 visualizations if high-risk sites are available
@@ -387,23 +384,17 @@ def create_visualizations_if_available(results):
             step5_has_results = True
     
     if step5_has_results:
-        print("Creating Step 5 risk assessment visualizations...")
         try:
             from step5_visualizations import create_step5_visualizations
             create_step5_visualizations()
-            print("Step 5 visualizations completed successfully.")
         except ImportError:
-            print("Step 5 visualization module not found.")
+            print("WARNING: Step 5 visualization module not found.")
         except Exception as e:
-            print(f"Could not create Step 5 visualizations: {e}")
-    
-    # Note: Interactive map is already created automatically by step4_distances.py
-    # No additional map creation needed here
+            print(f"WARNING: Could not create Step 5 visualizations - {e}")
 
 if __name__ == "__main__":
     success = main()
     if success:
-        print("\nAll workflow steps completed successfully!")
         print("Check the 'Resultater' directory for output files.")
     else:
-        print("\nWorkflow failed. Check error messages above.") 
+        print("Workflow failed. Check error messages above.") 
