@@ -7,6 +7,7 @@ within 500m of rivers, including distance distributions and contamination charac
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import seaborn as sns
 import numpy as np
 import os
@@ -619,7 +620,384 @@ def create_comprehensive_risk_dashboard(high_risk_sites, figures_path, threshold
     safe_save_figure(figures_path, "step5_risk_dashboard")
     plt.close()
 
+
+# ============================================================================
+# COMPOUND-SPECIFIC VISUALIZATIONS
+# ============================================================================
+
+def create_compound_specific_visualizations():
+    """
+    Create visualizations for compound-specific risk assessment results.
+    
+    This includes category-based threshold analysis and detailed compound breakdowns.
+    """
+    print("Creating compound-specific risk assessment visualizations...")
+    
+    from config import get_visualization_path, get_output_path
+    from compound_categorization import COMPOUND_DISTANCE_MAPPING
+    import matplotlib.patches as mpatches
+    
+    figures_path = get_visualization_path('step5')
+    
+    # Professional color scheme for compound visualizations
+    COMPOUND_COLORS = {
+        'primary': '#2E86AB',      # Professional blue
+        'secondary': '#A23B72',    # Professional purple
+        'accent': '#F18F01',       # Professional orange
+        'success': '#C73E1D',      # Professional red
+        'neutral': '#7A7A7A',      # Professional gray
+        'light': '#E8F4F8',       # Light blue background
+    }
+    
+    # Risk level colors based on distance thresholds
+    RISK_COLORS = {
+        30: '#C73E1D',    # High risk - Red (PAH)
+        50: '#F18F01',    # Medium-high risk - Orange (BTX)
+        100: '#F4A261',   # Medium risk - Light orange (Polar)
+        150: '#E9C46A',   # Medium-low risk - Yellow (Inorganic)
+        200: '#2A9D8F',   # Low-medium risk - Teal (Chlorinated)
+        300: '#264653',   # Low risk - Dark green (Phenols)
+        500: '#1D3557'    # Very low risk - Dark blue (Pesticides)
+    }
+    
+    # Load compound analysis results
+    try:
+        cat_summary_path = get_output_path('step5_category_summary')
+        sub_summary_path = get_output_path('step5_category_substance_summary')
+        flags_path = get_output_path('step5_category_flags')
+        
+        if not all(os.path.exists(p) for p in [cat_summary_path, sub_summary_path, flags_path]):
+            print("Compound analysis data not found. Please run compound analysis first.")
+            return
+        
+        cat_summary = pd.read_csv(cat_summary_path)
+        sub_summary = pd.read_csv(sub_summary_path)
+        long_df = pd.read_csv(flags_path)
+        
+    except Exception as e:
+        print(f"Error loading compound analysis data: {e}")
+        return
+    
+    # Create visualizations
+    create_category_threshold_dashboard(cat_summary, sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS)
+    create_category_detailed_analysis(sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS)
+    create_category_overview_plot(cat_summary, figures_path, RISK_COLORS, COMPOUND_COLORS)
+    
+    print(f"✓ Compound-specific visualizations saved to {figures_path}")
+
+
+def setup_professional_figure(figsize=(12, 8), title="", subtitle=""):
+    """Create a professionally styled figure for compound analysis."""
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Remove top and right spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Style remaining spines
+    ax.spines['left'].set_color('#CCCCCC')
+    ax.spines['bottom'].set_color('#CCCCCC')
+    
+    # Grid styling
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+    ax.set_axisbelow(True)
+    
+    # Title styling
+    if title:
+        fig.suptitle(title, fontsize=16, fontweight='bold', y=0.98)
+    if subtitle:
+        ax.set_title(subtitle, fontsize=12, color='#666666', pad=20)
+    
+    return fig, ax
+
+
+def create_category_threshold_dashboard(cat_summary, sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS):
+    """Create a comprehensive dashboard showing category-based threshold analysis."""
+    
+    from compound_categorization import COMPOUND_DISTANCE_MAPPING
+    
+    # Create 2x2 subplot dashboard
+    fig = plt.figure(figsize=(18, 14))
+    fig.suptitle('Category-Based Distance Threshold Analysis Results', 
+                 fontsize=18, fontweight='bold', y=0.96)
+    
+    # 1. Within-threshold counts by category (Top Left)
+    ax1 = plt.subplot(2, 2, 1)
+    
+    # Sort categories by within-threshold count
+    plot_data = cat_summary.sort_values('within_tokens', ascending=True)
+    
+    # Create horizontal bar chart with risk-based colors
+    colors = []
+    for _, row in plot_data.iterrows():
+        category = row['Category']
+        if category in COMPOUND_DISTANCE_MAPPING:
+            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
+            colors.append(RISK_COLORS.get(distance, COMPOUND_COLORS['neutral']))
+        else:
+            colors.append(COMPOUND_COLORS['neutral'])
+    
+    bars = ax1.barh(range(len(plot_data)), plot_data['within_tokens'], 
+                    color=colors, alpha=0.8, height=0.7)
+    
+    # Customize
+    ax1.set_yticks(range(len(plot_data)))
+    ax1.set_yticklabels([cat.replace('_', ' ').title() for cat in plot_data['Category']])
+    ax1.set_xlabel('Sites Within Category Threshold')
+    ax1.set_title('A. Within-Threshold Sites by Category', fontweight='bold', pad=20)
+    ax1.grid(True, alpha=0.3)
+    
+    # Add count labels
+    for i, (bar, count) in enumerate(zip(bars, plot_data['within_tokens'])):
+        ax1.text(count + max(plot_data['within_tokens']) * 0.01, i,
+                f'{count}', va='center', fontweight='bold', fontsize=9)
+    
+    # 2. Success rate by category (Top Right)
+    ax2 = plt.subplot(2, 2, 2)
+    
+    # Filter out categories with zero tokens for percentage calculation
+    pct_data = cat_summary[cat_summary['total_tokens'] > 0].copy()
+    pct_data = pct_data.sort_values('within_pct', ascending=True)
+    
+    # Create horizontal bar chart
+    colors2 = []
+    for _, row in pct_data.iterrows():
+        category = row['Category']
+        if category in COMPOUND_DISTANCE_MAPPING:
+            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
+            colors2.append(RISK_COLORS.get(distance, COMPOUND_COLORS['neutral']))
+        else:
+            colors2.append(COMPOUND_COLORS['neutral'])
+    
+    bars2 = ax2.barh(range(len(pct_data)), pct_data['within_pct'], 
+                     color=colors2, alpha=0.8, height=0.7)
+    
+    ax2.set_yticks(range(len(pct_data)))
+    ax2.set_yticklabels([cat.replace('_', ' ').title() for cat in pct_data['Category']])
+    ax2.set_xlabel('Percentage Within Threshold (%)')
+    ax2.set_title('B. Success Rate by Category', fontweight='bold', pad=20)
+    ax2.set_xlim(0, 100)
+    ax2.grid(True, alpha=0.3)
+    
+    # Add percentage labels
+    for i, (bar, pct) in enumerate(zip(bars2, pct_data['within_pct'])):
+        ax2.text(pct + 2, i, f'{pct:.1f}%', va='center', fontweight='bold', fontsize=9)
+    
+    # 3. Distance threshold overview (Bottom Left)
+    ax3 = plt.subplot(2, 2, 3)
+    
+    # Get distance distribution from categories with data
+    distance_data = []
+    for _, row in cat_summary[cat_summary['total_tokens'] > 0].iterrows():
+        category = row['Category']
+        if category in COMPOUND_DISTANCE_MAPPING:
+            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
+            distance_data.append({
+                'Distance_m': distance,
+                'Category': category,
+                'Within_Count': row['within_tokens']
+            })
+    
+    dist_df = pd.DataFrame(distance_data)
+    if not dist_df.empty:
+        # Group by distance and sum within counts
+        dist_summary = dist_df.groupby('Distance_m')['Within_Count'].sum().sort_index()
+        
+        # Create bar chart
+        colors3 = [RISK_COLORS.get(dist, COMPOUND_COLORS['neutral']) for dist in dist_summary.index]
+        bars3 = ax3.bar(range(len(dist_summary)), list(dist_summary.values), 
+                        color=colors3, alpha=0.8)
+        
+        ax3.set_xticks(range(len(dist_summary)))
+        ax3.set_xticklabels([f'{int(d)}m' for d in dist_summary.index])
+        ax3.set_ylabel('Within-Threshold Sites')
+        ax3.set_title('C. Sites by Distance Threshold', fontweight='bold', pad=20)
+        
+        # Add count labels
+        for bar, count in zip(bars3, dist_summary.values):
+            height = bar.get_height()
+            ax3.text(bar.get_x() + bar.get_width()/2., height + max(dist_summary.values) * 0.01,
+                    f'{count}', ha='center', va='bottom', fontweight='bold', fontsize=9)
+    
+    ax3.grid(True, alpha=0.3)
+    
+    # 4. Top substances within threshold (Bottom Right)
+    ax4 = plt.subplot(2, 2, 4)
+    
+    # Get top substances that are within threshold
+    within_substances = long_df[long_df['Within_Threshold'] == True]
+    if not within_substances.empty:
+        top_substances = within_substances['Substance'].value_counts().head(10)
+        
+        # Create horizontal bar chart
+        bars4 = ax4.barh(range(len(top_substances)), list(top_substances.values), 
+                         color=COMPOUND_COLORS['primary'], alpha=0.8, height=0.7)
+        
+        ax4.set_yticks(range(len(top_substances)))
+        # Truncate long substance names
+        labels = [s[:20] + '...' if len(s) > 20 else s for s in top_substances.index]
+        ax4.set_yticklabels(labels, fontsize=9)
+        ax4.set_xlabel('Within-Threshold Occurrences')
+        ax4.set_title('D. Top Substances Within Thresholds', fontweight='bold', pad=20)
+        
+        # Add count labels
+        for i, (bar, count) in enumerate(zip(bars4, top_substances.values)):
+            ax4.text(count + max(top_substances.values) * 0.01, i,
+                    f'{count}', va='center', fontweight='bold', fontsize=9)
+    
+    ax4.grid(True, alpha=0.3)
+    
+    # Add legend for risk colors
+    legend_elements = [
+        mpatches.Patch(color=RISK_COLORS[30], label='30m - Very High Risk'),
+        mpatches.Patch(color=RISK_COLORS[50], label='50m - High Risk'),
+        mpatches.Patch(color=RISK_COLORS[100], label='100m - Medium Risk'),
+        mpatches.Patch(color=RISK_COLORS[200], label='200m - Low Risk'),
+        mpatches.Patch(color=RISK_COLORS[500], label='500m - Very Low Risk')
+    ]
+    
+    fig.legend(handles=legend_elements, loc='lower center', ncol=5, 
+               bbox_to_anchor=(0.5, 0.02), frameon=True, fancybox=True)
+    
+    # Adjust layout
+    plt.subplots_adjust(left=0.08, bottom=0.12, right=0.95, top=0.88, wspace=0.3, hspace=0.4)
+    
+    # Save figure
+    dashboard_path = os.path.join(figures_path, 'step5_category_dashboard.png')
+    fig.savefig(dashboard_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"✓ Saved category dashboard: {dashboard_path}")
+
+
+def create_category_detailed_analysis(sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS):
+    """Create detailed analysis of top categories with substance breakdowns."""
+    
+    from compound_categorization import COMPOUND_DISTANCE_MAPPING
+    
+    # Get top 6 categories by within-threshold count
+    cat_within_counts = long_df[long_df['Within_Threshold'] == True]['Category'].value_counts().head(6)
+    
+    if cat_within_counts.empty:
+        print("No within-threshold categories found for detailed analysis")
+        return
+    
+    # Create 2x3 grid
+    fig = plt.figure(figsize=(20, 14))
+    fig.suptitle('Detailed Category Analysis: Top Substances Within Distance Thresholds', 
+                 fontsize=18, fontweight='bold', y=0.96)
+    
+    for i, (category, total_within) in enumerate(cat_within_counts.items()):
+        if i >= 6:
+            break
+            
+        ax = plt.subplot(2, 3, i + 1)
+        
+        # Get substances in this category that are within threshold
+        cat_data = long_df[(long_df['Category'] == category) & 
+                          (long_df['Within_Threshold'] == True)]
+        
+        if cat_data.empty:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+            continue
+            
+        substance_counts = cat_data['Substance'].value_counts().head(10)
+        
+        # Get category info
+        distance = COMPOUND_DISTANCE_MAPPING.get(category, {}).get('distance_m', 'Unknown')
+        color = RISK_COLORS.get(distance, COMPOUND_COLORS['neutral'])
+        
+        # Create horizontal bar chart
+        bars = ax.barh(range(len(substance_counts)), list(substance_counts.values), 
+                       color=color, alpha=0.8, height=0.7)
+        
+        # Customize
+        ax.set_yticks(range(len(substance_counts)))
+        labels = [s[:25] + '...' if len(s) > 25 else s for s in substance_counts.index]
+        ax.set_yticklabels(labels, fontsize=9)
+        ax.set_xlabel('Within-Threshold Sites')
+        
+        category_title = category.replace('_', ' ').title()
+        ax.set_title(f'{category_title}\n({distance}m threshold, {total_within} total sites)', 
+                     fontweight='bold', fontsize=11, pad=15)
+        
+        # Add count labels
+        for j, (bar, count) in enumerate(zip(bars, substance_counts.values)):
+            ax.text(count + max(substance_counts.values) * 0.02, j,
+                   f'{count}', va='center', fontweight='bold', fontsize=8)
+        
+        # Style
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.grid(True, alpha=0.3)
+    
+    plt.subplots_adjust(left=0.08, bottom=0.08, right=0.95, top=0.88, wspace=0.3, hspace=0.4)
+    
+    # Save figure
+    detailed_path = os.path.join(figures_path, 'step5_category_detailed_analysis.png')
+    fig.savefig(detailed_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"✓ Saved detailed analysis: {detailed_path}")
+
+
+def create_category_overview_plot(cat_summary, figures_path, RISK_COLORS, COMPOUND_COLORS):
+    """Create simple overview plot of categories."""
+    
+    from compound_categorization import COMPOUND_DISTANCE_MAPPING
+    
+    overview_fig, ax = setup_professional_figure(figsize=(12, 8),
+                                                title="Category-Based Distance Threshold Overview",
+                                                subtitle="Within-threshold substance counts by contamination category")
+    
+    plot_df = cat_summary.sort_values('within_tokens', ascending=False)
+    
+    # Use risk-based colors
+    colors = []
+    for _, row in plot_df.iterrows():
+        category = row['Category']
+        if category in COMPOUND_DISTANCE_MAPPING:
+            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
+            colors.append(RISK_COLORS.get(distance, COMPOUND_COLORS['neutral']))
+        else:
+            colors.append(COMPOUND_COLORS['neutral'])
+    
+    bars = ax.barh(range(len(plot_df)), plot_df['within_tokens'], color=colors, alpha=0.8)
+    
+    # Customize
+    ax.set_yticks(range(len(plot_df)))
+    ax.set_yticklabels([cat.replace('_', ' ').title() for cat in plot_df['Category']])
+    ax.set_xlabel('Within-threshold substance tokens (count)')
+    ax.invert_yaxis()
+    
+    # Add count and percentage labels
+    for i, (_, row) in enumerate(plot_df.iterrows()):
+        count = row['within_tokens']
+        total = row['total_tokens']
+        pct = (count / total * 100) if total > 0 else 0
+        
+        ax.text(count + max(plot_df['within_tokens']) * 0.01, i,
+               f'{count} ({pct:.1f}%)', va='center', fontweight='bold', fontsize=10)
+    
+    # Add risk level legend
+    import matplotlib.patches as mpatches
+    legend_elements = [
+        mpatches.Patch(color=RISK_COLORS[30], label='30m threshold'),
+        mpatches.Patch(color=RISK_COLORS[50], label='50m threshold'),
+        mpatches.Patch(color=RISK_COLORS[100], label='100m threshold'),
+        mpatches.Patch(color=RISK_COLORS[200], label='200m threshold'),
+        mpatches.Patch(color=RISK_COLORS[500], label='500m threshold')
+    ]
+    ax.legend(handles=legend_elements, loc='lower right', frameon=True, 
+             fancybox=True, shadow=True)
+    
+    overview_fig.tight_layout()
+    plot_path = os.path.join(figures_path, 'step5_category_overview.png')
+    overview_fig.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close(overview_fig)
+    print(f"✓ Saved category overview: {plot_path}")
+
+
 if __name__ == "__main__":
     # Create all Step 5 visualizations
     create_step5_visualizations()
-    print("Step 5 visualizations completed!") 
+    create_compound_specific_visualizations()
+    print("All Step 5 visualizations completed!") 

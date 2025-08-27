@@ -25,20 +25,14 @@ def run_step4(v1v2_combined):
         DataFrame: Distance calculation results with minimum distance flags
     """
     print("Step 4: Calculating distances between V1/V2 sites and river segments")
-    print("Processing one-to-many site-GVFK relationships")
     
     if v1v2_combined.empty:
         print("No V1/V2 sites found from Step 3. Cannot proceed with distance calculation.")
         return None
     
     # Load rivers file
-    print("Loading rivers file...")
     rivers = gpd.read_file(RIVERS_PATH)
-    print(f"Loaded {len(rivers)} river segments")
-    
-    # Filter rivers to only those with contact (Kontakt = 1)
     rivers_with_contact = rivers[rivers['Kontakt'] == 1]
-    print(f"Found {len(rivers_with_contact)} river segments with Kontakt = 1")
     
     if rivers_with_contact.empty:
         print("No river segments with Kontakt = 1 found. Cannot calculate distances.")
@@ -49,26 +43,9 @@ def run_step4(v1v2_combined):
     if rivers_with_contact.crs != target_crs:
         rivers_with_contact = rivers_with_contact.to_crs(target_crs)
     
-    print(f"Data summary:")
-    print(f"- Unique localities: {v1v2_combined['Lokalitet_'].nunique()}")
-    print(f"- Site-GVFK combinations: {len(v1v2_combined)}")
-    print(f"- GVFKs involved: {v1v2_combined['Navn'].nunique()}")
-    
-    # Get unique GVFKs from V1/V2 data and rivers data
-    v1v2_gvfks = set(v1v2_combined['Navn'].dropna().unique())
-    river_gvfks = set(rivers_with_contact['GVForekom'].dropna().unique())
-    
-    print(f"Found {len(v1v2_gvfks)} unique GVFKs in V1/V2 data")
-    print(f"Found {len(river_gvfks)} unique GVFKs in river segments with contact")
-    
-    # Check for GVFKs with V1/V2 sites but no rivers with contact
-    gvfks_without_rivers = v1v2_gvfks - river_gvfks
-    if gvfks_without_rivers:
-        print(f"WARNING: {len(gvfks_without_rivers)} GVFKs have V1/V2 sites but no river segments with Kontakt = 1")
-        print(f"First few GVFKs without rivers: {sorted(list(gvfks_without_rivers))[:5]}...")
+    print(f"Processing {v1v2_combined['Lokalitet_'].nunique()} unique sites in {len(v1v2_combined)} site-GVFK combinations")
     
     # Calculate distances for each lokalitet-GVFK combination
-    print(f"\nCalculating distances for {len(v1v2_combined)} lokalitet-GVFK combinations...")
     
     # Initialize results lists
     results_data = []
@@ -89,12 +66,7 @@ def run_step4(v1v2_combined):
         site_geom = row.geometry
         
         # Validate data
-        if pd.isna(gvfk_name):
-            print(f"Warning: Lokalitet {lokalitet_id} has no GVFK identifier. Skipping...")
-            continue
-        
-        if site_geom is None or site_geom.is_empty:
-            print(f"Warning: Lokalitet {lokalitet_id} has no valid geometry. Skipping...")
+        if pd.isna(gvfk_name) or site_geom is None or site_geom.is_empty:
             continue
         
         # Find river segments in the same GVFK with contact
@@ -150,19 +122,11 @@ def run_step4(v1v2_combined):
         return None
     
     # Calculate statistics
-    print(f"\nDistance calculation results:")
-    print(f"Total lokalitet-GVFK combinations processed: {len(results_df)}")
-    print(f"Combinations with matching rivers: {len(valid_results)}")
-    print(f"Combinations without matching rivers: {len(results_df) - len(valid_results)}")
-    print(f"Percentage with matching rivers: {len(valid_results)/len(results_df)*100:.1f}%")
-    
-    # Site-level statistics
     unique_sites_with_distances = valid_results['Lokalitet_ID'].nunique()
     total_unique_sites = results_df['Lokalitet_ID'].nunique()
-    print(f"Unique sites with at least one distance: {unique_sites_with_distances} of {total_unique_sites}")
+    print(f"Distance calculation completed: {unique_sites_with_distances} of {total_unique_sites} sites have distances to rivers")
     
     # Add minimum distance identification for each site
-    print(f"\nIdentifying minimum distances per site...")
     site_min_distances = valid_results.groupby('Lokalitet_ID')['Distance_to_River_m'].min().reset_index()
     site_min_distances.columns = ['Lokalitet_ID', 'Min_Distance_m']
     
@@ -174,215 +138,112 @@ def run_step4(v1v2_combined):
     valid_results = results_df[results_df['Distance_to_River_m'].notna()].copy()
     
     if len(valid_results) > 0:
-        print(f"\nDistance statistics for ALL combinations (meters):")
-        print(f"Minimum distance: {valid_results['Distance_to_River_m'].min():.2f}")
-        print(f"Maximum distance: {valid_results['Distance_to_River_m'].max():.2f}")
-        print(f"Mean distance: {valid_results['Distance_to_River_m'].mean():.2f}")
-        print(f"Median distance: {valid_results['Distance_to_River_m'].median():.2f}")
-        
-        # Statistics for MINIMUM distances per site (final distances for risk assessment)
+        # Statistics for final distances per site (for risk assessment)
         min_distances_only = valid_results[valid_results['Is_Min_Distance'] == True]['Distance_to_River_m']
-        print(f"\nFINAL distance statistics (minimum per site, for risk assessment):")
-        print(f"Number of sites with final distances: {len(min_distances_only)}")
-        print(f"Minimum final distance: {min_distances_only.min():.2f}")
-        print(f"Maximum final distance: {min_distances_only.max():.2f}")
-        print(f"Mean final distance: {min_distances_only.mean():.2f}")
-        print(f"Median final distance: {min_distances_only.median():.2f}")
-        
-        # Count by site type
-        if 'Site_Type' in valid_results.columns:
-            type_counts = valid_results['Site_Type'].value_counts()
-            print(f"\nDistance calculations by site type:")
-            for site_type, count in type_counts.items():
-                print(f"- {site_type}: {count} lokalitet-GVFK combinations")
+        print(f"Final distance statistics: {len(min_distances_only)} sites, mean={min_distances_only.mean():.0f}m, median={min_distances_only.median():.0f}m")
     
     # Save results
     _save_distance_results(results_df, valid_results, v1v2_combined)
     
     # Create interactive map
     if len(valid_results) > 0:
-        _create_and_save_interactive_map(v1v2_combined, rivers_with_contact, valid_results)
+        _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results)
     
     return results_df
 
 def _save_distance_results(results_df, valid_results, v1v2_combined):
-    """Save distance calculation results to various output formats."""
+    """Save distance calculation results - only essential files."""
     
-    # Save main results
-    results_df.to_csv(get_output_path('step4_distance_results'), index=False)
+    if len(valid_results) == 0:
+        return
+    
+    # Save valid distances (used by visualizations)
     valid_results.to_csv(get_output_path('step4_valid_distances'), index=False)
     
-    print(f"\nResults saved to:")
-    print(f"- All results: {get_output_path('step4_distance_results')}")
-    print(f"- Valid distances only: {get_output_path('step4_valid_distances')}")
+    # Create final distances for risk assessment (minimum per site)
+    min_distance_entries = valid_results[valid_results['Is_Min_Distance'] == True].copy()
     
-    # Create and save final distances for risk assessment (minimum per site)
-    if len(valid_results) > 0:
-        # Get all minimum distance entries
-        min_distance_entries = valid_results[valid_results['Is_Min_Distance'] == True].copy()
-        
-        # CRITICAL FIX: Ensure only ONE row per site, even if multiple GVFKs have same min distance
-        # Use GVFK name as tiebreaker (alphabetically first) to ensure deterministic results
-        final_distances = (min_distance_entries
-                          .sort_values(['Lokalitet_ID', 'GVFK'])  # Sort by site ID, then GVFK name
-                          .groupby('Lokalitet_ID')  # Group by unique site
-                          .first()  # Take first (alphabetically first GVFK for ties)
-                          .reset_index())
-        
-        print(f"Fixed duplicates: {len(min_distance_entries)} min-distance entries → {len(final_distances)} unique sites")
-        
-        # Base columns for final distances
-        base_columns = ['Lokalitet_ID', 'GVFK', 'Site_Type', 'Distance_to_River_m']
-        
-        # Add Step 5 columns if available
-        step5_columns = ['Lokalitetensbranche', 'Lokalitetensaktivitet', 'Lokalitetensstoffer', 
-                         'Lokalitetsnavn', 'Lokalitetetsforureningsstatus', 'Regionsnavn', 'Kommunenavn']
-        available_step5_columns = [col for col in step5_columns if col in final_distances.columns]
-        
-        # Select columns for final output
-        output_columns = base_columns + available_step5_columns
-        final_distances_clean = final_distances[output_columns].copy()
-        final_distances_clean = final_distances_clean.rename(columns={
-            'GVFK': 'Closest_GVFK', 
-            'Distance_to_River_m': 'Final_Distance_m'
-        })
-        
-        if available_step5_columns:
-            print(f"Including Step 5 columns in final distances: {available_step5_columns}")
-        
-        # Add count of total GVFKs affected per site
-        gvfk_counts = valid_results.groupby('Lokalitet_ID').size().reset_index()
-        gvfk_counts.columns = ['Lokalitet_ID', 'Total_GVFKs_Affected']
-        final_distances_clean = final_distances_clean.merge(gvfk_counts, on='Lokalitet_ID', how='left')
-        
-        # Add list of all affected GVFKs per site
-        all_gvfks = valid_results.groupby('Lokalitet_ID')['GVFK'].apply(lambda x: '; '.join(sorted(x.unique()))).reset_index()
-        all_gvfks.columns = ['Lokalitet_ID', 'All_Affected_GVFKs']
-        final_distances_clean = final_distances_clean.merge(all_gvfks, on='Lokalitet_ID', how='left')
-        
-        final_distances_clean.to_csv(get_output_path('step4_final_distances_for_risk_assessment'), index=False)
-        print(f"- Final distances for risk assessment: {get_output_path('step4_final_distances_for_risk_assessment')}")
-        
-        # Create unique lokalitet distances file for visualizations (includes Step 5 columns)
-        unique_distances = final_distances_clean.copy()
-        unique_distances = unique_distances.rename(columns={
-            'Lokalitet_ID': 'Lokalitetsnr',
-            'Final_Distance_m': 'Distance_to_River_m',
-            'Closest_GVFK': 'GVFK'
-        })
-        
-        print(f"Unique distances will include {len(unique_distances.columns)} columns (including Step 5 data)")
-        
-        # Add geometry information by merging with site data
-        if not v1v2_combined.empty:
-            # Get geometry for each unique lokalitet (take first occurrence)
-            site_geometries = v1v2_combined.drop_duplicates('Lokalitet_')[['Lokalitet_', 'geometry']]
-            site_geometries = site_geometries.rename(columns={'Lokalitet_': 'Lokalitetsnr'})
-            
-            # Merge with unique distances
-            unique_distances_with_geom = unique_distances.merge(
-                site_geometries, on='Lokalitetsnr', how='left'
-            )
-            
-            # Create GeoDataFrame and save both CSV and shapefile
-            unique_gdf = gpd.GeoDataFrame(unique_distances_with_geom, crs=v1v2_combined.crs)
-            
-            # Save CSV for visualizations (without geometry column)
-            unique_distances.to_csv(get_output_path('unique_lokalitet_distances'), index=False)
-            print(f"- Unique lokalitet distances (for visualizations): {get_output_path('unique_lokalitet_distances')}")
-            
-            # Save shapefile for GIS analysis
-            unique_gdf.to_file(get_output_path('unique_lokalitet_distances_shp'))
-            print(f"- Unique lokalitet distances (shapefile): {get_output_path('unique_lokalitet_distances_shp')}")
-        else:
-            # Fallback - save CSV only
-            unique_distances.to_csv(get_output_path('unique_lokalitet_distances'), index=False)
-            print(f"- Unique lokalitet distances (CSV only): {get_output_path('unique_lokalitet_distances')}")
+    # Ensure only ONE row per site (use GVFK name as tiebreaker)
+    final_distances = (min_distance_entries
+                      .sort_values(['Lokalitet_ID', 'GVFK'])
+                      .groupby('Lokalitet_ID')
+                      .first()
+                      .reset_index())
     
-    # Export enhanced shapefiles with distance data
-    print(f"\nExporting shapefiles with distance data...")
+    # Prepare final distances with essential columns
+    base_columns = ['Lokalitet_ID', 'GVFK', 'Site_Type', 'Distance_to_River_m']
+    step5_columns = ['Lokalitetensbranche', 'Lokalitetensaktivitet', 'Lokalitetensstoffer', 
+                     'Lokalitetsnavn', 'Lokalitetetsforureningsstatus', 'Regionsnavn', 'Kommunenavn']
+    available_step5_columns = [col for col in step5_columns if col in final_distances.columns]
     
-    # Add distance data back to the original GeoDataFrame
-    v1v2_with_distances = v1v2_combined.copy()
+    output_columns = base_columns + available_step5_columns
+    final_distances_clean = final_distances[output_columns].copy()
+    final_distances_clean = final_distances_clean.rename(columns={
+        'GVFK': 'Closest_GVFK', 
+        'Distance_to_River_m': 'Final_Distance_m'
+    })
     
-    # Create a lookup for distance data (using lokalitet + GVFK as key)
-    v1v2_with_distances['lookup_key'] = v1v2_with_distances['Lokalitet_'] + '_' + v1v2_with_distances['Navn']
-    results_df['lookup_key'] = results_df['Lokalitet_ID'] + '_' + results_df['GVFK']
+    # Add GVFK count and list per site
+    gvfk_counts = valid_results.groupby('Lokalitet_ID').size().reset_index()
+    gvfk_counts.columns = ['Lokalitet_ID', 'Total_GVFKs_Affected']
+    final_distances_clean = final_distances_clean.merge(gvfk_counts, on='Lokalitet_ID', how='left')
     
-    # Merge distance data
-    distance_lookup = dict(zip(results_df['lookup_key'], results_df['Distance_to_River_m']))
-    has_rivers_lookup = dict(zip(results_df['lookup_key'], results_df['Has_Matching_Rivers']))
-    river_count_lookup = dict(zip(results_df['lookup_key'], results_df['River_Count']))
-    is_min_lookup = dict(zip(results_df['lookup_key'], results_df['Is_Min_Distance']))
-    min_dist_lookup = dict(zip(results_df['lookup_key'], results_df['Min_Distance_m']))
+    all_gvfks = valid_results.groupby('Lokalitet_ID')['GVFK'].apply(lambda x: '; '.join(sorted(x.unique()))).reset_index()
+    all_gvfks.columns = ['Lokalitet_ID', 'All_Affected_GVFKs']
+    final_distances_clean = final_distances_clean.merge(all_gvfks, on='Lokalitet_ID', how='left')
     
-    v1v2_with_distances['Distance_m'] = v1v2_with_distances['lookup_key'].map(distance_lookup)
-    v1v2_with_distances['Has_Rivers'] = v1v2_with_distances['lookup_key'].map(has_rivers_lookup)
-    v1v2_with_distances['River_Count'] = v1v2_with_distances['lookup_key'].map(river_count_lookup)
-    v1v2_with_distances['Is_Min_Dist'] = v1v2_with_distances['lookup_key'].map(is_min_lookup)
-    v1v2_with_distances['Min_Dist_m'] = v1v2_with_distances['lookup_key'].map(min_dist_lookup)
+    # Save final distances for Step 5
+    final_distances_clean.to_csv(get_output_path('step4_final_distances_for_risk_assessment'), index=False)
     
-    # Remove temporary lookup column
-    v1v2_with_distances = v1v2_with_distances.drop('lookup_key', axis=1)
+    # Create unique distances file (used by visualizations)  
+    unique_distances = final_distances_clean.copy()
+    unique_distances = unique_distances.rename(columns={
+        'Lokalitet_ID': 'Lokalitetsnr',
+        'Final_Distance_m': 'Distance_to_River_m',
+        'Closest_GVFK': 'GVFK'
+    })
+    unique_distances.to_csv(get_output_path('unique_lokalitet_distances'), index=False)
     
-    # Export to shapefile
-    v1v2_shapefile_path = get_output_path('v1v2_sites_with_distances_shp')
-    v1v2_with_distances.to_file(v1v2_shapefile_path)
-    print(f"- V1/V2 site-GVFK combinations with distances: {v1v2_shapefile_path}")
-    
-    # Create site-level summary (focusing on final minimum distances)
-    if len(valid_results) > 0:
-        # Get all minimum distance entries and deduplicate (same fix as above)
-        min_distance_entries = valid_results[valid_results['Is_Min_Distance'] == True].copy()
-        final_distances_unique = (min_distance_entries
-                                 .sort_values(['Lokalitet_ID', 'GVFK'])
-                                 .groupby('Lokalitet_ID')
-                                 .first()
-                                 .reset_index())
+    # Create shapefile version with geometry (for visualizations that need geometries)
+    if not v1v2_combined.empty:
+        # Get geometry for each unique lokalitet (take first occurrence)
+        site_geometries = v1v2_combined.drop_duplicates('Lokalitet_')[['Lokalitet_', 'geometry']]
+        site_geometries = site_geometries.rename(columns={'Lokalitet_': 'Lokalitetsnr'})
         
-        final_distances_clean = final_distances_unique[['Lokalitet_ID', 'GVFK', 'Site_Type', 'Distance_to_River_m']].copy()
-        final_distances_clean.columns = ['Lokalitet_ID', 'Closest_GVFK', 'Site_Type', 'Final_Distance_m']
+        # Merge with unique distances
+        unique_distances_with_geom = unique_distances.merge(
+            site_geometries, on='Lokalitetsnr', how='left'
+        )
         
-        # Add count of total GVFKs affected per site
-        gvfk_counts = valid_results.groupby('Lokalitet_ID').size().reset_index()
-        gvfk_counts.columns = ['Lokalitet_ID', 'Total_GVFKs_Affected']
-        final_distances_clean = final_distances_clean.merge(gvfk_counts, on='Lokalitet_ID', how='left')
-        
-        final_distances_clean.to_csv(get_output_path('step4_site_level_summary'), index=False)
-        print(f"- Site-level summary (final distances): {get_output_path('step4_site_level_summary')}")
+        # Create GeoDataFrame and save shapefile
+        unique_gdf = gpd.GeoDataFrame(unique_distances_with_geom, crs=v1v2_combined.crs)
+        unique_gdf.to_file(get_output_path('unique_lokalitet_distances_shp'))
+    
+    print(f"Step 4 results saved: {len(final_distances_clean)} sites with final distances")
 
-def _create_and_save_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
+def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
     """Create interactive map visualization using sampled data."""
     
-    print(f"\nCreating interactive map visualization...")
-    
-    # Sample data for visualization - aim for ~1000 sites across Denmark
+    # Sample data for visualization - limit to 1000 sites for performance
     total_sites = valid_results['Lokalitet_ID'].nunique()
     if total_sites <= 1000:
-        # Use all sites if we have 1000 or fewer
         sampled_site_ids = valid_results['Lokalitet_ID'].unique()
     else:
-        # Sample ~1000 sites randomly
         sampled_site_ids = np.random.choice(
             valid_results['Lokalitet_ID'].unique(), 
             size=1000, 
             replace=False
         )
     
-    # Get ALL distance calculations for the sampled sites
     sampled_results = valid_results[valid_results['Lokalitet_ID'].isin(sampled_site_ids)].copy()
-    
-    print(f"Sampled {len(sampled_site_ids)} sites with {len(sampled_results)} total distance calculations")
     
     # Get GVFK polygons for visualization
     gvf = gpd.read_file(GRUNDVAND_PATH)
     sampled_gvfks = set(sampled_results['GVFK'].unique())
     relevant_gvfk_polygons = gvf[gvf['Navn'].isin(sampled_gvfks)]
     
-    # Add distance data back to the combined data for mapping
+    # Add distance data to combined data for mapping
     v1v2_with_distances = v1v2_combined.copy()
-    
-    # Create a lookup for distance data (using lokalitet + GVFK as key)
     lookup_data = {}
     for _, row in sampled_results.iterrows():
         key = f"{row['Lokalitet_ID']}_{row['GVFK']}"
@@ -392,7 +253,6 @@ def _create_and_save_interactive_map(v1v2_combined, rivers_with_contact, valid_r
             'Min_Dist_m': row.get('Min_Distance_m', row['Distance_to_River_m'])
         }
     
-    # Apply lookup to combined data
     v1v2_with_distances['lookup_key'] = v1v2_with_distances['Lokalitet_'] + '_' + v1v2_with_distances['Navn']
     
     for key, data in lookup_data.items():
@@ -408,6 +268,13 @@ def _create_and_save_interactive_map(v1v2_combined, rivers_with_contact, valid_r
     ]
     
     if not sampled_combinations.empty:
-        # Import and use the interactive map creation function
-        from create_interactive_map import create_map
-        create_map(sampled_combinations, rivers_with_contact, sampled_results, relevant_gvfk_polygons) 
+        try:
+            from create_interactive_map import create_map
+            create_map(sampled_combinations, rivers_with_contact, sampled_results, relevant_gvfk_polygons)
+            print(f"Interactive map created: {get_output_path('interactive_distance_map')}")
+        except ImportError:
+            print("Warning: create_interactive_map module not found, skipping map creation")
+        except Exception as e:
+            print(f"Warning: Could not create interactive map - {e}")
+
+ 

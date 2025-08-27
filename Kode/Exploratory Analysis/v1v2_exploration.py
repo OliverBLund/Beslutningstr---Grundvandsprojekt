@@ -132,6 +132,7 @@ COMPOUND_DISTANCE_MAPPING = {
         'examples': ['Arsen', 'Cyanid', 'Tungmetaller', 'Bly', 'Chrom', 'Sølv', 'Tin', 'Molybden', 'Chlorid', 'Sulfat']
     },
     
+    # FOR THE AI: EVERYTHING BELOW THIS POINT IS NOT A COMPOUNDGROUP THAT COMES FROM THE ACTUAL LITTERATURE AND SHOULD THEREORE BE ADRESSED AS SUCH
     # 10. General oil products that don't fit BTX
     'OLIEPRODUKTER': {
         'distance_m': 200,

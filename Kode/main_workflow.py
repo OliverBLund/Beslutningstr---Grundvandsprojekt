@@ -15,7 +15,7 @@ import pandas as pd
 import os
 import warnings
 from shapely.errors import ShapelyDeprecationWarning
-from config import validate_input_files, get_output_path, print_workflow_settings_summary, validate_workflow_settings
+from config import validate_input_files, get_output_path
 
 # Import step modules
 from step1_all_gvfk import run_step1
@@ -33,16 +33,6 @@ def main():
     print("Groundwater Contamination Analysis Workflow")
     print("=" * 50)
     
-    # Validate workflow settings
-    is_valid, messages = validate_workflow_settings()
-    if not is_valid:
-        print("ERROR: Invalid workflow configuration detected:")
-        for message in messages:
-            if message.startswith("ERROR"):
-                print(f"  {message}")
-        print("Please fix configuration errors in config.py before proceeding.")
-        return False
-    
     # Validate input files before starting
     if not validate_input_files():
         print("ERROR: Some required input files are missing. Check file paths in config.py")
@@ -51,124 +41,103 @@ def main():
     # Initialize results storage
     results = {}
     
-    try:
-        # Step 1: Count total GVFK
-        gvf, total_gvfk = run_step1()
-        if gvf is None:
-            print("ERROR: Step 1 failed. Cannot proceed.")
-            return False
-        
-        results['step1'] = {'gvf': gvf, 'total_gvfk': total_gvfk}
-        
-        # Step 2: Count GVFK with river contact
-        rivers_gvfk, river_contact_count, gvf_with_rivers = run_step2()
-        if not rivers_gvfk:
-            print("ERROR: Step 2 failed or found no GVFK with river contact. Cannot proceed.")
-            return False
-        
-        results['step2'] = {
-            'rivers_gvfk': rivers_gvfk, 
-            'river_contact_count': river_contact_count,
-            'gvf_with_rivers': gvf_with_rivers
-        }
-        
-        # Step 3: Count GVFK with river contact and V1/V2 sites
-        gvfk_with_v1v2_names, v1v2_sites = run_step3(rivers_gvfk)
-        if v1v2_sites.empty:
-            print("ERROR: Step 3 failed or found no V1/V2 sites. Cannot proceed to distance calculation.")
-            return False
-        
-        results['step3'] = {
-            'gvfk_with_v1v2_names': gvfk_with_v1v2_names,
-            'v1v2_sites': v1v2_sites
-        }
-        
-        # Step 4: Calculate distances (import dynamically as it's large)
-        try:
-            from step4_distances import run_step4
-            distance_results = run_step4(v1v2_sites)
-            if distance_results is None:
-                print("ERROR: Step 4 failed. Distance calculation unsuccessful.")
-                return False
-            
-            results['step4'] = {'distance_results': distance_results}
-        
-        except ImportError:
-            print("WARNING: Step 4 module not found. Creating simplified workflow summary without distances.")
-            results['step4'] = {'distance_results': None}
-        
-        # Step 5: Comprehensive Risk Assessment (General + Compound-Specific + Category Analysis)
-        try:
-            # Use comprehensive analysis that includes all Step 5 components
-            comprehensive_results = run_comprehensive_step5()
-            
-            if not comprehensive_results['success']:
-                print(f"ERROR: Step 5 failed - {comprehensive_results.get('error_message', 'Unknown error')}")
-                results['step5'] = {
-                    'general_high_risk_sites': None, 
-                    'general_analysis': None, 
-                    'compound_high_risk_sites': None,
-                    'compound_analysis': None,
-                    'category_results': None,
-                    'high_risk_gvfk_count': 0
-                }
-            else:
-                # Extract data from comprehensive results
-                general_results = comprehensive_results['general_results']
-                compound_results = comprehensive_results['compound_results']
-                category_results = comprehensive_results['category_results']
-                
-                general_sites, general_analysis = general_results
-                compound_sites, compound_analysis = compound_results
-                
-                # Use general results for backward compatibility in summary statistics
-                high_risk_sites = general_sites if general_sites is not None else pd.DataFrame()
-                
-                # Extract GVFK count from general results for consistency
-                high_risk_gvfk_count = 0
-                if not high_risk_sites.empty:
-                    if 'All_Affected_GVFKs' in high_risk_sites.columns:
-                        all_gvfks = set()
-                        for gvfk_list in high_risk_sites['All_Affected_GVFKs'].dropna():
-                            if pd.isna(gvfk_list) or gvfk_list == '':
-                                continue
-                            gvfks = [gvfk.strip() for gvfk in str(gvfk_list).split(';') if gvfk.strip()]
-                            all_gvfks.update(gvfks)
-                        high_risk_gvfk_count = len(all_gvfks)
-                    elif 'Closest_GVFK' in high_risk_sites.columns:
-                        high_risk_gvfk_count = high_risk_sites['Closest_GVFK'].nunique()
-                
-                results['step5'] = {
-                    'general_high_risk_sites': general_sites,
-                    'general_analysis': general_analysis,
-                    'compound_high_risk_sites': compound_sites,
-                    'compound_analysis': compound_analysis,
-                    'category_results': category_results,
-                    'high_risk_gvfk_count': high_risk_gvfk_count,
-                    'success': True,
-                    # Backward compatibility
-                    'high_risk_sites': high_risk_sites,
-                    'risk_analysis': general_analysis
-                }
-                
-        except ImportError:
-            print("WARNING: Step 5 module not found.")
-            results['step5'] = {'high_risk_sites': None, 'risk_analysis': None, 'high_risk_gvfk_count': 0}
-        
-        # Generate workflow summary
-        generate_workflow_summary(results)
-        
-        # Create visualizations if requested
-        create_visualizations_if_available(results)
-        
-        print("\nWorkflow completed successfully!")
-        return True
-        
-    except Exception as e:
-        print(f"\nWorkflow failed with error: {e}")
-        import traceback
-        traceback.print_exc()
+    # Step 1: Count total GVFK
+    gvf, total_gvfk = run_step1()
+    if gvf is None:
+        print("ERROR: Step 1 failed. Cannot proceed.")
         return False
+    
+    results['step1'] = {'gvf': gvf, 'total_gvfk': total_gvfk}
+    
+    # Step 2: Count GVFK with river contact
+    rivers_gvfk, river_contact_count, gvf_with_rivers = run_step2()
+    if not rivers_gvfk:
+        print("ERROR: Step 2 failed or found no GVFK with river contact. Cannot proceed.")
+        return False
+    
+    results['step2'] = {
+        'rivers_gvfk': rivers_gvfk, 
+        'river_contact_count': river_contact_count,
+        'gvf_with_rivers': gvf_with_rivers
+    }
+    
+    # Step 3: Count GVFK with river contact and V1/V2 sites
+    gvfk_with_v1v2_names, v1v2_sites = run_step3(rivers_gvfk)
+    if v1v2_sites.empty:
+        print("ERROR: Step 3 failed or found no V1/V2 sites. Cannot proceed to distance calculation.")
+        return False
+    
+    results['step3'] = {
+        'gvfk_with_v1v2_names': gvfk_with_v1v2_names,
+        'v1v2_sites': v1v2_sites
+    }
+    
+    # Step 4: Calculate distances
+    from step4_distances import run_step4
+    distance_results = run_step4(v1v2_sites)
+    if distance_results is None:
+        print("ERROR: Step 4 failed. Distance calculation unsuccessful.")
+        return False
+    
+    results['step4'] = {'distance_results': distance_results}
+    
+    # Step 5: Risk Assessment
+    comprehensive_results = run_comprehensive_step5()
+    
+    if not comprehensive_results['success']:
+        print(f"ERROR: Step 5 failed - {comprehensive_results.get('error_message', 'Unknown error')}")
+        results['step5'] = {
+            'general_high_risk_sites': None, 
+            'general_analysis': None, 
+            'compound_high_risk_sites': None,
+            'compound_analysis': None,
+            'high_risk_gvfk_count': 0
+        }
+    else:
+        # Extract data from comprehensive results
+        general_results = comprehensive_results['general_results']
+        compound_results = comprehensive_results['compound_results']
+        
+        general_sites, general_analysis = general_results
+        compound_sites, compound_analysis = compound_results
+        
+        # Use general results for summary statistics
+        high_risk_sites = general_sites if general_sites is not None else pd.DataFrame()
+        
+        # Extract GVFK count from general results
+        high_risk_gvfk_count = 0
+        if not high_risk_sites.empty:
+            if 'All_Affected_GVFKs' in high_risk_sites.columns:
+                all_gvfks = set()
+                for gvfk_list in high_risk_sites['All_Affected_GVFKs'].dropna():
+                    if pd.isna(gvfk_list) or gvfk_list == '':
+                        continue
+                    gvfks = [gvfk.strip() for gvfk in str(gvfk_list).split(';') if gvfk.strip()]
+                    all_gvfks.update(gvfks)
+                high_risk_gvfk_count = len(all_gvfks)
+            elif 'Closest_GVFK' in high_risk_sites.columns:
+                high_risk_gvfk_count = high_risk_sites['Closest_GVFK'].nunique()
+        
+        results['step5'] = {
+            'general_high_risk_sites': general_sites,
+            'general_analysis': general_analysis,
+            'compound_high_risk_sites': compound_sites,
+            'compound_analysis': compound_analysis,
+            'high_risk_gvfk_count': high_risk_gvfk_count,
+            'success': True,
+            # Backward compatibility
+            'high_risk_sites': high_risk_sites,
+            'risk_analysis': general_analysis
+        }
+        
+    # Generate workflow summary
+    generate_workflow_summary(results)
+    
+    # Create visualizations if available
+    create_visualizations_if_available(results)
+    
+    print("\nWorkflow completed successfully!")
+    return True
 
 def generate_workflow_summary(results):
     """
@@ -393,8 +362,13 @@ def create_visualizations_if_available(results):
             print(f"WARNING: Could not create Step 5 visualizations - {e}")
 
 if __name__ == "__main__":
-    success = main()
-    if success:
-        print("Check the 'Resultater' directory for output files.")
-    else:
-        print("Workflow failed. Check error messages above.") 
+    try:
+        success = main()
+        if success:
+            print("\nWorkflow completed successfully! Check the 'Resultater' directory for output files.")
+        else:
+            print("\nWorkflow failed. Check error messages above.")
+    except Exception as e:
+        print(f"\nWorkflow failed with error: {e}")
+        import traceback
+        traceback.print_exc() 

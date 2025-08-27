@@ -272,11 +272,7 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names):
     gvfk_with_v1v2_polygons.to_file(gvfk_polygons_path)
     print(f"Saved GVFK polygons: {len(gvfk_with_v1v2_polygons)} records")
     
-    # Save CSV with detailed relationships
-    csv_output = v1v2_combined.drop('geometry', axis=1) if 'geometry' in v1v2_combined.columns else v1v2_combined
-    relationships_path = get_output_path('step3_relationships')
-    csv_output.to_csv(relationships_path, index=False)
-    print(f"Saved detailed relationships: {len(csv_output)} records")
+    # Note: Detailed relationships CSV removed - data is passed directly to Step 4
 
 if __name__ == "__main__":
     # Allow running this step independently
