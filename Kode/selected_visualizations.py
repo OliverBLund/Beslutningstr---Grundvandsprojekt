@@ -251,7 +251,7 @@ def create_site_density_heatmap(results_path):
         # Save with high quality
         heatmap_path = os.path.join(figures_path, "v1v2_density_heatmap_unique.png")
         plt.savefig(heatmap_path, dpi=300, bbox_inches='tight')
-        plt.savefig(os.path.join(figures_path, "v1v2_density_heatmap_unique.pdf"), bbox_inches='tight')
+        plt.savefig(os.path.join(figures_path, "v1v2_density_heatmap_unique.png"), dpi=300, bbox_inches='tight')
         plt.close()
             
         print(f"Created enhanced density heatmap showing {unique_lokaliteter_count} unique locations at {heatmap_path}")
@@ -509,7 +509,7 @@ def create_distance_histogram_with_thresholds(results_path):
             plt.tight_layout()
             plt.savefig(os.path.join(figures_path, "distance_histogram_thresholds.png"), 
                        dpi=300, bbox_inches='tight')
-            plt.savefig(os.path.join(figures_path, "distance_histogram_thresholds.pdf"), 
+            plt.savefig(os.path.join(figures_path, "distance_histogram_thresholds.png"), dpi=300, 
                        bbox_inches='tight')
             plt.close()
             
@@ -563,7 +563,7 @@ def create_distance_histogram_with_thresholds(results_path):
             plt.tight_layout()
             plt.savefig(os.path.join(figures_path, "distance_cdf_thresholds.png"), 
                        dpi=300, bbox_inches='tight')
-            plt.savefig(os.path.join(figures_path, "distance_cdf_thresholds.pdf"), 
+            plt.savefig(os.path.join(figures_path, "distance_cdf_thresholds.png"), dpi=300, 
                        bbox_inches='tight')
             plt.close()
             

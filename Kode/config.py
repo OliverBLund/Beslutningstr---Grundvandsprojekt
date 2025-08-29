@@ -45,7 +45,12 @@ OUTPUT_FILES = {
     'step5_high_risk_sites': os.path.join(RESULTS_PATH, f'step5_high_risk_sites_{WORKFLOW_SETTINGS["risk_threshold_m"]}m.csv'),
     'step5_compound_specific_sites': os.path.join(RESULTS_PATH, 'step5_compound_specific_sites.csv'),
     'step5_compound_gvfk_high_risk': os.path.join(RESULTS_PATH, 'step5_compound_gvfk_high_risk.shp'),
-    'workflow_summary': os.path.join(RESULTS_PATH, 'workflow_summary.csv')
+    'workflow_summary': os.path.join(RESULTS_PATH, 'workflow_summary.csv'),
+    
+    # Category analysis files (for compound-specific visualizations)
+    'step5_category_summary': os.path.join(RESULTS_PATH, 'step5_category_summary.csv'),
+    'step5_category_substance_summary': os.path.join(RESULTS_PATH, 'step5_category_substance_summary.csv'),
+    'step5_category_flags': os.path.join(RESULTS_PATH, 'step5_category_flags.csv')
 }
 
 def ensure_results_directory():
@@ -84,7 +89,7 @@ def get_visualization_path(step_name):
     Returns:
         str: Full path to step's visualization folder
     """
-    viz_path = os.path.join(RESULTS_PATH, "Figures")
+    viz_path = os.path.join(RESULTS_PATH, "Figures", step_name)
     os.makedirs(viz_path, exist_ok=True)
     return viz_path
 

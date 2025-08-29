@@ -201,6 +201,65 @@ def _print_summary(general_results, compound_results, total_sites):
     print(f"  General assessment (≤{WORKFLOW_SETTINGS['risk_threshold_m']}m): {general_count} sites ({general_count/total_sites*100:.1f}%)")
     print(f"  Compound-specific assessment: {compound_count} sites ({compound_count/total_sites*100:.1f}%)")
 
+def run_step5_category_analysis():
+    """
+    Run category-based analysis for compound-specific visualizations.
+    Creates the files needed by step5_visualizations.py
+    """
+    step4_file = get_output_path('step4_final_distances_for_risk_assessment')
+    if not os.path.exists(step4_file):
+        return
+    
+    df = pd.read_csv(step4_file)
+    if 'Final_Distance_m' not in df.columns or 'Lokalitetensstoffer' not in df.columns:
+        return
+    
+    # Create category flags by analyzing each substance
+    rows = []
+    for _, row in df.iterrows():
+        substances_str = str(row.get('Lokalitetensstoffer', ''))
+        if pd.isna(substances_str) or substances_str.strip() == '' or substances_str == 'nan':
+            continue
+            
+        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+        for substance in substances:
+            category, threshold = categorize_contamination_substance(substance)
+            within_threshold = False
+            if threshold is not None:
+                within_threshold = float(row['Final_Distance_m']) <= float(threshold)
+            
+            rows.append({
+                'Site_ID': row['Lokalitet_ID'],
+                'Substance': substance,
+                'Category': category,
+                'Category_Distance_m': threshold,
+                'Final_Distance_m': row['Final_Distance_m'],
+                'Within_Threshold': within_threshold
+            })
+    
+    if not rows:
+        return
+        
+    # Save category flags
+    flags_df = pd.DataFrame(rows)
+    flags_df.to_csv(get_output_path('step5_category_flags'), index=False)
+    
+    # Create category summary
+    category_summary = flags_df.groupby('Category').agg({
+        'Within_Threshold': ['sum', 'count']
+    }).reset_index()
+    category_summary.columns = ['Category', 'within_tokens', 'total_tokens']
+    category_summary['within_pct'] = (category_summary['within_tokens'] / category_summary['total_tokens'] * 100)
+    category_summary.to_csv(get_output_path('step5_category_summary'), index=False)
+    
+    # Create substance summary
+    substance_summary = flags_df.groupby(['Category', 'Substance']).agg({
+        'Within_Threshold': ['sum', 'count']
+    }).reset_index()
+    substance_summary.columns = ['Category', 'Substance', 'within', 'total']
+    substance_summary['within_pct'] = (substance_summary['within'] / substance_summary['total'] * 100)
+    substance_summary.to_csv(get_output_path('step5_category_substance_summary'), index=False)
+
 def run_comprehensive_step5():
     """
     Execute comprehensive Step 5 analysis including both assessments and visualizations.
@@ -211,6 +270,9 @@ def run_comprehensive_step5():
     try:
         # Run standard assessments
         general_results, compound_results = run_step5()
+        
+        # Run category analysis for visualizations
+        run_step5_category_analysis()
         
         # Run visualizations if available
         print("\nCreating Step 5 visualizations...")

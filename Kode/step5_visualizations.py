@@ -21,11 +21,9 @@ sns.set_palette("Set2")
 def safe_save_figure(figures_path, filename_base, dpi=300):
     """Save figure with error handling for permission issues."""
     png_path = os.path.join(figures_path, f"{filename_base}.png")
-    pdf_path = os.path.join(figures_path, f"{filename_base}.pdf")
     
-    # Save PNG and PDF
+    # Save PNG only
     plt.savefig(png_path, dpi=dpi, bbox_inches='tight')
-    plt.savefig(pdf_path, bbox_inches='tight')
 
 def create_step5_visualizations(results_path="Resultater", threshold_m=500):
     """

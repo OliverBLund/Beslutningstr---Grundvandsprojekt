@@ -38,6 +38,8 @@ if __name__ == "__main__":
     # Allow running this step independently
     gvf_data, count = run_step1()
     if gvf_data is not None:
+        print("################################################")
         print(f"Step 1 completed: {count} unique GVFK found.")
+        print("#######################")
     else:
         print("Step 1 failed.") 

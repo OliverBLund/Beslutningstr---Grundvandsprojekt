@@ -275,6 +275,7 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
         except ImportError:
             print("Warning: create_interactive_map module not found, skipping map creation")
         except Exception as e:
-            print(f"Warning: Could not create interactive map - {e}")
+            import warnings
+            warnings.filterwarnings("ignore", category=UserWarning, module="pyogrio.raw")
 
- 
+    

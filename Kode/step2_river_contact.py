@@ -71,6 +71,8 @@ if __name__ == "__main__":
     # Allow running this step independently
     rivers_gvfk, count, gvf_rivers = run_step2()
     if rivers_gvfk:
+        print("################################################")
         print(f"Step 2 completed successfully. Found {count} GVFK with river contact.")
+        print("################################################")
     else:
         print("Step 2 failed or found no GVFK with river contact.") 

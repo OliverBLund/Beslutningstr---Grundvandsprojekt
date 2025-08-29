@@ -4,11 +4,26 @@ Step 3: Find GVFKs with river contact that have V1 and/or V2 sites.
 This step uses a hybrid CSV+shapefile approach to preserve one-to-many site-GVFK
 relationships while maintaining accurate spatial geometries. It includes proper
 deduplication to ensure each lokalitet-GVFK combination appears only once.
+
+FROM LUC:
+
+Kobling af informationer om lokation, forurening, branche, aktivitet og forureningsstatus for forurenede grunde, som truer grundvand.
+For at koble yderligere informationer til de grundvandsforekomstspecifikke forurenende V1 og V2 lokaliteter er der udarbejdet et python script, vedlagt som Bilag 1.
+Det endelige datasæt indeholder således 110814 unikke forurenede grunde, der fordeler sig på følgende Lokalitetetsforureningsstatus:
+•	Udgået inden kortlægning    53441
+•	V1 kortlagt                 19603
+•	V2 kortlagt                 17660
+•	Udgået efter kortlægning    12788
+•	Lokaliseret (uafklaret)      3714
+•	V1 og V2 kortlagt            3608
+
+
 """
 
 import geopandas as gpd
 import pandas as pd
 import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pyogrio.raw")
 from shapely.errors import ShapelyDeprecationWarning
 from config import (
     V1_CSV_PATH, V2_CSV_PATH, V1_SHP_PATH, V2_SHP_PATH,
@@ -36,28 +51,81 @@ def run_step3(rivers_gvfk):
     # Ensure output directory exists
     ensure_results_directory()
     
-    # Load CSV files with complete site-GVFK relationships
-    v1_csv = pd.read_csv(V1_CSV_PATH)
+    print("\nSTEP 3: V1/V2 CONTAMINATION SITES ANALYSIS")
+    print("=" * 60)
     
-    # Filter to only sites with active contaminations (documented contamination substances)
-    if 'Lokalitetensstoffer' in v1_csv.columns:
-        v1_csv_before = len(v1_csv)
-        v1_csv = v1_csv.dropna(subset=['Lokalitetensstoffer'])
-        v1_csv = v1_csv[v1_csv['Lokalitetensstoffer'].str.strip() != '']  # Remove empty strings
-        print(f"V1 sites with contamination: {len(v1_csv)} (filtered from {v1_csv_before})")
-    else:
+    # Load CSV files with complete site-GVFK relationships
+    v1_csv_raw = pd.read_csv(V1_CSV_PATH)
+    v2_csv_raw = pd.read_csv(V2_CSV_PATH)
+    
+    # Section 1: Initial Data Loading
+    print("\n1. INITIAL DATA LOADING")
+    print("-" * 30)
+    print(f"Data sources:")
+    print(f"  V1 CSV: {V1_CSV_PATH}")
+    print(f"  V2 CSV: {V2_CSV_PATH}")
+    v1_unique_initial = v1_csv_raw['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v1_csv_raw.columns else 0
+    v2_unique_initial = v2_csv_raw['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v2_csv_raw.columns else 0
+    
+    print(f"V1 dataset: {len(v1_csv_raw):,} rows, {v1_unique_initial:,} unique localities")
+    print(f"V2 dataset: {len(v2_csv_raw):,} rows, {v2_unique_initial:,} unique localities")
+    
+    # Check for initial overlap and total unique localities
+    if 'Lokalitetsnr' in v1_csv_raw.columns and 'Lokalitetsnr' in v2_csv_raw.columns:
+        v1_lokaliteter = set(v1_csv_raw['Lokalitetsnr'].dropna())
+        v2_lokaliteter = set(v2_csv_raw['Lokalitetsnr'].dropna())
+        overlap_initial = len(v1_lokaliteter.intersection(v2_lokaliteter))
+        total_unique_localities = len(v1_lokaliteter | v2_lokaliteter)
+        
+        print(f"Overlap: {overlap_initial:,} localities present in BOTH datasets")
+        print(f"Total unique localities (V1 ∪ V2): {total_unique_localities:,}")
+        
+        # Compare with reference documentation  
+        print(f"\nValidation against reference documentation:")
+        print(f"  Reference V1 localities: 19,603")
+        print(f"  Reference V2 localities: 17,660") 
+        print(f"  Reference V1∩V2 overlap: 3,608")
+        print(f"  Reference total unique: 110,814 (includes expired/unclear sites)")
+        print(f"")
+        print(f"  Current V1 localities: {v1_unique_initial:,}")
+        print(f"  Current V2 localities: {v2_unique_initial:,}")
+        print(f"  Current V1∩V2 overlap: {overlap_initial:,}")  
+        print(f"  Current total unique: {total_unique_localities:,}")
+        print(f"")
+        print(f"NOTE: Current dataset appears to be a subset focused on active contamination.")
+    
+    # Section 2: Contamination Filtering
+    print("\n2. CONTAMINATION FILTERING (sites with active contamination only)")
+    print("-" * 65)
+    
+    # Filter V1 to only sites with active contaminations
+    if 'Lokalitetensstoffer' not in v1_csv_raw.columns:
         raise ValueError("'Lokalitetensstoffer' column not found in V1 CSV")
     
-    v2_csv = pd.read_csv(V2_CSV_PATH)
+    v1_csv = v1_csv_raw.dropna(subset=['Lokalitetensstoffer'])
+    v1_csv = v1_csv[v1_csv['Lokalitetensstoffer'].str.strip() != '']
     
-    # Filter to only sites with active contaminations (documented contamination substances)
-    if 'Lokalitetensstoffer' in v2_csv.columns:
-        v2_csv_before = len(v2_csv)
-        v2_csv = v2_csv.dropna(subset=['Lokalitetensstoffer'])
-        v2_csv = v2_csv[v2_csv['Lokalitetensstoffer'].str.strip() != '']  # Remove empty strings
-        print(f"V2 sites with contamination: {len(v2_csv)} (filtered from {v2_csv_before})")
-    else:
+    # Filter V2 to only sites with active contaminations
+    if 'Lokalitetensstoffer' not in v2_csv_raw.columns:
         raise ValueError("'Lokalitetensstoffer' column not found in V2 CSV")
+    
+    v2_csv = v2_csv_raw.dropna(subset=['Lokalitetensstoffer'])
+    v2_csv = v2_csv[v2_csv['Lokalitetensstoffer'].str.strip() != '']
+    
+    # Report filtered results
+    v1_unique_filtered = v1_csv['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v1_csv.columns else 0
+    v2_unique_filtered = v2_csv['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v2_csv.columns else 0
+    
+    print(f"After contamination filtering:")
+    print(f"V1 dataset: {len(v1_csv):,} rows, {v1_unique_filtered:,} localities ({v1_unique_filtered/v1_unique_initial:.1%} retained)")
+    print(f"V2 dataset: {len(v2_csv):,} rows, {v2_unique_filtered:,} localities ({v2_unique_filtered/v2_unique_initial:.1%} retained)")
+    
+    # Check post-filtering overlap
+    if not v1_csv.empty and not v2_csv.empty:
+        v1_lokaliteter_filtered = set(v1_csv['Lokalitetsnr'].dropna())
+        v2_lokaliteter_filtered = set(v2_csv['Lokalitetsnr'].dropna())
+        overlap_filtered = len(v1_lokaliteter_filtered.intersection(v2_lokaliteter_filtered))
+        print(f"Overlap after filtering: {overlap_filtered:,} localities in BOTH datasets")
     
     if v1_csv.empty and v2_csv.empty:
         raise ValueError("No sites with contamination found in V1 or V2 data")
@@ -79,14 +147,20 @@ def run_step3(rivers_gvfk):
     
     # Dissolve V1 geometries by locality to handle multipolygons
     v1_geom = v1_shp.dissolve(by=locality_col, as_index=False)
-    print(f"V1 geometries: {len(v1_geom)} unique localities")
     
     # Process V2 geometries
     v2_shp = gpd.read_file(V2_SHP_PATH)
     
     # Dissolve V2 geometries by locality
     v2_geom = v2_shp.dissolve(by=locality_col, as_index=False)
-    print(f"V2 geometries: {len(v2_geom)} unique localities")
+    
+    # Section 3: River-Contact GVFK Filtering & Geometry Processing
+    print("\n3. RIVER-CONTACT GVFK FILTERING & GEOMETRY PROCESSING")
+    print("-" * 55)
+    print(f"Geometry sources:")
+    print(f"  V1 SHP: {V1_SHP_PATH}")
+    print(f"  V2 SHP: {V2_SHP_PATH}")
+    print(f"Geometry processing: Dissolved {len(v1_geom):,} V1 + {len(v2_geom):,} V2 locality polygons")
     
     # Process V1 data
     v1_combined_list = []
@@ -136,14 +210,16 @@ def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type
     # Filter CSV to only GVFKs with river contact
     rivers_gvfk_set = set(rivers_gvfk)
     filtered_csv = csv_data[csv_data['Navn'].isin(rivers_gvfk_set)].copy()
-    print(f"{site_type} sites in river-contact GVFKs: {len(filtered_csv)}")
+    # Track unique localities in river-contact GVFKs
+    unique_lokaliteter_in_river_gvfks = filtered_csv['Lokalitet_'].nunique() if not filtered_csv.empty else 0
+    print(f"{site_type}: {len(filtered_csv):,} rows → {unique_lokaliteter_in_river_gvfks:,} unique localities in river-contact GVFKs")
     
     if filtered_csv.empty:
         return []
     
     # Deduplicate by lokalitet-GVFK combination before processing
     unique_csv = filtered_csv.drop_duplicates(subset=['Lokalitet_', 'Navn']).copy()
-    print(f"{site_type} unique lokalitet-GVFK combinations: {len(unique_csv)}")
+    print(f"{site_type}: {len(unique_csv):,} unique lokalitet-GVFK combinations")
     
     # Add site type column
     unique_csv['Lokalitete'] = site_type
@@ -163,7 +239,6 @@ def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type
     
     if not csv_with_geom.empty:
         combined_gdf = gpd.GeoDataFrame(csv_with_geom, crs=geom_data.crs)
-        print(f"{site_type} site-GVFK combinations with geometry: {len(combined_gdf)}")
         return [combined_gdf]
     
     return []
@@ -190,15 +265,12 @@ def _combine_and_deduplicate_v1v2(v1_combined_list, v2_combined_list):
         all_combined.extend(v2_combined_list)
     
     v1v2_combined_raw = pd.concat(all_combined, ignore_index=True)
-    print(f"Combined V1 and V2 data: {len(v1v2_combined_raw)} total rows")
     
     # Final deduplication to handle sites in both V1 and V2
     duplicates = v1v2_combined_raw.groupby(['Lokalitet_', 'Navn']).size()
     duplicate_combinations = duplicates[duplicates > 1]
     
     if len(duplicate_combinations) > 0:
-        print(f"Sites in both V1 and V2: {len(duplicate_combinations)} combinations")
-        
         # For duplicate combinations, keep one record but update site type to 'V1 og V2'
         v1v2_deduped_list = []
         
@@ -222,8 +294,6 @@ def _combine_and_deduplicate_v1v2(v1_combined_list, v2_combined_list):
     else:
         v1v2_combined = v1v2_combined_raw.copy()
     
-    print(f"Unique lokalitet-GVFK combinations: {len(v1v2_combined)}")
-    
     # Verify no duplicates remain
     final_check = v1v2_combined.groupby(['Lokalitet_', 'Navn']).size()
     remaining_duplicates = (final_check > 1).sum()
@@ -244,25 +314,44 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names):
         print("No V1/V2 sites found with river contact.")
         return
     
-    # Summary statistics
+    # Section 4: Final Summary
+    print("\n4. FINAL SUMMARY")
+    print("-" * 20)
+    
     unique_sites = v1v2_combined['Lokalitet_'].nunique()
     total_site_gvfk_combinations = len(v1v2_combined)
     
-    print(f"Unique V1/V2 sites: {unique_sites}")
-    print(f"Site-GVFK combinations: {total_site_gvfk_combinations}")
-    print(f"GVFKs with V1/V2 sites: {len(gvfk_with_v1v2_names)}")
-    
-    # Count by site type
+    # Properly count V1-only, V2-only, and Both localities
     if 'Lokalitete' in v1v2_combined.columns:
-        # Count unique sites by type (not site-GVFK combinations)
-        site_type_counts = v1v2_combined.drop_duplicates('Lokalitet_')['Lokalitete'].value_counts()
-        for site_type, count in site_type_counts.items():
-            print(f"- {site_type} sites: {count}")
+        # Get all unique localities and their site types across all combinations
+        locality_types = v1v2_combined.groupby('Lokalitet_')['Lokalitete'].apply(set).reset_index()
+        locality_types['type_summary'] = locality_types['Lokalitete'].apply(
+            lambda x: 'V1 og V2' if len(x) > 1 else list(x)[0]
+        )
+        
+        # Count unique localities by final type
+        type_counts = locality_types['type_summary'].value_counts()
+        
+        print(f"Unique localities (Lokalitetsnr): {unique_sites:,}")
+        v1_only = type_counts.get('V1', 0)
+        v2_only = type_counts.get('V2', 0) 
+        both = type_counts.get('V1 og V2', 0)
+        
+        print(f"  • V1 only: {v1_only:,} localities")
+        print(f"  • V2 only: {v2_only:,} localities") 
+        print(f"  • Both V1 & V2: {both:,} localities")
+        print(f"  • TOTAL: {v1_only + v2_only + both:,} localities")
+        
+        print(f"\nLokalitet-GVFK combinations: {total_site_gvfk_combinations:,}")
+        print(f"GVFKs containing V1/V2 sites: {len(gvfk_with_v1v2_names):,}")
+    else:
+        print(f"Unique V1/V2 sites: {unique_sites:,}")
+        print(f"Site-GVFK combinations: {total_site_gvfk_combinations:,}")
+        print(f"GVFKs with V1/V2 sites: {len(gvfk_with_v1v2_names):,}")
     
     # Save V1/V2 site-GVFK combinations
     v1v2_sites_path = get_output_path('step3_v1v2_sites')
     v1v2_combined.to_file(v1v2_sites_path)
-    print(f"Saved V1/V2 site-GVFK combinations: {len(v1v2_combined)} records")
     
     # Save GVFK polygons that contain V1/V2 sites
     gvf = gpd.read_file(GRUNDVAND_PATH)
