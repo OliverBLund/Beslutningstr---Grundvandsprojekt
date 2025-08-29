@@ -21,7 +21,7 @@ header-includes:
 3. [Samlet Overblik](#samlet-overblik)
 
 ## **Datagrundlag**
-Analysen er baseret på følgende datafiler:
+Analysen er baseret på følgende datafiler:s
 
 ### Shape-filer:
 - `VP3Genbesøg_grundvand_geometri.shp`: Grundvandsforekomster (GVFK) - 2.043 unikke forekomster
@@ -29,11 +29,28 @@ Analysen er baseret på følgende datafiler:
 - `V1FLADER.shp`: V1-lokaliteter som polygoner (28.717 polygoner, 23.209 unikke lokaliteter)
 - `V2FLADER.shp`: V2-lokaliteter som polygoner (33.040 polygoner, 21.269 unikke lokaliteter)
 
-### CSV-filer (med detaljerede attributter):
-- `Data/v1_gvfk_forurening.csv`: V1-lokaliteter med GVFK-relationer og forureningsdata, samt branche og aktivitet kobling (84.601 rækker)
-- `Data/v2_gvfk_forurening.csv`: V2-lokaliteter med GVFK-relationer og forureningsdata, samt branche og aktivitet kobling (134.636 rækker)
+### CSV-filer:
+Følgende CSV-filer er genereret via `V1_V2.py` scriptet og Fremgangsmåde til klassifikationer af forurenede grunde.docx notatet (lavet af: Luc Taliesin Eisenbrückner), som behandler og kombinerer lokalitetsdata med grundvandsforekomster:
 
-##### **Vigtige kolonner til risikovurdering:**
+- `v1_gvfk_forurening.csv`: V1-lokaliteter med GVFK-tilknytning, forureningsdata og brancheoplysninger (84.601 rækker)
+- `v2_gvfk_forurening.csv`: V2-lokaliteter med GVFK-tilknytning, forureningsdata og brancheoplysninger (134.636 rækker)
+
+**Input til V1_V2.py:** 
+- **DK-jord udtræk:** `dkjord-View_Lokaliteter` med lokation, forurening, branche og aktivitetsdata
+- **ArcGIS-forbehandlede data:** `V1_gvfk.csv` og `V2_gvfk.csv` fra spatial join mellem jordforureninger og grundvandsforekomster. Jordforureninger med PAH-forbindelser, bly og kobber er filtreret fra. 
+
+**Databehandlingsproces (`V1_V2.py`):**
+1. Indlæsning og rensning af lokalitetsdata fra `dkjord-View_Lokaliteter`
+2. Ekspansion af stoffdata (opdeling ved semikolon til separate rækker)
+3. Join med V1/V2 lokaliteter på lokalitetsnummer
+4. Fjernelse af GIS-relaterede kolonner og oprydning af datasæt
+
+De to producerede .csv filer (v1_gvfk_forurening og v2_gvfk_forurening) indeholder følgende antal lokaliteter:
+- V2 sites: 12663
+- V1 sites: 4271.
+NOTE: Omtrent 2398 af V1 lokaliterne dukker også op i V2 lokalits filerne. 
+
+##### **Vigtige kolonner til risikovurdering fra V1 og V2 .csv filerne:**
    - `Lokalitetensbranche`: Branche/industri-information
    - `Lokalitetensaktivitet`: Aktivitetstype
    - `Lokalitetensstoffer`: Forureningsstoffer (kun lokaliteter med data medtages)
