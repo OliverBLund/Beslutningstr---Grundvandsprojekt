@@ -12,7 +12,112 @@ import numpy as np
 import os
 
 from config import get_output_path, ensure_results_directory, GRUNDVAND_PATH, WORKFLOW_SETTINGS
-from compound_categorization import categorize_contamination_substance
+
+# Global variables to cache Excel-based categorization data
+_CATEGORIZATION_CACHE = None
+_DEFAULT_OTHER_DISTANCE = 500
+
+def _load_categorization_from_excel():
+    """Load compound categorization data from Excel file."""
+    global _CATEGORIZATION_CACHE
+    
+    if _CATEGORIZATION_CACHE is not None:
+        return _CATEGORIZATION_CACHE
+    
+    # Path to Excel file (created by refined_compound_analysis.py)
+    excel_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), 
+        "compound_categorization_review.xlsx"
+    )
+    
+    try:
+        # Load summary sheet to get category distances
+        summary_df = pd.read_excel(excel_path, sheet_name='Summary')
+        
+        # Build category → distance mapping
+        category_distances = {}
+        for _, row in summary_df.iterrows():
+            category = row['Category']
+            distance = row['Distance_m']
+            if distance != 'TBD' and pd.notna(distance):
+                category_distances[category] = float(distance)
+            else:
+                category_distances[category] = _DEFAULT_OTHER_DISTANCE
+        
+        # Load individual category sheets to build substance → category mapping
+        substance_to_category = {}
+        
+        # Get all sheet names
+        xl_file = pd.ExcelFile(excel_path)
+        category_sheets = [sheet for sheet in xl_file.sheet_names 
+                          if sheet not in ['Summary', 'Raw_Data']]
+        
+        for sheet_name in category_sheets:
+            try:
+                sheet_df = pd.read_excel(excel_path, sheet_name=sheet_name)
+                
+                if 'Substance' in sheet_df.columns:
+                    substances = sheet_df['Substance'].dropna()
+                    category = sheet_name.replace('_substances', '').upper()
+                    
+                    # Map each substance to its category
+                    for substance in substances:
+                        if pd.notna(substance):
+                            substance_to_category[str(substance).lower().strip()] = category
+                            
+            except Exception as e:
+                print(f"Warning: Could not load sheet {sheet_name}: {e}")
+                continue
+        
+        _CATEGORIZATION_CACHE = {
+            'category_distances': category_distances,
+            'substance_to_category': substance_to_category
+        }
+        
+        print(f"Loaded categorization for {len(category_distances)} categories, {len(substance_to_category)} substances")
+        return _CATEGORIZATION_CACHE
+        
+    except Exception as e:
+        print(f"Warning: Could not load Excel categorization: {e}")
+        print("Using default 500m threshold for all compounds")
+        return {
+            'category_distances': {'OTHER': _DEFAULT_OTHER_DISTANCE},
+            'substance_to_category': {}
+        }
+
+def categorize_contamination_substance(substance_text):
+    """
+    Categorize a contamination substance using Excel-based categorization.
+    
+    Args:
+        substance_text (str): The contamination substance text
+        
+    Returns:
+        tuple: (category_name, distance_m) 
+    """
+    if pd.isna(substance_text) or not isinstance(substance_text, str):
+        return 'OTHER', _DEFAULT_OTHER_DISTANCE
+    
+    # Load categorization data
+    cat_data = _load_categorization_from_excel()
+    
+    substance_lower = substance_text.lower().strip()
+    
+    # Check for exact match first
+    category = cat_data['substance_to_category'].get(substance_lower)
+    
+    if category:
+        distance = cat_data['category_distances'].get(category, _DEFAULT_OTHER_DISTANCE)
+        return category, distance
+    
+    # If no exact match, check if substance contains any of the categorized substances
+    for known_substance, known_category in cat_data['substance_to_category'].items():
+        if known_substance in substance_lower or substance_lower in known_substance:
+            distance = cat_data['category_distances'].get(known_category, _DEFAULT_OTHER_DISTANCE)
+            return known_category, distance
+    
+    # Default to OTHER category
+    return 'OTHER', _DEFAULT_OTHER_DISTANCE
 
 def run_step5():
     """Execute Step 5: Two-part risk assessment of V1/V2 localities."""
@@ -260,26 +365,254 @@ def run_step5_category_analysis():
     substance_summary['within_pct'] = (substance_summary['within'] / substance_summary['total'] * 100)
     substance_summary.to_csv(get_output_path('step5_category_substance_summary'), index=False)
 
+def _load_fractile_thresholds_from_python():
+    """Load fractile threshold data directly from refined_compound_analysis.py"""
+    try:
+        import sys
+        import os
+        exploratory_path = os.path.join(os.path.dirname(__file__), 'Exploratory Analysis')
+        sys.path.append(exploratory_path)
+        
+        from refined_compound_analysis import LITERATURE_COMPOUND_MAPPING
+        
+        fractile_data = {}
+        for category, info in LITERATURE_COMPOUND_MAPPING.items():
+            fractile_data[category] = {
+                'fractile_60_m': info.get('fractile_60_m', info.get('distance_m', 500) * 0.3),
+                'fractile_75_m': info.get('fractile_75_m', info.get('distance_m', 500) * 0.5),
+                'fractile_90_m': info.get('fractile_90_m', info.get('distance_m', 500) * 0.8),
+                'maksimal_m': info.get('maksimal_m', info.get('distance_m', 500)),
+                'keywords': info.get('keywords', []),
+                'description': info.get('description', ''),
+                'literature_basis': info.get('literature_basis', '')
+            }
+        
+        return fractile_data
+        
+    except Exception as e:
+        print(f"Warning: Could not load fractile data from Python: {e}")
+        return {}
+
+def run_multi_threshold_analysis(distance_results):
+    """
+    Comprehensive multi-threshold analysis for all compound categories.
+    
+    Args:
+        distance_results: DataFrame from Step 4 with Final_Distance_m and substances
+        
+    Returns:
+        dict: Comprehensive analysis results for visualization
+    """
+    print("\nRunning multi-threshold analysis...")
+    
+    # Load fractile threshold data
+    fractile_data = _load_fractile_thresholds_from_python()
+    if not fractile_data:
+        print("Warning: No fractile data available, using defaults")
+        return {}
+    
+    # Analysis results storage
+    analysis_results = {
+        'threshold_effectiveness': {},  # Sites captured at each threshold per category
+        'site_risk_levels': [],         # Individual site risk classifications  
+        'category_statistics': {},      # Distance stats per category
+        'threshold_comparison': {},     # Cross-threshold comparison data
+        'waterfall_data': {},          # Data for waterfall charts
+        'sensitivity_matrix': {}       # Data for sensitivity heatmaps
+    }
+    
+    threshold_levels = ['fractile_60_m', 'fractile_75_m', 'fractile_90_m', 'maksimal_m']
+    threshold_names = ['60%', '75%', '90%', 'Maximum']
+    
+    # Process each site and substance combination
+    site_substance_data = []
+    for _, row in distance_results.iterrows():
+        substances_str = str(row.get('Lokalitetensstoffer', ''))
+        if pd.isna(substances_str) or substances_str.strip() == '' or substances_str == 'nan':
+            continue
+            
+        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+        site_distance = float(row['Final_Distance_m'])
+        
+        for substance in substances:
+            category, _ = categorize_contamination_substance(substance)
+            
+            if category not in fractile_data:
+                category = 'OTHER'
+                # Use default thresholds for OTHER category
+                thresholds = {'fractile_60_m': 150, 'fractile_75_m': 250, 
+                             'fractile_90_m': 400, 'maksimal_m': 500}
+            else:
+                thresholds = fractile_data[category]
+            
+            # Classify site risk level for this substance (CORRECTED - closer = higher risk!)
+            risk_level = 'Outside'
+            risk_color = 'gray'
+            
+            if site_distance <= thresholds['fractile_60_m']:
+                risk_level = 'Very High Risk (≤60%)'  # Closest = highest risk
+                risk_color = 'red'
+            elif site_distance <= thresholds['fractile_75_m']:
+                risk_level = 'High Risk (60-75%)'
+                risk_color = 'orange'  
+            elif site_distance <= thresholds['fractile_90_m']:
+                risk_level = 'Medium Risk (75-90%)'
+                risk_color = 'yellow'
+            elif site_distance <= thresholds['maksimal_m']:
+                risk_level = 'Low Risk (90-Max)'  # Furthest = lowest risk
+                risk_color = 'green'
+                
+            site_substance_data.append({
+                'Site_ID': row['Lokalitet_ID'],
+                'Substance': substance,
+                'Category': category,
+                'Final_Distance_m': site_distance,
+                'Risk_Level': risk_level,
+                'Risk_Color': risk_color,
+                **{f'Within_{level}': site_distance <= thresholds[level] for level in threshold_levels},
+                **{f'Threshold_{level}': thresholds[level] for level in threshold_levels}
+            })
+    
+    if not site_substance_data:
+        print("Warning: No substance data found for analysis")
+        return analysis_results
+        
+    # Convert to DataFrame for analysis
+    analysis_df = pd.DataFrame(site_substance_data)
+    
+    # 1. THRESHOLD EFFECTIVENESS ANALYSIS
+    for category in analysis_df['Category'].unique():
+        cat_data = analysis_df[analysis_df['Category'] == category]
+        effectiveness = {}
+        
+        for i, level in enumerate(threshold_levels):
+            within_col = f'Within_{level}'
+            sites_captured = cat_data[within_col].sum()
+            total_sites = len(cat_data)
+            percentage = (sites_captured / total_sites * 100) if total_sites > 0 else 0
+            
+            effectiveness[threshold_names[i]] = {
+                'sites_captured': int(sites_captured),
+                'total_sites': int(total_sites),
+                'percentage': round(percentage, 1),
+                'threshold_value': float(cat_data[f'Threshold_{level}'].iloc[0])
+            }
+            
+        analysis_results['threshold_effectiveness'][category] = effectiveness
+    
+    # 2. CATEGORY DISTANCE STATISTICS  
+    for category in analysis_df['Category'].unique():
+        cat_distances = analysis_df[analysis_df['Category'] == category]['Final_Distance_m']
+        
+        analysis_results['category_statistics'][category] = {
+            'count': len(cat_distances),
+            'mean': float(cat_distances.mean()),
+            'median': float(cat_distances.median()),
+            'std': float(cat_distances.std()),
+            'min': float(cat_distances.min()),
+            'max': float(cat_distances.max()),
+            'percentile_25': float(cat_distances.quantile(0.25)),
+            'percentile_75': float(cat_distances.quantile(0.75))
+        }
+    
+    # 3. WATERFALL DATA (cumulative capture)
+    for category in analysis_df['Category'].unique():
+        cat_data = analysis_df[analysis_df['Category'] == category]
+        waterfall = []
+        
+        for i, level in enumerate(threshold_levels):
+            within_col = f'Within_{level}'
+            cumulative_sites = cat_data[within_col].sum()
+            
+            if i == 0:
+                new_sites = cumulative_sites
+            else:
+                prev_level = threshold_levels[i-1]
+                prev_within = f'Within_{prev_level}'
+                prev_cumulative = cat_data[prev_within].sum()
+                new_sites = cumulative_sites - prev_cumulative
+                
+            waterfall.append({
+                'threshold': threshold_names[i],
+                'cumulative_sites': int(cumulative_sites),
+                'new_sites': int(new_sites),
+                'threshold_value': float(cat_data[f'Threshold_{level}'].iloc[0])
+            })
+            
+        analysis_results['waterfall_data'][category] = waterfall
+    
+    # 4. SENSITIVITY MATRIX (for heatmap)
+    sensitivity_matrix = []
+    for category in analysis_df['Category'].unique():
+        cat_data = analysis_df[analysis_df['Category'] == category]
+        row_data = {'Category': category}
+        
+        for i, level in enumerate(threshold_levels):
+            within_col = f'Within_{level}'
+            sites_captured = cat_data[within_col].sum()
+            row_data[threshold_names[i]] = int(sites_captured)
+            
+        sensitivity_matrix.append(row_data)
+        
+    analysis_results['sensitivity_matrix'] = sensitivity_matrix
+    
+    # 5. INDIVIDUAL SITE RISK LEVELS
+    analysis_results['site_risk_levels'] = analysis_df.to_dict('records')
+    
+    # Save detailed results to files
+    analysis_df.to_csv(get_output_path('step5_multi_threshold_analysis'), index=False)
+    
+    # Save summary statistics
+    summary_data = []
+    for category, stats in analysis_results['category_statistics'].items():
+        summary_data.append({'Category': category, **stats})
+    pd.DataFrame(summary_data).to_csv(get_output_path('step5_category_distance_statistics'), index=False)
+    
+    # Save threshold effectiveness
+    effectiveness_data = []
+    for category, thresholds in analysis_results['threshold_effectiveness'].items():
+        for threshold_name, data in thresholds.items():
+            effectiveness_data.append({
+                'Category': category,
+                'Threshold': threshold_name, 
+                **data
+            })
+    pd.DataFrame(effectiveness_data).to_csv(get_output_path('step5_threshold_effectiveness'), index=False)
+    
+    print(f"✓ Multi-threshold analysis completed for {len(analysis_df['Category'].unique())} categories")
+    print(f"✓ Analyzed {len(analysis_df)} substance-site combinations")
+    
+    return analysis_results
+
 def run_comprehensive_step5():
     """
-    Execute comprehensive Step 5 analysis including both assessments and visualizations.
+    Execute comprehensive Step 5 analysis including multi-threshold analysis and visualizations.
     """
-    print(f"\nStep 5: COMPREHENSIVE RISK ASSESSMENT & ANALYSIS")
-    print("=" * 70)
+    print(f"\nStep 5: COMPREHENSIVE RISK ASSESSMENT & MULTI-THRESHOLD ANALYSIS")
+    print("=" * 80)
     
     try:
         # Run standard assessments
         general_results, compound_results = run_step5()
         
+        # Load Step 4 data for multi-threshold analysis
+        step4_file = get_output_path('step4_final_distances_for_risk_assessment')
+        multi_threshold_results = {}
+        if os.path.exists(step4_file):
+            distance_results = pd.read_csv(step4_file)
+            
+            # Run comprehensive multi-threshold analysis
+            multi_threshold_results = run_multi_threshold_analysis(distance_results)
+            
         # Run category analysis for visualizations
         run_step5_category_analysis()
         
         # Run visualizations if available
         print("\nCreating Step 5 visualizations...")
         try:
-            from step5_visualizations import create_step5_visualizations, create_compound_specific_visualizations
+            from step5_visualizations import create_step5_visualizations, create_enhanced_compound_specific_visualizations
             create_step5_visualizations()
-            create_compound_specific_visualizations()
+            create_enhanced_compound_specific_visualizations()
             print("✓ Step 5 visualizations completed")
         except ImportError:
             print("Warning: step5_visualizations module not found, skipping visualizations")
@@ -291,6 +624,7 @@ def run_comprehensive_step5():
         return {
             'general_results': general_results,
             'compound_results': compound_results,
+            'multi_threshold_results': multi_threshold_results,
             'success': True,
             'error_message': None
         }
@@ -300,6 +634,7 @@ def run_comprehensive_step5():
         return {
             'general_results': (None, None),
             'compound_results': (None, None),
+            'multi_threshold_results': {},
             'success': False,
             'error_message': str(e)
         }

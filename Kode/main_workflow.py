@@ -71,7 +71,7 @@ def main():
         'gvfk_with_v1v2_names': gvfk_with_v1v2_names,
         'v1v2_sites': v1v2_sites
     }
-    s
+    
     # Step 4: Calculate distances
     from step4_distances import run_step4
     distance_results = run_step4(v1v2_sites)

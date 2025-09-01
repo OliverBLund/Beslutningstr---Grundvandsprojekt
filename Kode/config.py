@@ -50,7 +50,12 @@ OUTPUT_FILES = {
     # Category analysis files (for compound-specific visualizations)
     'step5_category_summary': os.path.join(RESULTS_PATH, 'step5_category_summary.csv'),
     'step5_category_substance_summary': os.path.join(RESULTS_PATH, 'step5_category_substance_summary.csv'),
-    'step5_category_flags': os.path.join(RESULTS_PATH, 'step5_category_flags.csv')
+    'step5_category_flags': os.path.join(RESULTS_PATH, 'step5_category_flags.csv'),
+    
+    # Multi-threshold analysis files (NEW - for amazing visualizations)
+    'step5_multi_threshold_analysis': os.path.join(RESULTS_PATH, 'step5_multi_threshold_analysis.csv'),
+    'step5_category_distance_statistics': os.path.join(RESULTS_PATH, 'step5_category_distance_statistics.csv'),
+    'step5_threshold_effectiveness': os.path.join(RESULTS_PATH, 'step5_threshold_effectiveness.csv')
 }
 
 def ensure_results_directory():

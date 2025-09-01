@@ -1,8 +1,9 @@
 """
-Step 5 Visualizations: Analysis of High-Risk V1/V2 Sites (≤500m from rivers)
+Step 5 Visualizations: Professional Risk Assessment Plots
 
-Creates specialized visualizations for contamination risk assessment of sites
-within 500m of rivers, including distance distributions and contamination characteristics.
+Creates clean, professional visualizations for contamination risk assessment:
+- Broad analysis using 500m threshold
+- Compound-specific analysis using category-based thresholds
 """
 
 import pandas as pd
@@ -12,35 +13,73 @@ import seaborn as sns
 import numpy as np
 import os
 from collections import Counter
-import textwrap
 
-# Set matplotlib style for better-looking plots
-plt.style.use('default')
-sns.set_palette("Set2")
+# Professional styling setup
+plt.rcParams.update({
+    'font.family': 'DejaVu Sans',
+    'font.size': 10,
+    'axes.titlesize': 14,
+    'axes.labelsize': 12,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'legend.fontsize': 10,
+    'figure.titlesize': 16,
+    'figure.dpi': 100,
+    'savefig.dpi': 300,
+    'savefig.bbox': 'tight',
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'axes.grid': False,
+    'axes.axisbelow': True
+})
 
-def safe_save_figure(figures_path, filename_base, dpi=300):
-    """Save figure with error handling for permission issues."""
+# Vibrant, modern color palette
+COLORS = {
+    'primary': '#1E88E5',      # Vibrant blue
+    'secondary': '#FFC107',    # Warm amber
+    'accent': '#00ACC1',       # Cyan
+    'success': '#43A047',      # Fresh green
+    'danger': '#E53935',       # Clear red
+    'purple': '#8E24AA',       # Rich purple
+    'neutral': '#5A5A5A',      # Medium gray
+    'light_gray': '#F5F5F5',   # Light gray for backgrounds
+    'categories': ['#1E88E5', '#FFC107', '#00ACC1', '#43A047', '#8E24AA', 
+                  '#FF7043', '#AB47BC', '#26A69A', '#66BB6A']
+}
+
+def setup_professional_plot(figsize=(10, 6)):
+    """Set up a professional-looking plot with clean styling."""
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Remove top and right spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Style the remaining spines
+    ax.spines['left'].set_color('#CCCCCC')
+    ax.spines['bottom'].set_color('#CCCCCC')
+    
+    # Remove grid
+    ax.grid(False)
+    
+    return fig, ax
+
+def safe_save_figure(figures_path, filename_base):
+    """Save figure with professional settings."""
+    os.makedirs(figures_path, exist_ok=True)
     png_path = os.path.join(figures_path, f"{filename_base}.png")
-    
-    # Save PNG only
-    plt.savefig(png_path, dpi=dpi, bbox_inches='tight')
+    plt.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
 
-def create_step5_visualizations(results_path="Resultater", threshold_m=500):
-    """
-    Create all Step 5 visualizations.
+def create_step5_visualizations():
+    """Create all professional Step 5 visualizations."""
+    print("Creating professional Step 5 visualizations...")
     
-    Args:
-        results_path (str): Path to results directory
-        threshold_m (int): Distance threshold used (default 500m)
-    """
-    print(f"Creating Step 5 visualizations for sites ≤{threshold_m}m from rivers...")
-    
-    # Use config-based path for Step 5 visualizations
     from config import get_visualization_path, get_output_path
     figures_path = get_visualization_path('step5')
     
-    # Load high-risk sites data using config path
-    high_risk_file = get_output_path('step5_high_risk_sites', threshold_m)
+    # Load high-risk sites data
+    high_risk_file = get_output_path('step5_high_risk_sites')
     
     if not os.path.exists(high_risk_file):
         print(f"High-risk sites file not found: {high_risk_file}")
@@ -54,948 +93,929 @@ def create_step5_visualizations(results_path="Resultater", threshold_m=500):
         print(f"Error loading high-risk sites data: {e}")
         return
     
-    # Create visualizations
-    create_distance_distribution_plot(high_risk_sites, figures_path, threshold_m)
-    create_site_type_analysis(high_risk_sites, figures_path, threshold_m)
-    create_contamination_source_analysis(high_risk_sites, figures_path, threshold_m)
-    create_contamination_activity_analysis(high_risk_sites, figures_path, threshold_m)
-    create_contamination_substances_analysis(high_risk_sites, figures_path, threshold_m)
-    create_multi_gvfk_analysis(high_risk_sites, figures_path, threshold_m)
-    create_comprehensive_risk_dashboard(high_risk_sites, figures_path, threshold_m)
+    # Create broad visualizations
+    print("Creating broad visualizations...")
+    create_distance_distribution(high_risk_sites, figures_path)
+    create_activity_distribution(high_risk_sites, figures_path) 
+    create_industry_distribution(high_risk_sites, figures_path)
+    create_gvfk_impact_analysis(high_risk_sites, figures_path)
     
-    print(f"All Step 5 visualizations created in: {figures_path}")
+    print(f"Broad visualizations created in: {figures_path}")
 
-def create_distance_distribution_plot(high_risk_sites, figures_path, threshold_m):
-    """Create distance distribution plots for high-risk sites."""
-    print("Creating distance distribution plots...")
-    
+# ============================================================================
+# BROAD VISUALIZATIONS (500m threshold analysis)
+# ============================================================================
+
+def create_distance_distribution(high_risk_sites, figures_path):
+    """Create improved distance distribution plot."""
     if 'Final_Distance_m' not in high_risk_sites.columns:
-        print("No distance data found for distribution plots")
+        print("No distance data found")
         return
     
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    fig, ax = setup_professional_plot(figsize=(12, 7))
     
     distances = high_risk_sites['Final_Distance_m']
     
-    # 1. Histogram with detailed bins
-    bins = range(0, threshold_m + 50, 50)  # 50m intervals up to threshold
-    ax1.hist(distances, bins=bins, color='#2E8B57', alpha=0.7, edgecolor='black', linewidth=0.5)
-    ax1.set_title(f'Afstandsfordeling for højrisiko-lokaliteter\n(≤{threshold_m}m fra kontaktzoner)', fontsize=12, fontweight='bold')
-    ax1.set_xlabel('Afstand (meter)', fontsize=10)
-    ax1.set_ylabel('Antal lokaliteter', fontsize=10)
-    ax1.grid(True, alpha=0.3)
+    # Create histogram with color gradient (green to red based on distance)
+    n, bins, patches = ax.hist(distances, bins=25, edgecolor='white', linewidth=1.5)
     
-    # Add statistics
-    stats_text = f'Antal: {len(distances)}\nGennemsnit: {distances.mean():.0f}m\nMedian: {distances.median():.0f}m'
-    ax1.text(0.98, 0.98, stats_text, transform=ax1.transAxes, 
-             verticalalignment='top', horizontalalignment='right',
-             bbox=dict(boxstyle='round', facecolor='white', alpha=0.9), fontsize=9)
+    # Color bars with gradient from green (close) to red (far)
+    for i, (patch, bin_center) in enumerate(zip(patches, (bins[:-1] + bins[1:]) / 2)):
+        # Normalize bin center to 0-1 range for color mapping
+        normalized_dist = bin_center / 500.0  # 500m is max distance
+        # Create color gradient: green -> yellow -> red
+        if normalized_dist <= 0.5:
+            # Green to yellow
+            red_component = normalized_dist * 2
+            color = (red_component, 0.8, 0.2)
+        else:
+            # Yellow to red
+            green_component = 2 * (1 - normalized_dist)
+            color = (0.9, green_component, 0.1)
+        patch.set_facecolor(color)
+        patch.set_alpha(0.8)
     
-    # 2. Cumulative distribution
-    sorted_distances = np.sort(distances)
-    cumulative = np.arange(1, len(sorted_distances) + 1) / len(sorted_distances)
-    ax2.plot(sorted_distances, cumulative, 'b-', linewidth=2, label='Kumulativ fordeling')
+    # Add subtle grid for better readability
+    ax.grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
+    ax.set_axisbelow(True)
     
-    # Add threshold lines
-    thresholds = [100, 200, 300, 400, 500]
-    colors = ['green', 'yellowgreen', 'gold', 'orange', 'red']
+    # Add statistics lines
+    mean_dist = distances.mean()
+    median_dist = distances.median()
     
-    for i, thresh in enumerate(thresholds):
-        if thresh <= threshold_m:
-            within_count = (distances <= thresh).sum()
-            percentage = within_count / len(distances) * 100
-            ax2.axvline(thresh, color=colors[i], linestyle='--', alpha=0.7, 
-                       label=f'{thresh}m: {percentage:.1f}%')
+    ax.axvline(mean_dist, color=COLORS['danger'], linestyle='--', 
+               linewidth=3, alpha=0.8, label=f'Gennemsnit: {mean_dist:.0f}m')
+    ax.axvline(median_dist, color=COLORS['primary'], linestyle='--', 
+               linewidth=3, alpha=0.8, label=f'Median: {median_dist:.0f}m')
     
-    ax2.set_title(f'Kumulativ afstandsfordeling (≤{threshold_m}m)', fontsize=12, fontweight='bold')
-    ax2.set_xlabel('Afstand (meter)', fontsize=10)
-    ax2.set_ylabel('Kumulativ andel', fontsize=10)
-    ax2.legend(fontsize=8)
-    ax2.grid(True, alpha=0.3)
+    # Formatting
+    ax.set_xlabel('Afstand til grundvandsforekomst (meter)', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Antal lokaliteter', fontsize=14, fontweight='bold')
+    ax.set_title('Afstandsfordeling for højrisiko-lokaliteter', fontsize=16, fontweight='bold', pad=20)
     
-    # 3. Box plot by site type (if available)
-    if 'Site_Type' in high_risk_sites.columns:
-        site_types = high_risk_sites['Site_Type'].unique()
-        distance_by_type = [high_risk_sites[high_risk_sites['Site_Type'] == st]['Final_Distance_m'] 
-                           for st in site_types]
-        
-        box_plot = ax3.boxplot(distance_by_type, labels=site_types, patch_artist=True)
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
-        for patch, color in zip(box_plot['boxes'], colors[:len(site_types)]):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.7)
-        
-        ax3.set_title('Afstandsfordeling efter lokalitetstype', fontsize=12, fontweight='bold')
-        ax3.set_ylabel('Afstand (meter)', fontsize=10)
-        ax3.grid(True, alpha=0.3)
-    else:
-        ax3.text(0.5, 0.5, 'Ingen lokalitetstypedata\ntilgængelig', 
-                 transform=ax3.transAxes, ha='center', va='center', fontsize=12)
-        ax3.set_title('Lokalitetstype ikke tilgængelig', fontsize=12)
+    # Add subtitle
+    ax.text(0.5, 0.95, 'Filtreret til lokaliteter ≤500m fra grundvandsforekomster', 
+            transform=ax.transAxes, ha='center', va='top', fontsize=12, 
+            style='italic', color=COLORS['neutral'])
     
-    # 4. Distance intervals breakdown
-    interval_labels = ['0-100m', '101-200m', '201-300m', '301-400m', '401-500m']
-    interval_counts = []
+    # Enhanced legend
+    ax.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, 
+              fontsize=12, facecolor='white', edgecolor=COLORS['neutral'], framealpha=0.9)
     
-    for i in range(5):
-        lower = i * 100
-        upper = (i + 1) * 100
-        count = ((distances > lower) & (distances <= upper)).sum()
-        interval_counts.append(count)
+    # Add total count
+    ax.text(0.02, 0.98, f'Total: {len(distances):,} lokaliteter', 
+            transform=ax.transAxes, va='top', ha='left', fontsize=12, fontweight='bold',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor=COLORS['light_gray'], 
+                     edgecolor=COLORS['neutral'], alpha=0.9))
     
-    bars = ax4.bar(interval_labels, interval_counts, color=['#006400', '#228B22', '#FFD700', '#FF6347', '#DC143C'])
-    ax4.set_title('Lokaliteter efter afstandsintervaller', fontsize=12, fontweight='bold')
-    ax4.set_ylabel('Antal lokaliteter', fontsize=10)
-    ax4.tick_params(axis='x', rotation=45)
-    
-    # Add count labels on bars
-    for bar, count in zip(bars, interval_counts):
-        height = bar.get_height()
-        ax4.text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                f'{count}', ha='center', va='bottom', fontsize=9)
-    
-    ax4.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    safe_save_figure(figures_path, "step5_distance_analysis")
-    plt.close()
+    safe_save_figure(figures_path, "01_distance_distribution")
 
-def create_site_type_analysis(high_risk_sites, figures_path, threshold_m):
-    """Create site type distribution analysis."""
-    print("Creating site type analysis...")
-    
-    if 'Site_Type' not in high_risk_sites.columns:
-        print("No site type data available")
-        return
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    
-    # Site type counts
-    type_counts = high_risk_sites['Site_Type'].value_counts()
-    
-    # Pie chart
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-    wedges, texts, autotexts = ax1.pie(type_counts.values, labels=type_counts.index, 
-                                       autopct='%1.1f%%', colors=colors, startangle=90)
-    ax1.set_title(f'Lokalitetstyper blandt højrisiko-lokaliteter\n(≤{threshold_m}m, n={len(high_risk_sites)})', 
-                  fontsize=12, fontweight='bold')
-    
-    # Bar chart with counts
-    bars = ax2.bar(type_counts.index, type_counts.values, color=colors[:len(type_counts)])
-    ax2.set_title('Antal lokaliteter efter type', fontsize=12, fontweight='bold')
-    ax2.set_ylabel('Antal lokaliteter', fontsize=10)
-    ax2.tick_params(axis='x', rotation=45)
-    
-    # Add count labels on bars
-    for bar, count in zip(bars, type_counts.values):
-        height = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                f'{count}', ha='center', va='bottom', fontsize=10)
-    
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    safe_save_figure(figures_path, "step5_site_type_analysis")
-    plt.close()
-
-def create_contamination_source_analysis(high_risk_sites, figures_path, threshold_m):
-    """Create analysis of contamination sources (Lokalitetensbranche)."""
-    print("Creating contamination source analysis...")
-    
-    if 'Lokalitetensbranche' not in high_risk_sites.columns:
-        print("No contamination source data available")
-        return
-    
-    # Filter to non-null values
-    source_data = high_risk_sites['Lokalitetensbranche'].dropna()
-    
-    if source_data.empty:
-        print("No valid contamination source data")
-        return
-    
-    # Handle semicolon-separated values properly
-    all_sources = []
-    sites_with_source = {}
-    
-    for idx, value in source_data.items():
-        if pd.notna(value) and str(value).strip():
-            # Split by semicolon and clean up
-            sources = [src.strip() for src in str(value).split(';') if src.strip()]
-            all_sources.extend(sources)
-            
-            # Track unique sites for each source
-            for src in sources:
-                if src not in sites_with_source:
-                    sites_with_source[src] = set()
-                sites_with_source[src].add(idx)
-    
-    # Count by occurrences (how many times each source appears)
-    source_counts = pd.Series(all_sources).value_counts().head(15)  # Top 15 sources
-    
-    # Also get site counts (how many unique sites have each source)
-    source_site_counts = {src: len(sites) for src, sites in sites_with_source.items()}
-    top_sources_by_sites = dict(sorted(source_site_counts.items(), key=lambda x: x[1], reverse=True)[:15])
-    
-    # Create horizontal bar chart showing both occurrences and unique sites
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
-    
-    # Left plot: Occurrences (how many times each source appears)
-    wrapped_labels_occ = [textwrap.fill(label, 30) for label in source_counts.index]
-    
-    bars1 = ax1.barh(range(len(source_counts)), source_counts.values, 
-                     color=plt.cm.Set3(np.linspace(0, 1, len(source_counts))))
-    
-    ax1.set_yticks(range(len(source_counts)))
-    ax1.set_yticklabels(wrapped_labels_occ)
-    ax1.set_xlabel('Antal forekomster', fontsize=12)
-    ax1.set_title(f'Top forureningskilder - Forekomster\n(≤{threshold_m}m, total: {len(all_sources)} forekomster)', 
-                  fontsize=12, fontweight='bold')
-    
-    # Add count labels on bars
-    for i, (bar, count) in enumerate(zip(bars1, source_counts.values)):
-        width = bar.get_width()
-        ax1.text(width + 0.5, bar.get_y() + bar.get_height()/2.,
-                f'{count}', ha='left', va='center', fontsize=10)
-    
-    # Right plot: Unique sites (how many different sites have each source)
-    top_sources_by_sites_series = pd.Series(top_sources_by_sites).head(15)
-    wrapped_labels_sites = [textwrap.fill(label, 30) for label in top_sources_by_sites_series.index]
-    
-    bars2 = ax2.barh(range(len(top_sources_by_sites_series)), top_sources_by_sites_series.values, 
-                     color=plt.cm.Spectral(np.linspace(0, 1, len(top_sources_by_sites_series))))
-    
-    ax2.set_yticks(range(len(top_sources_by_sites_series)))
-    ax2.set_yticklabels(wrapped_labels_sites)
-    ax2.set_xlabel('Antal unikke lokaliteter', fontsize=12)
-    ax2.set_title(f'Top forureningskilder - Unikke lokaliteter\n(≤{threshold_m}m, {len(source_data)} lokaliteter med data)', 
-                  fontsize=12, fontweight='bold')
-    
-    # Add count labels on bars
-    for i, (bar, count) in enumerate(zip(bars2, top_sources_by_sites_series.values)):
-        width = bar.get_width()
-        ax2.text(width + 0.5, bar.get_y() + bar.get_height()/2.,
-                f'{count}', ha='left', va='center', fontsize=10)
-    
-    ax1.grid(True, alpha=0.3, axis='x')
-    ax2.grid(True, alpha=0.3, axis='x')
-    
-    plt.tight_layout()
-    safe_save_figure(figures_path, "step5_contamination_sources")
-    plt.close()
-
-def create_contamination_activity_analysis(high_risk_sites, figures_path, threshold_m):
-    """Create analysis of contamination activities (Lokalitetensaktivitet)."""
-    print("Creating contamination activity analysis...")
-    
+def create_activity_distribution(high_risk_sites, figures_path):
+    """Create professional activity distribution plot."""
     if 'Lokalitetensaktivitet' not in high_risk_sites.columns:
-        print("No contamination activity data available")
+        print("No activity data found")
         return
     
-    # Filter to non-null values
-    activity_data = high_risk_sites['Lokalitetensaktivitet'].dropna()
-    
-    if activity_data.empty:
-        print("No valid contamination activity data")
-        return
-    
-    # Handle semicolon-separated values properly
+    # Process activities (handle semicolon-separated values)
     all_activities = []
-    sites_with_activity = {}
+    for activities_str in high_risk_sites['Lokalitetensaktivitet'].dropna():
+        activities = [act.strip() for act in str(activities_str).split(';') if act.strip()]
+        all_activities.extend(activities)
     
-    for idx, value in activity_data.items():
-        if pd.notna(value) and str(value).strip():
-            # Split by semicolon and clean up
-            activities = [act.strip() for act in str(value).split(';') if act.strip()]
-            all_activities.extend(activities)
-            
-            # Track unique sites for each activity
-            for act in activities:
-                if act not in sites_with_activity:
-                    sites_with_activity[act] = set()
-                sites_with_activity[act].add(idx)
-    
-    # Count by occurrences and unique sites
-    activity_counts = pd.Series(all_activities).value_counts().head(15)  # Top 15 activities
-    activity_site_counts = {act: len(sites) for act, sites in sites_with_activity.items()}
-    top_activities_by_sites = dict(sorted(activity_site_counts.items(), key=lambda x: x[1], reverse=True)[:15])
-    
-    # Create horizontal bar chart showing both occurrences and unique sites
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
-    
-    # Left plot: Occurrences
-    wrapped_labels_occ = [textwrap.fill(label, 30) for label in activity_counts.index]
-    
-    bars1 = ax1.barh(range(len(activity_counts)), activity_counts.values, 
-                     color=plt.cm.Spectral(np.linspace(0, 1, len(activity_counts))))
-    
-    ax1.set_yticks(range(len(activity_counts)))
-    ax1.set_yticklabels(wrapped_labels_occ)
-    ax1.set_xlabel('Antal forekomster', fontsize=12)
-    ax1.set_title(f'Top forureningsaktiviteter - Forekomster\n(≤{threshold_m}m, total: {len(all_activities)} forekomster)', 
-                  fontsize=12, fontweight='bold')
-    
-    # Add count labels on bars
-    for i, (bar, count) in enumerate(zip(bars1, activity_counts.values)):
-        width = bar.get_width()
-        ax1.text(width + 0.5, bar.get_y() + bar.get_height()/2.,
-                f'{count}', ha='left', va='center', fontsize=10)
-    
-    # Right plot: Unique sites
-    top_activities_by_sites_series = pd.Series(top_activities_by_sites).head(15)
-    wrapped_labels_sites = [textwrap.fill(label, 30) for label in top_activities_by_sites_series.index]
-    
-    bars2 = ax2.barh(range(len(top_activities_by_sites_series)), top_activities_by_sites_series.values, 
-                     color=plt.cm.viridis(np.linspace(0, 1, len(top_activities_by_sites_series))))
-    
-    ax2.set_yticks(range(len(top_activities_by_sites_series)))
-    ax2.set_yticklabels(wrapped_labels_sites)
-    ax2.set_xlabel('Antal unikke lokaliteter', fontsize=12)
-    ax2.set_title(f'Top forureningsaktiviteter - Unikke lokaliteter\n(≤{threshold_m}m, {len(activity_data)} lokaliteter med data)', 
-                  fontsize=12, fontweight='bold')
-    
-    # Add count labels on bars
-    for i, (bar, count) in enumerate(zip(bars2, top_activities_by_sites_series.values)):
-        width = bar.get_width()
-        ax2.text(width + 0.5, bar.get_y() + bar.get_height()/2.,
-                f'{count}', ha='left', va='center', fontsize=10)
-    
-    ax1.grid(True, alpha=0.3, axis='x')
-    ax2.grid(True, alpha=0.3, axis='x')
-    
-    plt.tight_layout()
-    safe_save_figure(figures_path, "step5_contamination_activities")
-    plt.close()
-
-def create_contamination_substances_analysis(high_risk_sites, figures_path, threshold_m):
-    """Create analysis of contamination substances (Lokalitetensstoffer)."""
-    print("Creating contamination substances analysis...")
-    
-    if 'Lokalitetensstoffer' not in high_risk_sites.columns:
-        print("No contamination substances data available")
+    if not all_activities:
+        print("No activity data to plot")
         return
     
-    # Filter to non-null values
-    substances_data = high_risk_sites['Lokalitetensstoffer'].dropna()
+    # Get top 15 activities
+    activity_counts = pd.Series(all_activities).value_counts().head(15)
     
-    if substances_data.empty:
-        print("No valid contamination substances data")
+    fig, ax = setup_professional_plot(figsize=(12, 8))
+    
+    # Create horizontal bar chart with vibrant alternating colors
+    y_pos = np.arange(len(activity_counts))
+    colors = [COLORS['primary'] if i % 2 == 0 else COLORS['accent'] for i in range(len(activity_counts))]
+    bars = ax.barh(y_pos, activity_counts.values, color=colors, alpha=0.8, edgecolor='white', linewidth=0.5)
+    
+    # Add count labels
+    for i, (bar, count) in enumerate(zip(bars, activity_counts.values)):
+        ax.text(count + max(activity_counts) * 0.01, i, f'{count}', 
+                va='center', fontweight='bold', color=COLORS['neutral'])
+    
+    # Formatting
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(activity_counts.index, ha='right')
+    ax.set_xlabel('Antal lokaliteter')
+    ax.set_title('Top 15 lokalitetsaktiviteter (højrisiko-lokaliteter)')
+    ax.invert_yaxis()  # Top activities at top
+    
+    # Add total count
+    total_activities = len(all_activities)
+    ax.text(0.02, 0.98, f'Total: {total_activities:,} aktivitetsforekomster', 
+            transform=ax.transAxes, va='top', ha='left',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor=COLORS['light_gray'], alpha=0.8))
+    
+    safe_save_figure(figures_path, "02_activity_distribution")
+
+def create_industry_distribution(high_risk_sites, figures_path):
+    """Create professional industry distribution plot."""
+    if 'Lokalitetensbranche' not in high_risk_sites.columns:
+        print("No industry data found")
         return
     
-    # Parse substances (they might be comma-separated or semicolon-separated)
-    all_substances = []
-    sites_with_substance = {}
+    # Process industries (handle semicolon-separated values)
+    all_industries = []
+    for industries_str in high_risk_sites['Lokalitetensbranche'].dropna():
+        industries = [ind.strip() for ind in str(industries_str).split(';') if ind.strip()]
+        all_industries.extend(industries)
     
-    for idx, substances_str in substances_data.items():
-        if pd.notna(substances_str):
-            # Split by common separators and clean
-            substances = [s.strip() for s in str(substances_str).replace(';', ',').split(',') if s.strip()]
-            all_substances.extend(substances)
-            
-            # Track unique sites for each substance
-            for substance in substances:
-                if substance not in sites_with_substance:
-                    sites_with_substance[substance] = set()
-                sites_with_substance[substance].add(idx)
+    if not all_industries:
+        print("No industry data to plot")
+        return
     
-    substance_counts = pd.Series(all_substances).value_counts().head(20)  # Top 20 substances
-    substance_site_counts = {sub: len(sites) for sub, sites in sites_with_substance.items()}
-    top_substances_by_sites = dict(sorted(substance_site_counts.items(), key=lambda x: x[1], reverse=True)[:20])
+    # Get top 15 industries
+    industry_counts = pd.Series(all_industries).value_counts().head(15)
     
-    # Create horizontal bar chart showing both occurrences and unique sites
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 12))
+    fig, ax = setup_professional_plot(figsize=(12, 8))
     
-    # Left plot: Occurrences
-    wrapped_labels_occ = [textwrap.fill(label, 25) for label in substance_counts.index]
+    # Create horizontal bar chart with vibrant alternating colors
+    y_pos = np.arange(len(industry_counts))
+    colors = [COLORS['secondary'] if i % 2 == 0 else COLORS['danger'] for i in range(len(industry_counts))]
+    bars = ax.barh(y_pos, industry_counts.values, color=colors, alpha=0.8, edgecolor='white', linewidth=0.5)
     
-    bars1 = ax1.barh(range(len(substance_counts)), substance_counts.values, 
-                     color=plt.cm.tab20(np.linspace(0, 1, len(substance_counts))))
+    # Add count labels
+    for i, (bar, count) in enumerate(zip(bars, industry_counts.values)):
+        ax.text(count + max(industry_counts) * 0.01, i, f'{count}', 
+                va='center', fontweight='bold', color=COLORS['neutral'])
     
-    ax1.set_yticks(range(len(substance_counts)))
-    ax1.set_yticklabels(wrapped_labels_occ)
-    ax1.set_xlabel('Antal forekomster', fontsize=12)
-    ax1.set_title(f'Top forureningsstoffer - Forekomster\n(≤{threshold_m}m, total: {len(all_substances)} forekomster)', 
-                  fontsize=12, fontweight='bold')
+    # Formatting
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(industry_counts.index, ha='right')
+    ax.set_xlabel('Antal lokaliteter')
+    ax.set_title('Top 15 lokalitetsbrancher (højrisiko-lokaliteter)')
+    ax.invert_yaxis()  # Top industries at top
     
-    # Add count labels on bars
-    for i, (bar, count) in enumerate(zip(bars1, substance_counts.values)):
-        width = bar.get_width()
-        ax1.text(width + 0.5, bar.get_y() + bar.get_height()/2.,
-                f'{count}', ha='left', va='center', fontsize=10)
+    # Add total count
+    total_industries = len(all_industries)
+    ax.text(0.02, 0.98, f'Total: {total_industries:,} brancheforekomster', 
+            transform=ax.transAxes, va='top', ha='left',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor=COLORS['light_gray'], alpha=0.8))
     
-    # Right plot: Unique sites
-    top_substances_by_sites_series = pd.Series(top_substances_by_sites).head(20)
-    wrapped_labels_sites = [textwrap.fill(label, 25) for label in top_substances_by_sites_series.index]
-    
-    bars2 = ax2.barh(range(len(top_substances_by_sites_series)), top_substances_by_sites_series.values, 
-                     color=plt.cm.plasma(np.linspace(0, 1, len(top_substances_by_sites_series))))
-    
-    ax2.set_yticks(range(len(top_substances_by_sites_series)))
-    ax2.set_yticklabels(wrapped_labels_sites)
-    ax2.set_xlabel('Antal unikke lokaliteter', fontsize=12)
-    ax2.set_title(f'Top forureningsstoffer - Unikke lokaliteter\n(≤{threshold_m}m, {len(substances_data)} lokaliteter med data)', 
-                  fontsize=12, fontweight='bold')
-    
-    # Add count labels on bars
-    for i, (bar, count) in enumerate(zip(bars2, top_substances_by_sites_series.values)):
-        width = bar.get_width()
-        ax2.text(width + 0.5, bar.get_y() + bar.get_height()/2.,
-                f'{count}', ha='left', va='center', fontsize=10)
-    
-    ax1.grid(True, alpha=0.3, axis='x')
-    ax2.grid(True, alpha=0.3, axis='x')
-    
-    plt.tight_layout()
-    safe_save_figure(figures_path, "step5_contamination_substances")
-    plt.close()
+    safe_save_figure(figures_path, "03_industry_distribution")
 
-def create_multi_gvfk_analysis(high_risk_sites, figures_path, threshold_m):
-    """Create analysis of sites affecting multiple GVFKs."""
-    print("Creating multi-GVFK analysis...")
-    
+def create_gvfk_impact_analysis(high_risk_sites, figures_path):
+    """Create professional GVFK impact analysis plot."""
     if 'Total_GVFKs_Affected' not in high_risk_sites.columns:
-        print("No multi-GVFK data available")
+        print("No GVFK impact data found")
         return
     
     gvfk_counts = high_risk_sites['Total_GVFKs_Affected'].value_counts().sort_index()
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    if gvfk_counts.empty:
+        print("No GVFK impact data to plot")
+        return
     
-    # Bar chart of GVFK distribution
-    bars = ax1.bar(gvfk_counts.index, gvfk_counts.values, 
-                   color=plt.cm.viridis(np.linspace(0, 1, len(gvfk_counts))))
-    ax1.set_xlabel('Antal påvirkede GVFK pr. lokalitet', fontsize=12)
-    ax1.set_ylabel('Antal lokaliteter', fontsize=12)
-    ax1.set_title(f'GVFK-påvirkning pr. højrisiko-lokalitet\n(≤{threshold_m}m)', fontsize=12, fontweight='bold')
+    fig, ax = setup_professional_plot(figsize=(10, 6))
+    
+    # Create bar chart with gradient colors (green to red based on GVFK impact)
+    max_gvfks = max(gvfk_counts.index) if len(gvfk_counts.index) > 0 else 1
+    colors = [plt.cm.RdYlGn_r(i/max_gvfks) for i in gvfk_counts.index]
+    bars = ax.bar(gvfk_counts.index, gvfk_counts.values, 
+                  color=colors, alpha=0.8, edgecolor='white', linewidth=1)
     
     # Add count labels on bars
     for bar, count in zip(bars, gvfk_counts.values):
         height = bar.get_height()
-        ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                f'{count}', ha='center', va='bottom', fontsize=10)
+        ax.text(bar.get_x() + bar.get_width()/2., height + max(gvfk_counts) * 0.01,
+                f'{count}', ha='center', va='bottom', fontweight='bold')
     
-    ax1.grid(True, alpha=0.3)
+    # Formatting
+    ax.set_xlabel('Antal påvirkede grundvandsforekomster pr. lokalitet')
+    ax.set_ylabel('Antal lokaliteter')
+    ax.set_title('GVFK-påvirkning pr. højrisiko-lokalitet\n(Grundvandsforekomster påvirket af samme lokalitet)', pad=20)
+    ax.set_xticks(gvfk_counts.index)
     
-    # Pie chart: single vs multiple GVFK sites
-    single_gvfk = (high_risk_sites['Total_GVFKs_Affected'] == 1).sum()
-    multi_gvfk = (high_risk_sites['Total_GVFKs_Affected'] > 1).sum()
+    # Add summary statistics
+    total_sites = len(high_risk_sites)
+    single_gvfk = gvfk_counts.get(1, 0)
+    multi_gvfk = total_sites - single_gvfk
     
-    labels = [f'Enkelt GVFK\n({single_gvfk})', f'Flere GVFK\n({multi_gvfk})']
-    sizes = [single_gvfk, multi_gvfk]
-    colors = ['#3498db', '#e74c3c']
+    summary_text = f'Total lokaliteter: {total_sites:,}\nEnkelt GVFK: {single_gvfk:,} ({single_gvfk/total_sites*100:.1f}%)\nFlere GVFK: {multi_gvfk:,} ({multi_gvfk/total_sites*100:.1f}%)'
+    ax.text(0.98, 0.98, summary_text, transform=ax.transAxes, va='top', ha='right',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor=COLORS['light_gray'], alpha=0.9))
     
-    ax2.pie(sizes, labels=labels, autopct='%1.1f%%', colors=colors, startangle=90)
-    ax2.set_title('Lokaliteter efter GVFK-påvirkning', fontsize=12, fontweight='bold')
-    
-    plt.tight_layout()
-    safe_save_figure(figures_path, "step5_multi_gvfk_analysis")
-    plt.close()
-
-def create_comprehensive_risk_dashboard(high_risk_sites, figures_path, threshold_m):
-    """Create a comprehensive risk assessment dashboard."""
-    print("Creating comprehensive risk dashboard...")
-    
-    fig = plt.figure(figsize=(20, 14))
-    
-    # Create a grid layout
-    gs = fig.add_gridspec(3, 4, hspace=0.3, wspace=0.3)
-    
-    # 1. Distance distribution (top left)
-    ax1 = fig.add_subplot(gs[0, 0:2])
-    if 'Final_Distance_m' in high_risk_sites.columns:
-        distances = high_risk_sites['Final_Distance_m']
-        bins = range(0, threshold_m + 50, 50)
-        ax1.hist(distances, bins=bins, color='#2E8B57', alpha=0.7, edgecolor='black')
-        ax1.set_title(f'Afstandsfordeling (≤{threshold_m}m)', fontweight='bold')
-        ax1.set_xlabel('Afstand (m)')
-        ax1.set_ylabel('Antal')
-        ax1.grid(True, alpha=0.3)
-    
-    # 2. Site type distribution (top right)
-    ax2 = fig.add_subplot(gs[0, 2:4])
-    if 'Site_Type' in high_risk_sites.columns:
-        type_counts = high_risk_sites['Site_Type'].value_counts()
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-        ax2.pie(type_counts.values, labels=type_counts.index, autopct='%1.1f%%', 
-                colors=colors, startangle=90)
-        ax2.set_title('Lokalitetstyper', fontweight='bold')
-    
-    # 3. Top contamination sources (middle left)
-    ax3 = fig.add_subplot(gs[1, 0:2])
-    if 'Lokalitetensbranche' in high_risk_sites.columns:
-        source_data = high_risk_sites['Lokalitetensbranche'].dropna()
-        if not source_data.empty:
-            # Handle semicolon-separated values
-            all_sources = []
-            for value in source_data:
-                if pd.notna(value) and str(value).strip():
-                    sources = [src.strip() for src in str(value).split(';') if src.strip()]
-                    all_sources.extend(sources)
-            
-            if all_sources:
-                source_counts = pd.Series(all_sources).value_counts().head(8)
-                wrapped_labels = [textwrap.fill(label, 20) for label in source_counts.index]
-                bars = ax3.barh(range(len(source_counts)), source_counts.values, 
-                               color=plt.cm.Set3(np.linspace(0, 1, len(source_counts))))
-                ax3.set_yticks(range(len(source_counts)))
-                ax3.set_yticklabels(wrapped_labels, fontsize=8)
-                ax3.set_title('Top forureningskilder (forekomster)', fontweight='bold')
-                ax3.grid(True, alpha=0.3, axis='x')
-    
-    # 4. Top contamination substances (middle right)
-    ax4 = fig.add_subplot(gs[1, 2:4])
-    if 'Lokalitetensstoffer' in high_risk_sites.columns:
-        substances_data = high_risk_sites['Lokalitetensstoffer'].dropna()
-        if not substances_data.empty:
-            all_substances = []
-            for substances_str in substances_data:
-                if pd.notna(substances_str):
-                    substances = [s.strip() for s in str(substances_str).replace(';', ',').split(',') if s.strip()]
-                    all_substances.extend(substances)
-            
-            if all_substances:
-                substance_counts = pd.Series(all_substances).value_counts().head(8)
-                wrapped_labels = [textwrap.fill(label, 20) for label in substance_counts.index]
-                bars = ax4.barh(range(len(substance_counts)), substance_counts.values, 
-                               color=plt.cm.tab10(np.linspace(0, 1, len(substance_counts))))
-                ax4.set_yticks(range(len(substance_counts)))
-                ax4.set_yticklabels(wrapped_labels, fontsize=8)
-                ax4.set_title('Top forureningsstoffer (forekomster)', fontweight='bold')
-                ax4.grid(True, alpha=0.3, axis='x')
-    
-    # 5. Multi-GVFK distribution (bottom left)
-    ax5 = fig.add_subplot(gs[2, 0:2])
-    if 'Total_GVFKs_Affected' in high_risk_sites.columns:
-        gvfk_counts = high_risk_sites['Total_GVFKs_Affected'].value_counts().sort_index()
-        bars = ax5.bar(gvfk_counts.index, gvfk_counts.values, 
-                       color=plt.cm.viridis(np.linspace(0, 1, len(gvfk_counts))))
-        ax5.set_xlabel('Antal påvirkede GVFK')
-        ax5.set_ylabel('Antal lokaliteter')
-        ax5.set_title('GVFK-påvirkning pr. lokalitet', fontweight='bold')
-        ax5.grid(True, alpha=0.3)
-    
-    # 6. Summary statistics (bottom right)
-    ax6 = fig.add_subplot(gs[2, 2:4])
-    ax6.axis('off')
-    
-    # Calculate summary statistics
-    summary_text = f"SAMMENFATNING - HØJRISIKO LOKALITETER (≤{threshold_m}m)\n"
-    summary_text += "=" * 50 + "\n\n"
-    summary_text += f"Total antal højrisiko-lokaliteter: {len(high_risk_sites)}\n\n"
-    
-    if 'Final_Distance_m' in high_risk_sites.columns:
-        distances = high_risk_sites['Final_Distance_m']
-        summary_text += f"Afstandsstatistik:\n"
-        summary_text += f"  Gennemsnit: {distances.mean():.0f}m\n"
-        summary_text += f"  Median: {distances.median():.0f}m\n"
-        summary_text += f"  Min-Max: {distances.min():.0f}m - {distances.max():.0f}m\n\n"
-    
-    if 'Site_Type' in high_risk_sites.columns:
-        type_counts = high_risk_sites['Site_Type'].value_counts()
-        summary_text += f"Lokalitetstyper:\n"
-        for site_type, count in type_counts.items():
-            percentage = count / len(high_risk_sites) * 100
-            summary_text += f"  {site_type}: {count} ({percentage:.1f}%)\n"
-        summary_text += "\n"
-    
-    # Data availability
-    data_cols = ['Lokalitetensbranche', 'Lokalitetensaktivitet', 'Lokalitetensstoffer']
-    summary_text += f"Datatilgængelighed:\n"
-    for col in data_cols:
-        if col in high_risk_sites.columns:
-            available = high_risk_sites[col].notna().sum()
-            percentage = available / len(high_risk_sites) * 100
-            summary_text += f"  {col}: {available} ({percentage:.1f}%)\n"
-    
-    ax6.text(0.05, 0.95, summary_text, transform=ax6.transAxes,
-             verticalalignment='top', horizontalalignment='left',
-             fontsize=10, fontfamily='monospace',
-             bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
-    
-    # Overall title
-    fig.suptitle(f'Risikoanalyse Dashboard - Højrisiko V1/V2 Lokaliteter (≤{threshold_m}m fra kontaktzoner)', 
-                 fontsize=16, fontweight='bold', y=0.98)
-    
-    safe_save_figure(figures_path, "step5_risk_dashboard")
-    plt.close()
-
+    safe_save_figure(figures_path, "04_gvfk_impact_analysis")
 
 # ============================================================================
 # COMPOUND-SPECIFIC VISUALIZATIONS
 # ============================================================================
 
 def create_compound_specific_visualizations():
-    """
-    Create visualizations for compound-specific risk assessment results.
-    
-    This includes category-based threshold analysis and detailed compound breakdowns.
-    """
-    print("Creating compound-specific risk assessment visualizations...")
+    """Create professional compound-specific visualizations."""
+    print("Creating compound-specific visualizations...")
     
     from config import get_visualization_path, get_output_path
-    from compound_categorization import COMPOUND_DISTANCE_MAPPING
-    import matplotlib.patches as mpatches
+    
+    # Import categorization function from step5_risk_assessment
+    import sys
+    import os
+    sys.path.append(os.path.dirname(__file__))
+    from step5_risk_assessment import categorize_contamination_substance
     
     figures_path = get_visualization_path('step5')
     
-    # Professional color scheme for compound visualizations
-    COMPOUND_COLORS = {
-        'primary': '#2E86AB',      # Professional blue
-        'secondary': '#A23B72',    # Professional purple
-        'accent': '#F18F01',       # Professional orange
-        'success': '#C73E1D',      # Professional red
-        'neutral': '#7A7A7A',      # Professional gray
-        'light': '#E8F4F8',       # Light blue background
-    }
-    
-    # Risk level colors based on distance thresholds
-    RISK_COLORS = {
-        30: '#C73E1D',    # High risk - Red (PAH)
-        50: '#F18F01',    # Medium-high risk - Orange (BTX)
-        100: '#F4A261',   # Medium risk - Light orange (Polar)
-        150: '#E9C46A',   # Medium-low risk - Yellow (Inorganic)
-        200: '#2A9D8F',   # Low-medium risk - Teal (Chlorinated)
-        300: '#264653',   # Low risk - Dark green (Phenols)
-        500: '#1D3557'    # Very low risk - Dark blue (Pesticides)
-    }
-    
-    # Load compound analysis results
+    # Load compound-specific filtered results (not Step 4 raw data)
     try:
-        cat_summary_path = get_output_path('step5_category_summary')
-        sub_summary_path = get_output_path('step5_category_substance_summary')
-        flags_path = get_output_path('step5_category_flags')
-        
-        if not all(os.path.exists(p) for p in [cat_summary_path, sub_summary_path, flags_path]):
-            print("Compound analysis data not found. Please run compound analysis first.")
+        compound_sites_file = get_output_path('step5_compound_specific_sites')
+        if not os.path.exists(compound_sites_file):
+            print("Compound-specific filtered sites not found. Please run Step 5 compound analysis first.")
             return
         
-        cat_summary = pd.read_csv(cat_summary_path)
-        sub_summary = pd.read_csv(sub_summary_path)
-        long_df = pd.read_csv(flags_path)
+        df = pd.read_csv(compound_sites_file)
+        print(f"Loaded {len(df)} compound-specific filtered sites")
+        
+        # Create compound-specific plots using the properly filtered data
+        create_category_occurrence_overview(df, figures_path)
+        create_distance_by_category(df, figures_path)
+        create_top_compounds_by_category(df, figures_path)
+        create_activity_by_category(df, figures_path)
+        create_industry_by_category(df, figures_path)
+        
+        print(f"Compound-specific visualizations created in: {figures_path}")
         
     except Exception as e:
-        print(f"Error loading compound analysis data: {e}")
-        return
-    
-    # Create visualizations
-    create_category_threshold_dashboard(cat_summary, sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS)
-    create_category_detailed_analysis(sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS)
-    create_category_overview_plot(cat_summary, figures_path, RISK_COLORS, COMPOUND_COLORS)
-    
-    print(f"✓ Compound-specific visualizations saved to {figures_path}")
+        print(f"Error creating compound-specific visualizations: {e}")
 
-
-def setup_professional_figure(figsize=(12, 8), title="", subtitle=""):
-    """Create a professionally styled figure for compound analysis."""
-    fig, ax = plt.subplots(figsize=figsize)
+def create_category_occurrence_overview(df, figures_path):
+    """Create overview of category occurrences."""
+    from step5_risk_assessment import categorize_contamination_substance
     
-    # Remove top and right spines
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    # Process all substances
+    category_stats = {}
+    total_records = 0
     
-    # Style remaining spines
-    ax.spines['left'].set_color('#CCCCCC')
-    ax.spines['bottom'].set_color('#CCCCCC')
-    
-    # Grid styling
-    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
-    ax.set_axisbelow(True)
-    
-    # Title styling
-    if title:
-        fig.suptitle(title, fontsize=16, fontweight='bold', y=0.98)
-    if subtitle:
-        ax.set_title(subtitle, fontsize=12, color='#666666', pad=20)
-    
-    return fig, ax
-
-
-def create_category_threshold_dashboard(cat_summary, sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS):
-    """Create a comprehensive dashboard showing category-based threshold analysis."""
-    
-    from compound_categorization import COMPOUND_DISTANCE_MAPPING
-    
-    # Create 2x2 subplot dashboard
-    fig = plt.figure(figsize=(18, 14))
-    fig.suptitle('Category-Based Distance Threshold Analysis Results', 
-                 fontsize=18, fontweight='bold', y=0.96)
-    
-    # 1. Within-threshold counts by category (Top Left)
-    ax1 = plt.subplot(2, 2, 1)
-    
-    # Sort categories by within-threshold count
-    plot_data = cat_summary.sort_values('within_tokens', ascending=True)
-    
-    # Create horizontal bar chart with risk-based colors
-    colors = []
-    for _, row in plot_data.iterrows():
-        category = row['Category']
-        if category in COMPOUND_DISTANCE_MAPPING:
-            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
-            colors.append(RISK_COLORS.get(distance, COMPOUND_COLORS['neutral']))
-        else:
-            colors.append(COMPOUND_COLORS['neutral'])
-    
-    bars = ax1.barh(range(len(plot_data)), plot_data['within_tokens'], 
-                    color=colors, alpha=0.8, height=0.7)
-    
-    # Customize
-    ax1.set_yticks(range(len(plot_data)))
-    ax1.set_yticklabels([cat.replace('_', ' ').title() for cat in plot_data['Category']])
-    ax1.set_xlabel('Sites Within Category Threshold')
-    ax1.set_title('A. Within-Threshold Sites by Category', fontweight='bold', pad=20)
-    ax1.grid(True, alpha=0.3)
-    
-    # Add count labels
-    for i, (bar, count) in enumerate(zip(bars, plot_data['within_tokens'])):
-        ax1.text(count + max(plot_data['within_tokens']) * 0.01, i,
-                f'{count}', va='center', fontweight='bold', fontsize=9)
-    
-    # 2. Success rate by category (Top Right)
-    ax2 = plt.subplot(2, 2, 2)
-    
-    # Filter out categories with zero tokens for percentage calculation
-    pct_data = cat_summary[cat_summary['total_tokens'] > 0].copy()
-    pct_data = pct_data.sort_values('within_pct', ascending=True)
-    
-    # Create horizontal bar chart
-    colors2 = []
-    for _, row in pct_data.iterrows():
-        category = row['Category']
-        if category in COMPOUND_DISTANCE_MAPPING:
-            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
-            colors2.append(RISK_COLORS.get(distance, COMPOUND_COLORS['neutral']))
-        else:
-            colors2.append(COMPOUND_COLORS['neutral'])
-    
-    bars2 = ax2.barh(range(len(pct_data)), pct_data['within_pct'], 
-                     color=colors2, alpha=0.8, height=0.7)
-    
-    ax2.set_yticks(range(len(pct_data)))
-    ax2.set_yticklabels([cat.replace('_', ' ').title() for cat in pct_data['Category']])
-    ax2.set_xlabel('Percentage Within Threshold (%)')
-    ax2.set_title('B. Success Rate by Category', fontweight='bold', pad=20)
-    ax2.set_xlim(0, 100)
-    ax2.grid(True, alpha=0.3)
-    
-    # Add percentage labels
-    for i, (bar, pct) in enumerate(zip(bars2, pct_data['within_pct'])):
-        ax2.text(pct + 2, i, f'{pct:.1f}%', va='center', fontweight='bold', fontsize=9)
-    
-    # 3. Distance threshold overview (Bottom Left)
-    ax3 = plt.subplot(2, 2, 3)
-    
-    # Get distance distribution from categories with data
-    distance_data = []
-    for _, row in cat_summary[cat_summary['total_tokens'] > 0].iterrows():
-        category = row['Category']
-        if category in COMPOUND_DISTANCE_MAPPING:
-            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
-            distance_data.append({
-                'Distance_m': distance,
-                'Category': category,
-                'Within_Count': row['within_tokens']
-            })
-    
-    dist_df = pd.DataFrame(distance_data)
-    if not dist_df.empty:
-        # Group by distance and sum within counts
-        dist_summary = dist_df.groupby('Distance_m')['Within_Count'].sum().sort_index()
-        
-        # Create bar chart
-        colors3 = [RISK_COLORS.get(dist, COMPOUND_COLORS['neutral']) for dist in dist_summary.index]
-        bars3 = ax3.bar(range(len(dist_summary)), list(dist_summary.values), 
-                        color=colors3, alpha=0.8)
-        
-        ax3.set_xticks(range(len(dist_summary)))
-        ax3.set_xticklabels([f'{int(d)}m' for d in dist_summary.index])
-        ax3.set_ylabel('Within-Threshold Sites')
-        ax3.set_title('C. Sites by Distance Threshold', fontweight='bold', pad=20)
-        
-        # Add count labels
-        for bar, count in zip(bars3, dist_summary.values):
-            height = bar.get_height()
-            ax3.text(bar.get_x() + bar.get_width()/2., height + max(dist_summary.values) * 0.01,
-                    f'{count}', ha='center', va='bottom', fontweight='bold', fontsize=9)
-    
-    ax3.grid(True, alpha=0.3)
-    
-    # 4. Top substances within threshold (Bottom Right)
-    ax4 = plt.subplot(2, 2, 4)
-    
-    # Get top substances that are within threshold
-    within_substances = long_df[long_df['Within_Threshold'] == True]
-    if not within_substances.empty:
-        top_substances = within_substances['Substance'].value_counts().head(10)
-        
-        # Create horizontal bar chart
-        bars4 = ax4.barh(range(len(top_substances)), list(top_substances.values), 
-                         color=COMPOUND_COLORS['primary'], alpha=0.8, height=0.7)
-        
-        ax4.set_yticks(range(len(top_substances)))
-        # Truncate long substance names
-        labels = [s[:20] + '...' if len(s) > 20 else s for s in top_substances.index]
-        ax4.set_yticklabels(labels, fontsize=9)
-        ax4.set_xlabel('Within-Threshold Occurrences')
-        ax4.set_title('D. Top Substances Within Thresholds', fontweight='bold', pad=20)
-        
-        # Add count labels
-        for i, (bar, count) in enumerate(zip(bars4, top_substances.values)):
-            ax4.text(count + max(top_substances.values) * 0.01, i,
-                    f'{count}', va='center', fontweight='bold', fontsize=9)
-    
-    ax4.grid(True, alpha=0.3)
-    
-    # Add legend for risk colors
-    legend_elements = [
-        mpatches.Patch(color=RISK_COLORS[30], label='30m - Very High Risk'),
-        mpatches.Patch(color=RISK_COLORS[50], label='50m - High Risk'),
-        mpatches.Patch(color=RISK_COLORS[100], label='100m - Medium Risk'),
-        mpatches.Patch(color=RISK_COLORS[200], label='200m - Low Risk'),
-        mpatches.Patch(color=RISK_COLORS[500], label='500m - Very Low Risk')
-    ]
-    
-    fig.legend(handles=legend_elements, loc='lower center', ncol=5, 
-               bbox_to_anchor=(0.5, 0.02), frameon=True, fancybox=True)
-    
-    # Adjust layout
-    plt.subplots_adjust(left=0.08, bottom=0.12, right=0.95, top=0.88, wspace=0.3, hspace=0.4)
-    
-    # Save figure
-    dashboard_path = os.path.join(figures_path, 'step5_category_dashboard.png')
-    fig.savefig(dashboard_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print(f"✓ Saved category dashboard: {dashboard_path}")
-
-
-def create_category_detailed_analysis(sub_summary, long_df, figures_path, RISK_COLORS, COMPOUND_COLORS):
-    """Create detailed analysis of top categories with substance breakdowns."""
-    
-    from compound_categorization import COMPOUND_DISTANCE_MAPPING
-    
-    # Get top 6 categories by within-threshold count
-    cat_within_counts = long_df[long_df['Within_Threshold'] == True]['Category'].value_counts().head(6)
-    
-    if cat_within_counts.empty:
-        print("No within-threshold categories found for detailed analysis")
-        return
-    
-    # Create 2x3 grid
-    fig = plt.figure(figsize=(20, 14))
-    fig.suptitle('Detailed Category Analysis: Top Substances Within Distance Thresholds', 
-                 fontsize=18, fontweight='bold', y=0.96)
-    
-    for i, (category, total_within) in enumerate(cat_within_counts.items()):
-        if i >= 6:
-            break
-            
-        ax = plt.subplot(2, 3, i + 1)
-        
-        # Get substances in this category that are within threshold
-        cat_data = long_df[(long_df['Category'] == category) & 
-                          (long_df['Within_Threshold'] == True)]
-        
-        if cat_data.empty:
-            ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+    for _, row in df.iterrows():
+        substances_str = str(row.get('Lokalitetensstoffer', ''))
+        if pd.isna(substances_str) or substances_str.strip() == '' or substances_str == 'nan':
             continue
             
-        substance_counts = cat_data['Substance'].value_counts().head(10)
-        
-        # Get category info
-        distance = COMPOUND_DISTANCE_MAPPING.get(category, {}).get('distance_m', 'Unknown')
-        color = RISK_COLORS.get(distance, COMPOUND_COLORS['neutral'])
-        
-        # Create horizontal bar chart
-        bars = ax.barh(range(len(substance_counts)), list(substance_counts.values), 
-                       color=color, alpha=0.8, height=0.7)
-        
-        # Customize
-        ax.set_yticks(range(len(substance_counts)))
-        labels = [s[:25] + '...' if len(s) > 25 else s for s in substance_counts.index]
-        ax.set_yticklabels(labels, fontsize=9)
-        ax.set_xlabel('Within-Threshold Sites')
-        
-        category_title = category.replace('_', ' ').title()
-        ax.set_title(f'{category_title}\n({distance}m threshold, {total_within} total sites)', 
-                     fontweight='bold', fontsize=11, pad=15)
-        
-        # Add count labels
-        for j, (bar, count) in enumerate(zip(bars, substance_counts.values)):
-            ax.text(count + max(substance_counts.values) * 0.02, j,
-                   f'{count}', va='center', fontweight='bold', fontsize=8)
-        
-        # Style
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.grid(True, alpha=0.3)
+        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+        for substance in substances:
+            category, threshold = categorize_contamination_substance(substance)
+            total_records += 1
+            
+            if category not in category_stats:
+                category_stats[category] = {'count': 0, 'threshold': threshold}
+            category_stats[category]['count'] += 1
     
-    plt.subplots_adjust(left=0.08, bottom=0.08, right=0.95, top=0.88, wspace=0.3, hspace=0.4)
+    if not category_stats:
+        print("No substance data found for category overview")
+        return
     
-    # Save figure
-    detailed_path = os.path.join(figures_path, 'step5_category_detailed_analysis.png')
-    fig.savefig(detailed_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print(f"✓ Saved detailed analysis: {detailed_path}")
-
-
-def create_category_overview_plot(cat_summary, figures_path, RISK_COLORS, COMPOUND_COLORS):
-    """Create simple overview plot of categories."""
+    # Create DataFrame and sort by count
+    categories_df = pd.DataFrame.from_dict(category_stats, orient='index')
+    categories_df['percentage'] = (categories_df['count'] / total_records * 100).round(1)
+    categories_df = categories_df.sort_values('count', ascending=True)
     
-    from compound_categorization import COMPOUND_DISTANCE_MAPPING
+    fig, ax = setup_professional_plot(figsize=(12, 8))
     
-    overview_fig, ax = setup_professional_figure(figsize=(12, 8),
-                                                title="Category-Based Distance Threshold Overview",
-                                                subtitle="Within-threshold substance counts by contamination category")
+    # Create horizontal bar chart
+    y_pos = np.arange(len(categories_df))
+    bars = ax.barh(y_pos, categories_df['count'], 
+                   color=[COLORS['categories'][i % len(COLORS['categories'])] for i in range(len(categories_df))],
+                   alpha=0.8)
     
-    plot_df = cat_summary.sort_values('within_tokens', ascending=False)
+    # Add labels with count and percentage
+    for i, (bar, count, pct) in enumerate(zip(bars, categories_df['count'], categories_df['percentage'])):
+        ax.text(count + max(categories_df['count']) * 0.01, i, 
+                f'{count:,} ({pct}%)', va='center', fontweight='bold')
     
-    # Use risk-based colors
-    colors = []
-    for _, row in plot_df.iterrows():
-        category = row['Category']
-        if category in COMPOUND_DISTANCE_MAPPING:
-            distance = COMPOUND_DISTANCE_MAPPING[category]['distance_m']
-            colors.append(RISK_COLORS.get(distance, COMPOUND_COLORS['neutral']))
-        else:
-            colors.append(COMPOUND_COLORS['neutral'])
-    
-    bars = ax.barh(range(len(plot_df)), plot_df['within_tokens'], color=colors, alpha=0.8)
-    
-    # Customize
-    ax.set_yticks(range(len(plot_df)))
-    ax.set_yticklabels([cat.replace('_', ' ').title() for cat in plot_df['Category']])
-    ax.set_xlabel('Within-threshold substance tokens (count)')
+    # Formatting
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels([cat.replace('_', ' ').title() for cat in categories_df.index], ha='right')
+    ax.set_xlabel('Antal forekomster')
+    ax.set_title('Forureningsgrupper - Højrisiko-lokaliteter (kategori-specifik filtrering)')
     ax.invert_yaxis()
     
-    # Add count and percentage labels
-    for i, (_, row) in enumerate(plot_df.iterrows()):
-        count = row['within_tokens']
-        total = row['total_tokens']
-        pct = (count / total * 100) if total > 0 else 0
+    # Add total
+    ax.text(0.02, 0.98, f'Total: {total_records:,} forureningsforekomster', 
+            transform=ax.transAxes, va='top', ha='left',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor=COLORS['light_gray'], alpha=0.8))
+    
+    safe_save_figure(figures_path, "05_category_overview")
+
+def create_distance_by_category(df, figures_path):
+    """Create distance distribution by category using violin plot."""
+    from step5_risk_assessment import categorize_contamination_substance
+    
+    # Collect data for each category
+    category_distances = {}
+    
+    for _, row in df.iterrows():
+        substances_str = str(row.get('Lokalitetensstoffer', ''))
+        distance = row.get('Final_Distance_m')
         
-        ax.text(count + max(plot_df['within_tokens']) * 0.01, i,
-               f'{count} ({pct:.1f}%)', va='center', fontweight='bold', fontsize=10)
+        if pd.isna(substances_str) or pd.isna(distance):
+            continue
+            
+        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+        for substance in substances:
+            category, threshold = categorize_contamination_substance(substance)
+            
+            if category not in category_distances:
+                category_distances[category] = {'distances': [], 'threshold': threshold}
+            category_distances[category]['distances'].append(distance)
     
-    # Add risk level legend
-    import matplotlib.patches as mpatches
-    legend_elements = [
-        mpatches.Patch(color=RISK_COLORS[30], label='30m threshold'),
-        mpatches.Patch(color=RISK_COLORS[50], label='50m threshold'),
-        mpatches.Patch(color=RISK_COLORS[100], label='100m threshold'),
-        mpatches.Patch(color=RISK_COLORS[200], label='200m threshold'),
-        mpatches.Patch(color=RISK_COLORS[500], label='500m threshold')
-    ]
-    ax.legend(handles=legend_elements, loc='lower right', frameon=True, 
-             fancybox=True, shadow=True)
+    if not category_distances:
+        print("No data found for distance by category plot")
+        return
     
-    overview_fig.tight_layout()
-    plot_path = os.path.join(figures_path, 'step5_category_overview.png')
-    overview_fig.savefig(plot_path, dpi=300, bbox_inches='tight')
-    plt.close(overview_fig)
-    print(f"✓ Saved category overview: {plot_path}")
+    # Prepare data for violin plot
+    categories = list(category_distances.keys())
+    distances_list = [category_distances[cat]['distances'] for cat in categories]
+    
+    fig, ax = setup_professional_plot(figsize=(14, 8))
+    
+    # Create violin plot
+    parts = ax.violinplot(distances_list, positions=range(len(categories)), 
+                         showmeans=True, showmedians=True)
+    
+    # Color the violins
+    for i, pc in enumerate(parts['bodies']):
+        pc.set_facecolor(COLORS['categories'][i % len(COLORS['categories'])])
+        pc.set_alpha(0.7)
+    
+    # Formatting
+    ax.set_xticks(range(len(categories)))
+    ax.set_xticklabels([cat.replace('_', ' ').title() for cat in categories], rotation=45, ha='right')
+    ax.set_ylabel('Afstand til grundvandsforekomst (meter)')
+    ax.set_title('Afstandsfordeling per forureningsgruppe (højrisiko-lokaliteter)')
+    
+    # Legend for threshold lines
+    #ax.axhline(y=-100, color=COLORS['accent'], linewidth=2, label='Kategoritærskel')
+    ax.legend(loc='upper right')
+    
+    safe_save_figure(figures_path, "06_distance_by_category")
 
+def create_top_compounds_by_category(df, figures_path):
+    """Create top compounds plots for each major category."""
+    from step5_risk_assessment import categorize_contamination_substance
+    
+    # Collect substances by category
+    category_substances = {}
+    
+    for _, row in df.iterrows():
+        substances_str = str(row.get('Lokalitetensstoffer', ''))
+        if pd.isna(substances_str) or substances_str.strip() == '':
+            continue
+            
+        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+        for substance in substances:
+            category, _ = categorize_contamination_substance(substance)
+            
+            if category not in category_substances:
+                category_substances[category] = []
+            category_substances[category].append(substance)
+    
+    # Create plots for top 5 categories by count
+    category_counts = {cat: len(substances) for cat, substances in category_substances.items()}
+    top_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    for i, (category, _) in enumerate(top_categories):
+        substances_count = pd.Series(category_substances[category]).value_counts().head(10)
+        
+        if substances_count.empty:
+            continue
+        
+        fig, ax = setup_professional_plot(figsize=(12, 7))
+        
+        # Create horizontal bar chart
+        y_pos = np.arange(len(substances_count))
+        color = COLORS['categories'][i % len(COLORS['categories'])]
+        bars = ax.barh(y_pos, substances_count.values, color=color, alpha=0.8)
+        
+        # Add count labels
+        for j, (bar, count) in enumerate(zip(bars, substances_count.values)):
+            ax.text(count + max(substances_count) * 0.01, j, f'{count}', 
+                    va='center', fontweight='bold')
+        
+        # Formatting
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(substances_count.index, ha='right')
+        ax.set_xlabel('Antal forekomster')
+        ax.set_title(f'Top 10 stoffer - {category.replace("_", " ").title()} (højrisiko-lokaliteter)')
+        ax.invert_yaxis()
+        
+        # Add total
+        total = len(category_substances[category])
+        ax.text(0.02, 0.98, f'Total: {total:,} forekomster', 
+                transform=ax.transAxes, va='top', ha='left',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor=COLORS['light_gray'], alpha=0.8))
+        
+        safe_save_figure(figures_path, f"07_{category.lower()}_top_compounds")
 
-if __name__ == "__main__":
-    # Create all Step 5 visualizations
-    create_step5_visualizations()
+def create_activity_by_category(df, figures_path):
+    """Create top activities by category analysis."""
+    from step5_risk_assessment import categorize_contamination_substance
+    
+    # Load compound categorization to get high-impact categories
+    category_data = _get_category_site_data(df)
+    
+    # Get top 3 categories by occurrence count
+    top_categories = sorted(category_data.items(), key=lambda x: len(x[1]), reverse=True)[:3]
+    
+    for i, (category, sites_data) in enumerate(top_categories):
+        activities = []
+        for site_data in sites_data:
+            activities_str = str(site_data.get('Lokalitetensaktivitet', ''))
+            if pd.notna(activities_str) and activities_str.strip():
+                acts = [a.strip() for a in activities_str.split(';') if a.strip()]
+                activities.extend(acts)
+        
+        if not activities:
+            continue
+        
+        activity_counts = pd.Series(activities).value_counts().head(10)
+        
+        fig, ax = setup_professional_plot(figsize=(12, 7))
+        
+        # Create horizontal bar chart
+        y_pos = np.arange(len(activity_counts))
+        color = COLORS['categories'][i % len(COLORS['categories'])]
+        bars = ax.barh(y_pos, activity_counts.values, color=color, alpha=0.8)
+        
+        # Add count labels
+        for j, (bar, count) in enumerate(zip(bars, activity_counts.values)):
+            ax.text(count + max(activity_counts) * 0.01, j, f'{count}', 
+                    va='center', fontweight='bold')
+        
+        # Formatting
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(activity_counts.index, ha='right')
+        ax.set_xlabel('Antal lokaliteter')
+        ax.set_title(f'Top 10 aktiviteter - {category.replace("_", " ").title()} (højrisiko-lokaliteter)')
+        ax.invert_yaxis()
+        
+        safe_save_figure(figures_path, f"08_{category.lower()}_activities")
+
+def create_industry_by_category(df, figures_path):
+    """Create top industries by category analysis."""
+    category_data = _get_category_site_data(df)
+    
+    # Get top 3 categories by occurrence count
+    top_categories = sorted(category_data.items(), key=lambda x: len(x[1]), reverse=True)[:3]
+    
+    for i, (category, sites_data) in enumerate(top_categories):
+        industries = []
+        for site_data in sites_data:
+            industries_str = str(site_data.get('Lokalitetensbranche', ''))
+            if pd.notna(industries_str) and industries_str.strip():
+                inds = [ind.strip() for ind in industries_str.split(';') if ind.strip()]
+                industries.extend(inds)
+        
+        if not industries:
+            continue
+        
+        industry_counts = pd.Series(industries).value_counts().head(10)
+        
+        fig, ax = setup_professional_plot(figsize=(12, 7))
+        
+        # Create horizontal bar chart
+        y_pos = np.arange(len(industry_counts))
+        color = COLORS['categories'][i % len(COLORS['categories'])]
+        bars = ax.barh(y_pos, industry_counts.values, color=color, alpha=0.8)
+        
+        # Add count labels
+        for j, (bar, count) in enumerate(zip(bars, industry_counts.values)):
+            ax.text(count + max(industry_counts) * 0.01, j, f'{count}', 
+                    va='center', fontweight='bold')
+        
+        # Formatting
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(industry_counts.index, ha='right')
+        ax.set_xlabel('Antal lokaliteter')
+        ax.set_title(f'Top 10 brancher - {category.replace("_", " ").title()} (højrisiko-lokaliteter)')
+        ax.invert_yaxis()
+        
+        safe_save_figure(figures_path, f"09_{category.lower()}_industries")
+
+def _get_category_site_data(df):
+    """Helper function to organize sites by category."""
+    from step5_risk_assessment import categorize_contamination_substance
+    
+    category_sites = {}
+    
+    for _, row in df.iterrows():
+        substances_str = str(row.get('Lokalitetensstoffer', ''))
+        if pd.isna(substances_str) or substances_str.strip() == '':
+            continue
+            
+        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+        site_categories = set()
+        
+        for substance in substances:
+            category, _ = categorize_contamination_substance(substance)
+            site_categories.add(category)
+        
+        for category in site_categories:
+            if category not in category_sites:
+                category_sites[category] = []
+            category_sites[category].append(row.to_dict())
+    
+    return category_sites
+
+# ============================================================================
+# AMAZING MULTI-THRESHOLD WATERFALL VISUALIZATIONS  
+# ============================================================================
+
+def create_threshold_waterfall_chart(figures_path):
+    """
+    Create amazing waterfall chart showing threshold effectiveness.
+    
+    Shows how many additional sites each threshold level captures,
+    demonstrating the "diminishing returns" effect of higher thresholds.
+    """
+    print("Creating threshold effectiveness waterfall chart...")
+    
+    from config import get_output_path
+    import os
+    
+    # Load multi-threshold analysis results
+    try:
+        effectiveness_file = get_output_path('step5_threshold_effectiveness')
+        if not os.path.exists(effectiveness_file):
+            print("Multi-threshold analysis not found. Please run Step 5 multi-threshold analysis first.")
+            return
+            
+        effectiveness_df = pd.read_csv(effectiveness_file)
+        print(f"Loaded threshold effectiveness data: {len(effectiveness_df)} records")
+        
+    except Exception as e:
+        print(f"Error loading threshold effectiveness data: {e}")
+        return
+    
+    # Get unique categories, sorted by maximum sites captured
+    category_totals = effectiveness_df[effectiveness_df['Threshold'] == 'Maximum'].sort_values('sites_captured', ascending=False)
+    categories = category_totals['Category'].tolist()
+    
+    if len(categories) == 0:
+        print("No category data found for waterfall chart")
+        return
+    
+    # Create the amazing waterfall plot
+    fig, ax = setup_professional_plot(figsize=(16, 10))
+    
+    # Define threshold order and colors
+    threshold_order = ['60%', '75%', '90%', 'Maximum']
+    threshold_colors = {
+        '60%': COLORS['success'],      # Green - low risk, base level
+        '75%': '#FFA726',              # Orange - medium risk
+        '90%': COLORS['danger'],       # Red - high risk  
+        'Maximum': '#6A1B9A'           # Purple - very high risk
+    }
+    
+    # Calculate positions
+    x_pos = 0
+    x_positions = []
+    x_labels = []
+    
+    # Plot each category as a grouped waterfall
+    for cat_idx, category in enumerate(categories):
+        cat_data = effectiveness_df[effectiveness_df['Category'] == category]
+        
+        # Get data for each threshold, ordered correctly
+        threshold_data = {}
+        for _, row in cat_data.iterrows():
+            threshold_data[row['Threshold']] = {
+                'sites_captured': int(row['sites_captured']),
+                'total_sites': int(row['total_sites']),
+                'percentage': float(row['percentage']),
+                'threshold_value': int(row['threshold_value'])
+            }
+        
+        # Calculate cumulative and incremental values
+        prev_cumulative = 0
+        bar_bottoms = []
+        bar_heights = []
+        bar_colors = []
+        
+        for threshold in threshold_order:
+            if threshold not in threshold_data:
+                continue
+                
+            current_sites = threshold_data[threshold]['sites_captured']
+            incremental_sites = current_sites - prev_cumulative
+            
+            if incremental_sites > 0:  # Only show positive increments
+                bar_bottoms.append(prev_cumulative)
+                bar_heights.append(incremental_sites)
+                bar_colors.append(threshold_colors[threshold])
+                prev_cumulative = current_sites
+        
+        # Create stacked bars for this category
+        if bar_heights:
+            bottom = 0
+            for i, (height, color) in enumerate(zip(bar_heights, bar_colors)):
+                bar = ax.bar(x_pos, height, bottom=bottom, color=color, alpha=0.8, 
+                           width=0.7, edgecolor='white', linewidth=1)
+                
+                # Add value labels on bars (only if bar is tall enough)
+                if height > max(bar_heights) * 0.05:  # Only label if bar is >5% of max height
+                    ax.text(x_pos, bottom + height/2, f'{height}', 
+                           ha='center', va='center', fontweight='bold', 
+                           color='white' if i > 1 else 'black', fontsize=9)
+                
+                bottom += height
+        
+        # Store position info
+        x_positions.append(x_pos)
+        
+        # Create multi-line label with category and total
+        total_sites = threshold_data.get('Maximum', {}).get('sites_captured', 0)
+        max_threshold = threshold_data.get('Maximum', {}).get('threshold_value', 0)
+        
+        category_name = category.replace('_', ' ').title()
+        if len(category_name) > 12:  # Truncate long names
+            category_name = category_name[:12] + "..."
+            
+        label = f"{category_name}\n({total_sites} sites)\n≤{max_threshold}m"
+        x_labels.append(label)
+        
+        x_pos += 1
+    
+    # Customize the plot
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(x_labels, rotation=45, ha='right')
+    ax.set_ylabel('Antal lokaliteter fanget')
+    ax.set_title('Threshold Effectiveness Waterfall Chart\nKumulativ fangst af lokaliteter ved forskellige afstandsgrænser', 
+                pad=20, fontsize=16, fontweight='bold')
+    
+    # Add legend
+    legend_elements = [plt.Rectangle((0,0),1,1, facecolor=threshold_colors[thresh], alpha=0.8, 
+                                   label=f'{thresh} fraktil') for thresh in threshold_order]
+    ax.legend(handles=legend_elements, loc='upper right', frameon=True, fancybox=True, shadow=True)
+    
+    # Add grid for better readability
+    ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+    ax.set_axisbelow(True)
+    
+    # Add summary statistics box
+    total_categories = len(categories)
+    total_max_sites = effectiveness_df[effectiveness_df['Threshold'] == 'Maximum']['sites_captured'].sum()
+    total_60_sites = effectiveness_df[effectiveness_df['Threshold'] == '60%']['sites_captured'].sum()
+    
+    improvement_factor = total_max_sites / total_60_sites if total_60_sites > 0 else 0
+    
+    summary_text = f'''Sammendrag:
+• {total_categories} kategorier analyseret
+• {total_60_sites} lokaliteter ved 60% fraktil
+• {total_max_sites} lokaliteter ved maksimal grænse  
+• {improvement_factor:.1f}x flere lokaliteter med maksimal grænse'''
+    
+    ax.text(0.02, 0.98, summary_text, transform=ax.transAxes, va='top', ha='left',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor=COLORS['light_gray'], alpha=0.9),
+            fontsize=10, family='monospace')
+    
+    # Improve layout
+    plt.tight_layout()
+    
+    # Save the amazing plot
+    safe_save_figure(figures_path, "10_threshold_effectiveness_waterfall")
+    
+    print(f"✓ Threshold waterfall chart created: shows {total_categories} categories")
+    print(f"✓ Demonstrates diminishing returns: {total_60_sites} → {total_max_sites} sites")
+
+def create_enhanced_compound_specific_visualizations():
+    """Create enhanced compound-specific visualizations including waterfall charts."""
+    print("Creating enhanced compound-specific visualizations with multi-threshold analysis...")
+    
+    from config import get_visualization_path
+    figures_path = get_visualization_path('step5')
+    
+    # Create the original compound-specific plots
     create_compound_specific_visualizations()
-    print("All Step 5 visualizations completed!") 
+    
+    # Add the new amazing waterfall chart
+    create_threshold_waterfall_chart(figures_path)
+    
+    print(f"Enhanced compound-specific visualizations completed in: {figures_path}")
+
+def create_multi_threshold_distance_distributions(figures_path):
+    """
+    Create AMAZING multi-threshold distance distribution plots for each category!
+    
+    Shows distance distribution (0-500m) with all 4 threshold lines and color-coded risk zones.
+    Directly answers: "Are sites with [category] compounds within their literature thresholds?"
+    """
+    print("Creating multi-threshold distance distribution plots... 🚀")
+    
+    from config import get_output_path
+    import os
+    
+    # Load Step 4 data (ALL sites within 500m, no category filtering)
+    try:
+        step4_file = get_output_path('step4_final_distances_for_risk_assessment')
+        if not os.path.exists(step4_file):
+            print("Step 4 data not found. Please run Step 4 first.")
+            return
+            
+        df = pd.read_csv(step4_file)
+        print(f"Loaded {len(df)} sites from Step 4 (all within 500m)")
+        
+    except Exception as e:
+        print(f"Error loading Step 4 data: {e}")
+        return
+    
+    # Load fractile threshold data
+    try:
+        import sys
+        exploratory_path = os.path.join(os.path.dirname(__file__), 'Exploratory Analysis')
+        sys.path.append(exploratory_path)
+        
+        from refined_compound_analysis import LITERATURE_COMPOUND_MAPPING
+        
+        fractile_data = {}
+        for category, info in LITERATURE_COMPOUND_MAPPING.items():
+            fractile_data[category] = {
+                'fractile_60_m': info.get('fractile_60_m', 150),
+                'fractile_75_m': info.get('fractile_75_m', 250),
+                'fractile_90_m': info.get('fractile_90_m', 400),
+                'maksimal_m': info.get('maksimal_m', 500),
+                'keywords': info.get('keywords', []),
+                'description': info.get('description', '')
+            }
+            
+    except Exception as e:
+        print(f"Error loading fractile data: {e}")
+        return
+    
+    # Process all sites and categorize substances
+    from step5_risk_assessment import categorize_contamination_substance
+    
+    category_sites = {}
+    compound_sites = {}
+    
+    for _, row in df.iterrows():
+        substances_str = str(row.get('Lokalitetensstoffer', ''))
+        if pd.isna(substances_str) or substances_str.strip() == '' or substances_str == 'nan':
+            continue
+            
+        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+        site_distance = float(row['Final_Distance_m'])
+        
+        for substance in substances:
+            category, _ = categorize_contamination_substance(substance)
+            
+            # Store by category
+            if category not in category_sites:
+                category_sites[category] = []
+            category_sites[category].append({
+                'distance': site_distance,
+                'site_id': row['Lokalitet_ID'],
+                'substance': substance
+            })
+            
+            # Store by individual compound
+            if category not in compound_sites:
+                compound_sites[category] = {}
+            if substance not in compound_sites[category]:
+                compound_sites[category][substance] = []
+            compound_sites[category][substance].append({
+                'distance': site_distance,
+                'site_id': row['Lokalitet_ID']
+            })
+    
+    print(f"Found {len(category_sites)} categories with site data")
+    
+    # Define risk zone colors (CORRECTED - closer = higher risk!)
+    risk_colors = {
+        'zone_60': '#F44336',    # Red - VERY HIGH risk (≤60% fractile = closest to river)
+        'zone_75': '#FF9800',    # Orange - HIGH risk (60-75% fractile)
+        'zone_90': '#FFC107',    # Yellow - MEDIUM risk (75-90% fractile)
+        'zone_max': '#4CAF50',   # Green - LOW risk (90-Max% fractile = furthest)
+        'outside': '#9E9E9E'     # Gray - Outside threshold (safest)
+    }
+    
+    # Create distance distribution plot for each category
+    for category, sites_data in category_sites.items():
+        if category not in fractile_data:
+            continue  # Skip categories without threshold data
+            
+        thresholds = fractile_data[category]
+        distances = [site['distance'] for site in sites_data]
+        
+        if len(distances) == 0:
+            continue
+            
+        print(f"Creating plot for {category}: {len(distances)} sites")
+        
+        # Create the amazing plot
+        fig, ax = setup_professional_plot(figsize=(14, 8))
+        
+        # Create histogram bins (0-500m)
+        bins = np.arange(0, 525, 25)  # 25m bins from 0 to 500m
+        
+        # Calculate distances in each risk zone
+        distances_60 = [d for d in distances if d <= thresholds['fractile_60_m']]
+        distances_75 = [d for d in distances if thresholds['fractile_60_m'] < d <= thresholds['fractile_75_m']]
+        distances_90 = [d for d in distances if thresholds['fractile_75_m'] < d <= thresholds['fractile_90_m']]
+        distances_max = [d for d in distances if thresholds['fractile_90_m'] < d <= thresholds['maksimal_m']]
+        distances_outside = [d for d in distances if d > thresholds['maksimal_m']]
+        
+        # Create stacked histogram
+        ax.hist([distances_60, distances_75, distances_90, distances_max, distances_outside], 
+                bins=bins, 
+                color=[risk_colors['zone_60'], risk_colors['zone_75'], 
+                       risk_colors['zone_90'], risk_colors['zone_max'], risk_colors['outside']], 
+                alpha=0.8, 
+                label=['60% fraktil (Meget høj risiko)', '75% fraktil (Høj risiko)', 
+                       '90% fraktil (Mellem risiko)', 'Maksimal (Lav risiko)', 'Uden for grænse'],
+                stacked=True, edgecolor='white', linewidth=0.5)
+        
+        # Add threshold lines
+        threshold_lines = [
+            (thresholds['fractile_60_m'], risk_colors['zone_60'], '60% fraktil'),
+            (thresholds['fractile_75_m'], risk_colors['zone_75'], '75% fraktil'),
+            (thresholds['fractile_90_m'], risk_colors['zone_90'], '90% fraktil'),
+            (thresholds['maksimal_m'], risk_colors['zone_max'], 'Maksimal grænse')
+        ]
+        
+        for threshold_val, color, label in threshold_lines:
+            ax.axvline(x=threshold_val, color=color, linestyle='--', linewidth=2, alpha=0.9)
+            # Add threshold value labels at top
+            ax.text(threshold_val, ax.get_ylim()[1] * 0.95, f'{int(threshold_val)}m', 
+                   ha='center', va='top', fontweight='bold', 
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor=color, alpha=0.8))
+        
+        # Customize the plot
+        ax.set_xlabel('Afstand fra lokalitet til vandløb (meter)')
+        ax.set_ylabel('Antal lokaliteter')
+        ax.set_xlim(0, 500)
+        
+        # Create detailed title with category info
+        category_name = category.replace('_', ' ').title()
+        max_threshold = thresholds['maksimal_m']
+        total_sites = len(distances)
+        within_max = len([d for d in distances if d <= max_threshold])
+        effectiveness_pct = (within_max / total_sites * 100) if total_sites > 0 else 0
+        
+        ax.set_title(f'{category_name} - Multi-Threshold Distance Distribution\n'
+                    f'Alle lokaliteter med {category_name.lower()}-forbindelser (Total: {total_sites} lokaliteter)', 
+                    fontsize=14, fontweight='bold', pad=20)
+        
+        # Add comprehensive effectiveness summary box
+        effectiveness_text = f'''EFFEKTIVITET:
+60% fraktil ({thresholds["fractile_60_m"]}m): {len(distances_60)} lokaliteter ({len(distances_60)/total_sites*100:.1f}%)
+75% fraktil ({thresholds["fractile_75_m"]}m): {len(distances_60)+len(distances_75)} lokaliteter ({(len(distances_60)+len(distances_75))/total_sites*100:.1f}%)
+90% fraktil ({thresholds["fractile_90_m"]}m): {within_max-len(distances_max)} lokaliteter ({(within_max-len(distances_max))/total_sites*100:.1f}%)
+Maksimal ({max_threshold}m): {within_max} lokaliteter ({effectiveness_pct:.1f}%)
+
+UDEN FOR GRÆNSE: {len(distances_outside)} lokaliteter ({len(distances_outside)/total_sites*100:.1f}%)'''
+        
+        ax.text(0.98, 0.98, effectiveness_text, transform=ax.transAxes, va='top', ha='right',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor=COLORS['light_gray'], alpha=0.9),
+                fontsize=9, family='monospace')
+        
+        # Add legend
+        ax.legend(loc='upper right', bbox_to_anchor=(0.97, 0.55), frameon=True, fancybox=True, shadow=True)
+        
+        # Add grid for better readability
+        ax.grid(True, axis='y', alpha=0.3, linestyle='-', linewidth=0.5)
+        ax.set_axisbelow(True)
+        
+        # Save the amazing plot
+        safe_save_figure(figures_path, f"11_{category.lower()}_multi_threshold_distribution")
+        
+        print(f"✓ {category}: {effectiveness_pct:.1f}% effective at max threshold ({within_max}/{total_sites} sites)")
+    
+    print(f"🚀 Multi-threshold distance distribution plots completed!")
+    print(f"📊 Created {len(category_sites)} category-specific threshold effectiveness plots")
+
+def create_enhanced_compound_specific_visualizations():
+    """Create enhanced compound-specific visualizations including waterfall and distance distribution charts."""
+    print("Creating enhanced compound-specific visualizations with multi-threshold analysis...")
+    
+    from config import get_visualization_path
+    figures_path = get_visualization_path('step5')
+    
+    try:
+        # Create the original compound-specific plots
+        print("1. Creating original compound-specific plots...")
+        create_compound_specific_visualizations()
+        print("✓ Original plots completed")
+        
+        # Add the amazing waterfall chart
+        print("2. Creating threshold waterfall chart...")
+        create_threshold_waterfall_chart(figures_path)
+        print("✓ Waterfall chart completed")
+        
+        # Add the AMAZING multi-threshold distance distributions  
+        print("3. Creating multi-threshold distance distributions...")
+        create_multi_threshold_distance_distributions(figures_path)
+        print("✓ Multi-threshold distributions completed")
+        
+        print(f"✅ ALL enhanced compound-specific visualizations completed in: {figures_path}")
+        
+    except Exception as e:
+        print(f"❌ Error in enhanced visualizations: {e}")
+        import traceback
+        traceback.print_exc()
