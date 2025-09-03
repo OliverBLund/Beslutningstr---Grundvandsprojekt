@@ -21,7 +21,7 @@ from config import validate_input_files, get_output_path
 from step1_all_gvfk import run_step1
 from step2_river_contact import run_step2
 from step3_v1v2_sites import run_step3
-from step5_risk_assessment import run_step5, run_comprehensive_step5
+from step5_risk_assessment import run_step5
 
 # Suppress shapely deprecation warnings
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -82,10 +82,10 @@ def main():
     results['step4'] = {'distance_results': distance_results}
     
     # Step 5: Risk Assessment
-    comprehensive_results = run_comprehensive_step5()
+    step5_results = run_step5()
     
-    if not comprehensive_results['success']:
-        print(f"ERROR: Step 5 failed - {comprehensive_results.get('error_message', 'Unknown error')}")
+    if not step5_results['success']:
+        print(f"ERROR: Step 5 failed")
         results['step5'] = {
             'general_high_risk_sites': None, 
             'general_analysis': None, 
@@ -94,9 +94,9 @@ def main():
             'high_risk_gvfk_count': 0
         }
     else:
-        # Extract data from comprehensive results
-        general_results = comprehensive_results['general_results']
-        compound_results = comprehensive_results['compound_results']
+        # Extract data from step5 results
+        general_results = step5_results['general_results']
+        compound_results = step5_results['compound_results']
         
         general_sites, general_analysis = general_results
         compound_sites, compound_analysis = compound_results

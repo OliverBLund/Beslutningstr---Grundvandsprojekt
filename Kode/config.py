@@ -24,6 +24,7 @@ WORKFLOW_SETTINGS = {
     'additional_thresholds_m': [250, 500, 1000, 1500, 2000],  # For visualizations
     'progress_interval_percent': 10,
     'contact_filter_value': 1,
+    'enable_multi_threshold_analysis': False,  # EXPERIMENTAL: Set to True to enable 60%/75%/90%/max fractile analysis
 }
 
 # Essential output files (only files used by downstream steps or visualizations)
@@ -44,6 +45,7 @@ OUTPUT_FILES = {
     # Final outputs  
     'step5_high_risk_sites': os.path.join(RESULTS_PATH, f'step5_high_risk_sites_{WORKFLOW_SETTINGS["risk_threshold_m"]}m.csv'),
     'step5_compound_specific_sites': os.path.join(RESULTS_PATH, 'step5_compound_specific_sites.csv'),
+    'step5_compound_detailed_combinations': os.path.join(RESULTS_PATH, 'step5_compound_detailed_combinations.csv'),
     'step5_compound_gvfk_high_risk': os.path.join(RESULTS_PATH, 'step5_compound_gvfk_high_risk.shp'),
     'workflow_summary': os.path.join(RESULTS_PATH, 'workflow_summary.csv'),
     

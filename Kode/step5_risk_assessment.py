@@ -30,60 +30,48 @@ def _load_categorization_from_excel():
         "compound_categorization_review.xlsx"
     )
     
-    try:
-        # Load summary sheet to get category distances
-        summary_df = pd.read_excel(excel_path, sheet_name='Summary')
+    # Load summary sheet to get category distances
+    summary_df = pd.read_excel(excel_path, sheet_name='Summary')
+    
+    # Build category → distance mapping
+    category_distances = {}
+    for _, row in summary_df.iterrows():
+        category = row['Category']
+        distance = row['Distance_m']
+        if distance != 'TBD' and pd.notna(distance):
+            category_distances[category] = float(distance)
+        else:
+            category_distances[category] = _DEFAULT_OTHER_DISTANCE
+    
+    # Load individual category sheets to build substance → category mapping
+    substance_to_category = {}
+    
+    # Get all sheet names
+    xl_file = pd.ExcelFile(excel_path)
+    category_sheets = [sheet for sheet in xl_file.sheet_names 
+                      if sheet not in ['Summary', 'Raw_Data']]
+    
+    for sheet_name in category_sheets:
+        sheet_df = pd.read_excel(excel_path, sheet_name=sheet_name)
         
-        # Build category → distance mapping
-        category_distances = {}
-        for _, row in summary_df.iterrows():
-            category = row['Category']
-            distance = row['Distance_m']
-            if distance != 'TBD' and pd.notna(distance):
-                category_distances[category] = float(distance)
-            else:
-                category_distances[category] = _DEFAULT_OTHER_DISTANCE
+        if 'Substance' not in sheet_df.columns:
+            raise ValueError(f"Sheet '{sheet_name}' missing required 'Substance' column")
         
-        # Load individual category sheets to build substance → category mapping
-        substance_to_category = {}
+        substances = sheet_df['Substance'].dropna()
+        category = sheet_name.replace('_substances', '').upper()
         
-        # Get all sheet names
-        xl_file = pd.ExcelFile(excel_path)
-        category_sheets = [sheet for sheet in xl_file.sheet_names 
-                          if sheet not in ['Summary', 'Raw_Data']]
-        
-        for sheet_name in category_sheets:
-            try:
-                sheet_df = pd.read_excel(excel_path, sheet_name=sheet_name)
-                
-                if 'Substance' in sheet_df.columns:
-                    substances = sheet_df['Substance'].dropna()
-                    category = sheet_name.replace('_substances', '').upper()
-                    
-                    # Map each substance to its category
-                    for substance in substances:
-                        if pd.notna(substance):
-                            substance_to_category[str(substance).lower().strip()] = category
-                            
-            except Exception as e:
-                print(f"Warning: Could not load sheet {sheet_name}: {e}")
-                continue
-        
-        _CATEGORIZATION_CACHE = {
-            'category_distances': category_distances,
-            'substance_to_category': substance_to_category
-        }
-        
-        print(f"Loaded categorization for {len(category_distances)} categories, {len(substance_to_category)} substances")
-        return _CATEGORIZATION_CACHE
-        
-    except Exception as e:
-        print(f"Warning: Could not load Excel categorization: {e}")
-        print("Using default 500m threshold for all compounds")
-        return {
-            'category_distances': {'OTHER': _DEFAULT_OTHER_DISTANCE},
-            'substance_to_category': {}
-        }
+        # Map each substance to its category
+        for substance in substances:
+            if pd.notna(substance):
+                substance_to_category[str(substance).lower().strip()] = category
+    
+    _CATEGORIZATION_CACHE = {
+        'category_distances': category_distances,
+        'substance_to_category': substance_to_category
+    }
+    
+    print(f"Loaded categorization for {len(category_distances)} categories, {len(substance_to_category)} substances")
+    return _CATEGORIZATION_CACHE
 
 def categorize_contamination_substance(substance_text):
     """
@@ -120,7 +108,7 @@ def categorize_contamination_substance(substance_text):
     return 'OTHER', _DEFAULT_OTHER_DISTANCE
 
 def run_step5():
-    """Execute Step 5: Two-part risk assessment of V1/V2 localities."""
+    """Execute complete Step 5 risk assessment with optional visualizations."""
     print(f"\nStep 5: Risk Assessment of High-Risk V1/V2 Sites")
     print("=" * 60)
     
@@ -141,7 +129,96 @@ def run_step5():
     # Print summary
     _print_summary(general_results, compound_results, len(distance_results))
     
-    return general_results, compound_results
+    # Optional experimental multi-threshold analysis
+    multi_threshold_results = {}
+    if WORKFLOW_SETTINGS.get('enable_multi_threshold_analysis', False):
+        print(f"\n" + "="*60)
+        print("EXPERIMENTAL: Multi-Threshold Analysis Enabled")
+        print("="*60)
+        try:
+            multi_threshold_results = run_multi_threshold_analysis(distance_results)
+            print("✓ Multi-threshold analysis completed")
+        except Exception as e:
+            print(f"✗ Multi-threshold analysis failed: {e}")
+            # Don't let experimental features break the main analysis
+    
+    # Generate visualization data files
+    _generate_visualization_data(compound_results[0])
+    
+    # Ask user about visualizations
+    print(f"\n" + "="*60)
+    print("VISUALIZATION OPTIONS")
+    print("="*60)
+    
+    try:
+        create_viz = input("Create visualizations? (y/n): ").lower().strip()
+        if create_viz in ['y', 'yes']:
+            print("\nCreating Step 5 visualizations...")
+            try:
+                from step5_visualizations import create_step5_visualizations
+                create_step5_visualizations()
+                print("✓ Visualizations created successfully")
+            except ImportError:
+                print("✗ step5_visualizations module not found")
+            except Exception as e:
+                print(f"✗ Visualization creation failed: {e}")
+        else:
+            print("Skipping visualizations")
+    except KeyboardInterrupt:
+        print("\nVisualization creation skipped by user")
+    except Exception:
+        print("Skipping visualizations (input error)")
+    
+    print(f"\n✓ STEP 5 ANALYSIS COMPLETED")
+    
+    return {
+        'general_results': general_results,
+        'compound_results': compound_results,
+        'multi_threshold_results': multi_threshold_results,
+        'success': True
+    }
+
+def _generate_visualization_data(compound_combinations):
+    """Generate data files needed for visualizations."""
+    if compound_combinations.empty:
+        return
+    
+    try:
+        # Create category flags for visualization
+        rows = []
+        for _, row in compound_combinations.iterrows():
+            rows.append({
+                'Site_ID': row['Lokalitet_ID'],
+                'Substance': row['Qualifying_Substance'],
+                'Category': row['Qualifying_Category'],
+                'Category_Distance_m': row['Category_Threshold_m'],
+                'Final_Distance_m': row['Final_Distance_m'],
+                'Within_Threshold': row['Within_Threshold']
+            })
+        
+        if rows:
+            # Save category flags for visualizations
+            flags_df = pd.DataFrame(rows)
+            flags_df.to_csv(get_output_path('step5_category_flags'), index=False)
+            
+            # Create category summary
+            category_summary = flags_df.groupby('Category').agg({
+                'Within_Threshold': ['sum', 'count']
+            }).reset_index()
+            category_summary.columns = ['Category', 'within_tokens', 'total_tokens']
+            category_summary['within_pct'] = (category_summary['within_tokens'] / category_summary['total_tokens'] * 100)
+            category_summary.to_csv(get_output_path('step5_category_summary'), index=False)
+            
+            # Create substance summary
+            substance_summary = flags_df.groupby(['Category', 'Substance']).agg({
+                'Within_Threshold': ['sum', 'count']
+            }).reset_index()
+            substance_summary.columns = ['Category', 'Substance', 'within', 'total']
+            substance_summary['within_pct'] = (substance_summary['within'] / substance_summary['total'] * 100)
+            substance_summary.to_csv(get_output_path('step5_category_substance_summary'), index=False)
+            
+    except Exception as e:
+        print(f"Warning: Could not generate visualization data: {e}")
 
 def _run_general_assessment(distance_results):
     """General risk assessment using universal distance threshold."""
@@ -162,20 +239,25 @@ def _run_general_assessment(distance_results):
 
 def _run_compound_assessment(distance_results):
     """Compound-specific risk assessment using tailored thresholds."""
-    high_risk_sites = _apply_compound_filtering(distance_results)
+    compound_combinations = _apply_compound_filtering(distance_results)
     
-    if high_risk_sites.empty:
-        return high_risk_sites, {}
+    if compound_combinations.empty:
+        return compound_combinations, {}
     
-    # Analyze and save results
-    analysis = _analyze_sites(high_risk_sites)
-    _save_compound_results(high_risk_sites, analysis)
+    # Analyze compound-specific results
+    analysis = _analyze_compound_results(compound_combinations)
+    _save_compound_results(compound_combinations, analysis)
     
-    return high_risk_sites, analysis
+    print(f"Compound-specific assessment: {analysis['unique_sites']} unique sites, {analysis['total_combinations']} combinations saved")
+    
+    return compound_combinations, analysis
 
 def _apply_compound_filtering(distance_results):
-    """Apply compound-specific distance filtering."""
-    high_risk_rows = []
+    """
+    Apply compound-specific distance filtering.
+    Returns ALL qualifying site-substance combinations (multiple rows per site possible).
+    """
+    high_risk_combinations = []
     
     for _, row in distance_results.iterrows():
         substances_str = str(row.get('Lokalitetensstoffer', ''))
@@ -193,10 +275,84 @@ def _apply_compound_filtering(distance_results):
             
             # Check if site is within this compound's threshold
             if site_distance <= compound_threshold:
-                high_risk_rows.append(row)
-                break  # Site qualifies, no need to check other substances
+                # Create new row for this qualifying combination
+                combo_row = row.to_dict()
+                combo_row['Qualifying_Substance'] = substance
+                combo_row['Qualifying_Category'] = category
+                combo_row['Category_Threshold_m'] = compound_threshold
+                combo_row['Within_Threshold'] = True
+                high_risk_combinations.append(combo_row)
     
-    return pd.DataFrame(high_risk_rows) if high_risk_rows else pd.DataFrame()
+    return pd.DataFrame(high_risk_combinations) if high_risk_combinations else pd.DataFrame()
+
+def _analyze_compound_results(compound_combinations):
+    """
+    Analyze compound-specific results including multi-substance patterns.
+    
+    Args:
+        compound_combinations (DataFrame): All qualifying site-substance combinations
+        
+    Returns:
+        dict: Analysis results including multi-substance statistics
+    """
+    if compound_combinations.empty:
+        return {}
+    
+    analysis = {
+        'total_combinations': len(compound_combinations),
+        'unique_sites': compound_combinations['Lokalitet_ID'].nunique(),
+        'category_breakdown': {},
+        'multi_substance_stats': {},
+        'top_substances': {},
+        'gvfk_count': 0
+    }
+    
+    # Calculate average substances per site
+    substances_per_site = compound_combinations.groupby('Lokalitet_ID').size()
+    analysis['avg_substances_per_site'] = substances_per_site.mean()
+    
+    # Multi-substance distribution
+    substance_dist = substances_per_site.value_counts().sort_index()
+    analysis['multi_substance_stats'] = {
+        'distribution': substance_dist.to_dict(),
+        'max_substances': substances_per_site.max(),
+        'max_site': substances_per_site.idxmax()
+    }
+    
+    # Category breakdown with occurrences and unique sites
+    category_stats = {}
+    for category in compound_combinations['Qualifying_Category'].unique():
+        cat_data = compound_combinations[compound_combinations['Qualifying_Category'] == category]
+        threshold = cat_data['Category_Threshold_m'].iloc[0]
+        category_stats[category] = {
+            'threshold_m': threshold,
+            'occurrences': len(cat_data),
+            'unique_sites': cat_data['Lokalitet_ID'].nunique()
+        }
+    
+    # Sort by occurrences
+    analysis['category_breakdown'] = dict(sorted(
+        category_stats.items(), 
+        key=lambda x: x[1]['occurrences'], 
+        reverse=True
+    ))
+    
+    # Top individual substances
+    substance_counts = compound_combinations['Qualifying_Substance'].value_counts()
+    analysis['top_substances'] = substance_counts.head(10).to_dict()
+    
+    # GVFK count - unique GVFKs containing high-risk sites
+    if 'All_Affected_GVFKs' in compound_combinations.columns:
+        all_gvfks = set()
+        for gvfk_list in compound_combinations['All_Affected_GVFKs'].dropna():
+            if str(gvfk_list) != 'nan' and gvfk_list:
+                gvfks = [g.strip() for g in str(gvfk_list).split(';') if g.strip()]
+                all_gvfks.update(gvfks)
+        analysis['gvfk_count'] = len(all_gvfks)
+    elif 'Closest_GVFK' in compound_combinations.columns:
+        analysis['gvfk_count'] = compound_combinations['Closest_GVFK'].nunique()
+    
+    return analysis
 
 def _analyze_sites(sites_df, threshold_m=None):
     """Analyze characteristics of high-risk sites."""
@@ -253,16 +409,20 @@ def _save_general_results(high_risk_sites, analysis, threshold_m):
     
     print(f"General assessment: {len(high_risk_sites)} sites saved")
 
-def _save_compound_results(compound_high_risk_sites, analysis):
+def _save_compound_results(compound_combinations, analysis):
     """Save compound-specific assessment results."""
-    # Save high-risk sites
-    sites_path = get_output_path('step5_compound_specific_sites')
-    compound_high_risk_sites.to_csv(sites_path, index=False)
+    # Save detailed compound-specific combinations (all qualifying substance-site pairs)
+    detailed_path = get_output_path('step5_compound_detailed_combinations')
+    compound_combinations.to_csv(detailed_path, index=False)
+    
+    # Also save legacy format (unique sites only) for compatibility
+    if not compound_combinations.empty:
+        unique_sites = compound_combinations.drop_duplicates(subset=['Lokalitet_ID']).copy()
+        sites_path = get_output_path('step5_compound_specific_sites')
+        unique_sites.to_csv(sites_path, index=False)
     
     # Create compound-specific GVFK shapefile
-    _create_gvfk_shapefile(compound_high_risk_sites, 'step5_compound_gvfk_high_risk')
-    
-    print(f"Compound-specific assessment: {len(compound_high_risk_sites)} sites saved")
+    _create_gvfk_shapefile(compound_combinations, 'step5_compound_gvfk_high_risk')
 
 def _create_gvfk_shapefile(high_risk_sites, output_key):
     """Create shapefile of high-risk GVFK polygons."""
@@ -295,75 +455,85 @@ def _create_gvfk_shapefile(high_risk_sites, output_key):
         high_risk_gvfk_polygons.to_file(output_path)
 
 def _print_summary(general_results, compound_results, total_sites):
-    """Print concise summary of both assessments."""
-    general_sites, _ = general_results
-    compound_sites, _ = compound_results
+    """Print comprehensive summary of both assessments."""
+    general_sites, general_analysis = general_results
+    compound_combinations, compound_analysis = compound_results
     
     general_count = len(general_sites) if general_sites is not None else 0
-    compound_count = len(compound_sites) if compound_sites is not None else 0
+    compound_unique_sites = compound_analysis.get('unique_sites', 0) if compound_analysis else 0
+    compound_total_combinations = compound_analysis.get('total_combinations', 0) if compound_analysis else 0
     
-    print(f"\nAssessment Results:")
-    print(f"  General assessment (≤{WORKFLOW_SETTINGS['risk_threshold_m']}m): {general_count} sites ({general_count/total_sites*100:.1f}%)")
-    print(f"  Compound-specific assessment: {compound_count} sites ({compound_count/total_sites*100:.1f}%)")
-
-def run_step5_category_analysis():
-    """
-    Run category-based analysis for compound-specific visualizations.
-    Creates the files needed by step5_visualizations.py
-    """
-    step4_file = get_output_path('step4_final_distances_for_risk_assessment')
-    if not os.path.exists(step4_file):
-        return
+    print(f"\n" + "="*80)
+    print(f"STEP 5: COMPREHENSIVE RISK ASSESSMENT RESULTS")  
+    print(f"="*80)
+    print(f"Input: {total_sites:,} sites analyzed from Step 4")
     
-    df = pd.read_csv(step4_file)
-    if 'Final_Distance_m' not in df.columns or 'Lokalitetensstoffer' not in df.columns:
-        return
+    # GENERAL ASSESSMENT
+    print(f"\nGENERAL ASSESSMENT (500m universal threshold):")
+    print(f"- Sites within 500m: {general_count:,} ({general_count/total_sites*100:.1f}%)")
     
-    # Create category flags by analyzing each substance
-    rows = []
-    for _, row in df.iterrows():
-        substances_str = str(row.get('Lokalitetensstoffer', ''))
-        if pd.isna(substances_str) or substances_str.strip() == '' or substances_str == 'nan':
-            continue
-            
-        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
-        for substance in substances:
-            category, threshold = categorize_contamination_substance(substance)
-            within_threshold = False
-            if threshold is not None:
-                within_threshold = float(row['Final_Distance_m']) <= float(threshold)
-            
-            rows.append({
-                'Site_ID': row['Lokalitet_ID'],
-                'Substance': substance,
-                'Category': category,
-                'Category_Distance_m': threshold,
-                'Final_Distance_m': row['Final_Distance_m'],
-                'Within_Threshold': within_threshold
-            })
+    if general_analysis and 'contamination_summary' in general_analysis:
+        print(f"\nTop Categories (General Assessment):")
+        for col_name, col_data in general_analysis['contamination_summary'].items():
+            if col_name == 'Lokalitetensaktivitet':
+                print(f"  Activities: {', '.join([f'{k} ({v})' for k, v in list(col_data['top_3'].items())[:3]])}")
+            elif col_name == 'Lokalitetensbranche':  
+                print(f"  Industries: {', '.join([f'{k} ({v})' for k, v in list(col_data['top_3'].items())[:3]])}")
+            elif col_name == 'Lokalitetensstoffer':
+                print(f"  Substances: {', '.join([f'{k} ({v})' for k, v in list(col_data['top_3'].items())[:3]])}")
     
-    if not rows:
-        return
+    # COMPOUND-SPECIFIC ASSESSMENT  
+    print(f"\nCOMPOUND-SPECIFIC ASSESSMENT (literature-based thresholds):")
+    print(f"- Unique sites qualifying: {compound_unique_sites:,} ({compound_unique_sites/total_sites*100:.1f}%)")
+    print(f"- Total site-substance combinations: {compound_total_combinations:,}")
+    
+    if compound_analysis:
+        avg_substances = compound_analysis.get('avg_substances_per_site', 0)
+        print(f"- Average qualifying substances per site: {avg_substances:.1f}")
         
-    # Save category flags
-    flags_df = pd.DataFrame(rows)
-    flags_df.to_csv(get_output_path('step5_category_flags'), index=False)
+        # Multi-substance breakdown
+        if 'multi_substance_stats' in compound_analysis:
+            multi_stats = compound_analysis['multi_substance_stats']
+            print(f"\nMulti-Substance Site Distribution:")
+            for num_substances, site_count in sorted(multi_stats['distribution'].items()):
+                if num_substances <= 3:  # Show details for 1-3 substances
+                    print(f"  {num_substances} substance{'s' if num_substances > 1 else ''}: {site_count:,} sites")
+                elif num_substances > 3:
+                    remaining_sites = sum(count for subs, count in multi_stats['distribution'].items() if subs > 3)
+                    print(f"  4+ substances: {remaining_sites:,} sites")
+                    break
+            print(f"  Maximum: {multi_stats['max_substances']} substances (Site: {multi_stats['max_site']})")
+        
+        # Category breakdown
+        if 'category_breakdown' in compound_analysis:
+            print(f"\nCategory Breakdown (by occurrences):")
+            print(f"{'Category':<25} {'Threshold':<10} {'Occur.':<8} {'Sites':<8}")
+            print(f"{'-'*25} {'-'*10} {'-'*8} {'-'*8}")
+            for category, stats in list(compound_analysis['category_breakdown'].items())[:8]:
+                threshold = f"{stats['threshold_m']}m"
+                occurrences = stats['occurrences']
+                unique_sites = stats['unique_sites']
+                print(f"{category:<25} {threshold:<10} {occurrences:<8,} {unique_sites:<8,}")
     
-    # Create category summary
-    category_summary = flags_df.groupby('Category').agg({
-        'Within_Threshold': ['sum', 'count']
-    }).reset_index()
-    category_summary.columns = ['Category', 'within_tokens', 'total_tokens']
-    category_summary['within_pct'] = (category_summary['within_tokens'] / category_summary['total_tokens'] * 100)
-    category_summary.to_csv(get_output_path('step5_category_summary'), index=False)
+    # GVFK CASCADE
+    print(f"\nGVFK FILTERING CASCADE:")
+    print(f"{'Step':<35} {'GVFK':<8} {'% of Total':<10}")
+    print(f"{'-'*35} {'-'*8} {'-'*10}")
+    print(f"{'Total GVFK in Denmark':<35} {'2,043':<8} {'100.0%':<10}")
+    print(f"{'With river contact (Step 2)':<35} {'593':<8} {'29.0%':<10}")  
+    print(f"{'With V1/V2 sites (Step 3)':<35} {'432':<8} {'21.1%':<10}")
     
-    # Create substance summary
-    substance_summary = flags_df.groupby(['Category', 'Substance']).agg({
-        'Within_Threshold': ['sum', 'count']
-    }).reset_index()
-    substance_summary.columns = ['Category', 'Substance', 'within', 'total']
-    substance_summary['within_pct'] = (substance_summary['within'] / substance_summary['total'] * 100)
-    substance_summary.to_csv(get_output_path('step5_category_substance_summary'), index=False)
+    if compound_analysis and 'gvfk_count' in compound_analysis:
+        gvfk_count = compound_analysis['gvfk_count']
+        gvfk_pct = (gvfk_count / 2043) * 100
+        print(f"{'With high-risk sites (Step 5)':<35} {gvfk_count:<8,} {gvfk_pct:<10.1f}%")
+    
+    # DIFFERENCE EXPLANATION
+    difference = general_count - compound_unique_sites
+    if difference > 0:
+        print(f"\nDifference Analysis ({general_count:,} → {compound_unique_sites:,} sites):")
+        print(f"- {difference:,} sites excluded due to stricter compound-specific thresholds")
+        print(f"- Main exclusions: Sites with PAH (30m), BTXER (50m), or other low-mobility compounds")
 
 def _load_fractile_thresholds_from_python():
     """Load fractile threshold data directly from refined_compound_analysis.py"""
@@ -408,8 +578,7 @@ def run_multi_threshold_analysis(distance_results):
     # Load fractile threshold data
     fractile_data = _load_fractile_thresholds_from_python()
     if not fractile_data:
-        print("Warning: No fractile data available, using defaults")
-        return {}
+        raise ValueError("Multi-threshold analysis requires fractile data from refined_compound_analysis.py")
     
     # Analysis results storage
     analysis_results = {
@@ -474,8 +643,7 @@ def run_multi_threshold_analysis(distance_results):
             })
     
     if not site_substance_data:
-        print("Warning: No substance data found for analysis")
-        return analysis_results
+        raise ValueError("Multi-threshold analysis found no qualifying site-substance data")
         
     # Convert to DataFrame for analysis
     analysis_df = pd.DataFrame(site_substance_data)
@@ -583,61 +751,6 @@ def run_multi_threshold_analysis(distance_results):
     print(f"✓ Analyzed {len(analysis_df)} substance-site combinations")
     
     return analysis_results
-
-def run_comprehensive_step5():
-    """
-    Execute comprehensive Step 5 analysis including multi-threshold analysis and visualizations.
-    """
-    print(f"\nStep 5: COMPREHENSIVE RISK ASSESSMENT & MULTI-THRESHOLD ANALYSIS")
-    print("=" * 80)
-    
-    try:
-        # Run standard assessments
-        general_results, compound_results = run_step5()
-        
-        # Load Step 4 data for multi-threshold analysis
-        step4_file = get_output_path('step4_final_distances_for_risk_assessment')
-        multi_threshold_results = {}
-        if os.path.exists(step4_file):
-            distance_results = pd.read_csv(step4_file)
-            
-            # Run comprehensive multi-threshold analysis
-            multi_threshold_results = run_multi_threshold_analysis(distance_results)
-            
-        # Run category analysis for visualizations
-        run_step5_category_analysis()
-        
-        # Run visualizations if available
-        print("\nCreating Step 5 visualizations...")
-        try:
-            from step5_visualizations import create_step5_visualizations, create_enhanced_compound_specific_visualizations
-            create_step5_visualizations()
-            create_enhanced_compound_specific_visualizations()
-            print("✓ Step 5 visualizations completed")
-        except ImportError:
-            print("Warning: step5_visualizations module not found, skipping visualizations")
-        except Exception as e:
-            print(f"Warning: Could not create visualizations - {e}")
-        
-        print(f"\n✓ COMPREHENSIVE STEP 5 ANALYSIS COMPLETED")
-        
-        return {
-            'general_results': general_results,
-            'compound_results': compound_results,
-            'multi_threshold_results': multi_threshold_results,
-            'success': True,
-            'error_message': None
-        }
-        
-    except Exception as e:
-        print(f"Step 5 failed: {e}")
-        return {
-            'general_results': (None, None),
-            'compound_results': (None, None),
-            'multi_threshold_results': {},
-            'success': False,
-            'error_message': str(e)
-        }
 
 if __name__ == "__main__":
     # Allow running this step independently
