@@ -217,9 +217,20 @@ def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type
     if filtered_csv.empty:
         return []
     
-    # Deduplicate by lokalitet-GVFK combination before processing
-    unique_csv = filtered_csv.drop_duplicates(subset=['Lokalitet_', 'Navn']).copy()
-    print(f"{site_type}: {len(unique_csv):,} unique lokalitet-GVFK combinations")
+    # Aggregate by lokalitet-GVFK combination, preserving all substances
+    # Group and aggregate to ensure all substances are preserved
+    agg_dict = {}
+    
+    # Always aggregate substances with semicolon separation
+    agg_dict['Lokalitetensstoffer'] = lambda x: '; '.join(x.dropna().astype(str).unique())
+    
+    # For other columns, take first value (should be identical within each group)
+    for col in filtered_csv.columns:
+        if col not in ['Lokalitet_', 'Navn', 'Lokalitetensstoffer']:
+            agg_dict[col] = 'first'
+    
+    unique_csv = filtered_csv.groupby(['Lokalitet_', 'Navn'], as_index=False).agg(agg_dict)
+    print(f"{site_type}: {len(unique_csv):,} unique lokalitet-GVFK combinations (substances aggregated)")
     
     # Add site type column
     unique_csv['Lokalitete'] = site_type
@@ -281,10 +292,25 @@ def _combine_and_deduplicate_v1v2(v1_combined_list, v2_combined_list):
             ]
             
             if count > 1:
-                # Take first record and update site type
-                first_record = subset.iloc[0:1].copy()
-                first_record['Lokalitete'] = 'V1 og V2'
-                v1v2_deduped_list.append(first_record)
+                # Aggregate substances from both V1 and V2 records
+                aggregated_record = subset.iloc[0:1].copy()  # Start with first record
+                
+                # Aggregate substances from all duplicate records
+                all_substances = []
+                for _, row in subset.iterrows():
+                    substances_str = str(row.get('Lokalitetensstoffer', ''))
+                    if pd.notna(substances_str) and substances_str.strip() != '' and substances_str != 'nan':
+                        # Split existing semicolon-separated substances and add to list
+                        substances = [s.strip() for s in substances_str.split(';') if s.strip()]
+                        all_substances.extend(substances)
+                
+                # Combine unique substances
+                if all_substances:
+                    unique_substances = list(dict.fromkeys(all_substances))  # Preserves order while removing duplicates
+                    aggregated_record['Lokalitetensstoffer'] = '; '.join(unique_substances)
+                
+                aggregated_record['Lokalitete'] = 'V1 og V2'
+                v1v2_deduped_list.append(aggregated_record)
             else:
                 # Keep single record as is
                 v1v2_deduped_list.append(subset)

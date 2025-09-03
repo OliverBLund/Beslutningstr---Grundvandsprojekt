@@ -270,10 +270,14 @@ grundvandsforekomster (VP3)
    - Join CSV-attributter med dissolved geometrier via `Lokalitet_`
    - **Resultat**: Komplet spatial+attribut datasæt
 
-5. **Deduplikering (to-trins proces)**:
-   - **Trin 1**: Fjern duplikerede lokalitet-GVFK kombinationer inden for V1/V2
+5. **Deduplikering og datakonsolidering (to-trins proces)**:
+   - **Trin 1**: Aggreger lokalitet-GVFK kombinationer inden for V1/V2
+     - **Stoffer**: Sammensæt alle unikke stoffer med semikolon-adskillelse
+     - **Andre felter**: Bevar første værdi (identisk indenfor samme kombination)
+     - **Årsag**: Bevarer ALLE forureningsstoffer per lokalitet-GVFK kombination
    - **Trin 2**: Håndter lokaliteter i både V1 og V2 (marker som "V1 og V2")
-   - **Årsag**: Sikrer hver lokalitet-GVFK kombination optræder præcis én gang
+     - **Stoffer**: Sammensæt stoffer fra både V1 og V2 registreringer
+     - **Årsag**: Sikrer komplet stoffortegnelse for lokaliteter med dobbelt klassificering
 
 **Hvorfor en-til-mange relationer bevares**:
 - En enkelt forurenet lokalitet kan overlappe flere GVFK-polygoner
@@ -397,40 +401,77 @@ Closest_GVFK: DK_GVF_002
 ```
 
 
-## Trin 5: Tærskel-vurdering og Kategorisering
-**Formål**: Identificere lokaliteter med høj risiko baseret på afstand og forureningsdata.
+## Trin 5: Risikovurdering af Højrisiko V1/V2-lokaliteter
+**Formål**: Identificere lokaliteter med høj risiko for grundvandspåvirkning baseret på afstand til vandløb og stofspecifikke mobilitetsegenskaber.
 
 **Inddata fra Trin 4**:
-- `step4_final_distances_for_risk_assessment.csv` med endelige afstande per lokalitet
-- Alle nødvendige kolonner til risikovurdering er inkluderet
+- `step4_final_distances_for_risk_assessment.csv` med 16.934 analyserede lokaliteter
+- Endelige afstande per lokalitet med bevarede forureningsstoffer (semikolon-separerede)
+- Excel-baseret stofkategorisering med litteraturbaserede tærskelafstande
 
-**Metode**:
-1. **Afstandsfiltrering**: Filtrer lokaliteter med `Final_Distance_m ≤ 500` meter
-2. **Risikoanalyse**: Analyser baseret på:
-   - `Lokalitetensbranche`: Industri-/brancherisiko
-   - `Lokalitetensaktivitet`: Aktivitetsrisiko
-   - `Lokalitetensstoffer`: Specifikke forureningsstoffer
-3. **Multi-GVFK analyse**: Undersøg lokaliteter der påvirker flere GVFK
+**Metodisk Tilgang**:
+
+**1. Generel vurdering (500m universal tærskel)**:
+- Universelt afstandskriterium: `Final_Distance_m ≤ 500m` 
+- Omfatter alle forureningstyper med samme afstandstærskel
+- Konservativ tilgang til screening af potentielle risiko-lokaliteter
+
+**2. Stofspecifik vurdering (litteraturbaserede tærskler)**:
+- **Stofopdeling**: Hver lokalitet splittes til individuelle stof-lokalitet kombinationer
+- **Kategorisering**: 9 stofkategorier med specifikke mobilitets-tærskler:
+  - **PAHER** (PAH): 30m (høj retention, lav mobilitet)
+  - **BTXER** (BTEX): 50m (moderat mobilitet) 
+  - **UORGANISKE_FORBINDELSER**: 150m (variabel mobilitet)
+  - **KLOREDE_KULBRINTER**: 200m (moderat mobilitet)
+  - **PHENOLER**: 300m (høj mobilitet)
+  - **CHLORINATED_SOLVENTS**: 500m (høj mobilitet)
+  - **PESTICIDER**: 500m (variabel, ofte høj mobilitet)
+  - **OTHER**: 500m (konservativ tilgang)
+- **Kvalifikation**: Kun lokaliteter inden for stofspecifik tærskel inkluderes
+- **Multi-stof lokaliteter**: Hver kvalificerende stof genererer separat resultat-række
 
 **Aktuelle Resultater**:
-- **3.606 højrisiko-lokaliteter** inden for 500m af vandløb (21,3% af alle lokaliteter)
-- **350 GVFK indeholder højrisiko-lokaliteter** (17,1% af alle GVFK, 81,0% af V1/V2 GVFK)
-- Afstandsstatistik for højrisiko-lokaliteter: 0,0m - 500,0m (gennemsnit: 232m, median: 229m)
 
-**Højrisiko-lokaliteter efter type**:
-- V2: 2.605 (72,2%)
-- V1 og V2: 560 (15,5%)
-- V1: 441 (12,2%)
+**Generel vurdering (500m tærskel)**:
+- **3.606 lokaliteter** kvalificerer som højrisiko (21,3% af alle analyserede)
+- **Fordeling efter lokalitetstype**: V2: 72%, V1+V2: 15%, V1: 13%
+- **Top kategorier**:
+  - *Brancher*: Servicestationer (651), Autoreparationsværksteder (614), Affaldsbehandling (388)
+  - *Aktiviteter*: Andet (897), Benzin/olie salg (661), Benzin/olie oplag (436)  
+  - *Stoffer*: Tungmetaller (675), Bly (661), Olieprodukter (561)
 
-**Forureningsanalyse (Top 5)**:
-- **Brancher**: Servicestationer (651), Autoreparationsværksteder (614), Affaldsbehandling (388)
-- **Aktiviteter**: Andet (897), Benzin/olie salg (661), Benzin/olie oplag (436)
-- **Stoffer**: Tungmetaller (451), Olieprodukter (250), Fyringsolie (226)
+**Stofspecifik vurdering (kategori-baserede tærskler)**:
+- **2.532 lokaliteter** kvalificerer (15,0% af alle analyserede)
+- **5.466 stof-lokalitet kombinationer** (gennemsnit 2,2 stoffer per lokalitet)
+- **1.074 lokaliteter færre** end generel vurdering pga. strengere tærskler
 
-**Multi-GVFK påvirkning**:
-- 2.969 lokaliteter (82,3%) påvirker flere GVFK
-- Gennemsnitligt 2,6 GVFK per multi-GVFK lokalitet
-- Maksimum 5 GVFK påvirket af én lokalitet
+**Multi-stof distribution**:
+- **1.502 lokaliteter** (59%): 1 kvalificerende stof
+- **435 lokaliteter** (17%): 2 kvalificerende stoffer
+- **241 lokaliteter** (10%): 3 kvalificerende stoffer  
+- **354 lokaliteter** (14%): 4+ kvalificerende stoffer
+- **Maksimum**: 32 stoffer (Lokalitet 751-00018)
+
+**Kategori-fordeling efter forekomst**:
+- **OTHER**: 2.058 forekomster (1.644 lokaliteter) - 500m tærskel
+- **UORGANISKE_FORBINDELSER**: 1.072 forekomster (594 lokaliteter) - 150m tærskel
+- **CHLORINATED_SOLVENTS**: 926 forekomster (480 lokaliteter) - 500m tærskel  
+- **PESTICIDER**: 642 forekomster (277 lokaliteter) - 500m tærskel
+- **BTXER**: 440 forekomster (233 lokaliteter) - 50m tærskel
+- **PHENOLER**: 142 forekomster (93 lokaliteter) - 300m tærskel
+- **PAHER**: 137 forekomster (77 lokaliteter) - 30m tærskel
+- **KLOREDE_KULBRINTER**: 33 forekomster (32 lokaliteter) - 200m tærskel
+
+**GVFK-filtreringskaskade**:
+- **Total GVFK Danmark**: 2.043 (100,0%)
+- **Med vandløbskontakt (Trin 2)**: 593 (29,0%)  
+- **Med V1/V2-lokaliteter (Trin 3)**: 432 (21,1%)
+- **Med højrisiko-lokaliteter (Trin 5)**: 320 (15,7%)
+
+**Metodiske forbedringer implementeret**:
+- **Stofaggregering i Trin 3**: Sikrer alle forureningsstoffer bevares gennem workflow
+- **Multi-stof håndtering**: Lokaliteter med både V1/V2-klassifikation får kombineret stoffortegnelse
+- **Stofspecifik risikoevaluering**: Hver stof evalueres mod sin kategori-specifikke tærskel
 
 # Tilstandsvurdering
 
