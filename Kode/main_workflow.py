@@ -130,8 +130,9 @@ def main():
             'risk_analysis': general_analysis
         }
         
-    # Generate workflow summary
-    generate_workflow_summary(results)
+    # Generate professional reports
+    from report_generator import generate_reports
+    generate_reports()
     
     # Create visualizations if available
     create_visualizations_if_available(results)
@@ -306,15 +307,9 @@ def create_visualizations_if_available(results):
     
     try:
         # Try to import and run selected visualizations
-        from selected_visualizations import create_site_density_heatmap, create_distance_histogram_with_thresholds, create_progression_plot
+        from selected_visualizations import create_distance_histogram_with_thresholds, create_progression_plot
         
         results_path = "Resultater"
-        
-        # Create density heatmap
-        try:
-            create_site_density_heatmap(results_path)
-        except Exception as e:
-            print(f"WARNING: Could not create density heatmap - {e}")
         
         # Create distance histogram if distance data is available
         if results['step4']['distance_results'] is not None:
