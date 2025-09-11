@@ -2,8 +2,8 @@
 Refined Compound Categorization Analysis - Literature-Based Categories Only
 ===========================================================================
 
-This script analyzes V1/V2 contamination data using only the 9 literature-based 
-compound categories plus a catch-all "OTHER" category. Results are exported to 
+This script analyzes V1/V2 contamination data using 10 literature-based 
+compound categories plus a catch-all "ANDRE" category. Results are exported to 
 Excel for easy review.
 
 Author: Analysis for Boss Discussion
@@ -24,11 +24,7 @@ from config import V1_CSV_PATH, V2_CSV_PATH
 LITERATURE_COMPOUND_MAPPING = {
     # 1. BTX compounds + Oil products - 50m (literature-based)
     'BTXER': {
-        'fractile_60_m': 15,        # 60% of plumes within this distance
-        'fractile_75_m': 20,        # 75% of plumes within this distance  
-        'fractile_90_m': 25,        # 90% of plumes within this distance
-        'maksimal_m': 50,           # Maximum plume length (current distance_m)
-        'distance_m': 50,           # Keep for backward compatibility
+        'distance_m': 50,
         'keywords': ['btx', 'btex', 'benzen', 'toluene', 'toluen', 'xylen', 'xylene', 'benzin', 'olie-benzen',
                     'aromater', 'aromat', 'c5-c10', 'c10-c25', 'kulbrintefraktion', 'monocyk', 'bicyk',
                     'tex (sum)', 'styren', 'olieprodukter', 'olie', 'fyringsolie', 'dieselolie', 'petroleum',
@@ -38,12 +34,8 @@ LITERATURE_COMPOUND_MAPPING = {
     },
     
     # 2. Chlorinated solvents - 500m (literature-based)
-    'CHLORINATED_SOLVENTS': {
-        'fractile_60_m': 125,       # 60% of plumes within this distance
-        'fractile_75_m': 180,       # 75% of plumes within this distance  
-        'fractile_90_m': 500,       # 90% of plumes within this distance
-        'maksimal_m': 500,          # Maximum plume length
-        'distance_m': 500,          # Keep for backward compatibility
+    'KLOREREDE_OPLØSNINGSMIDLER': {
+        'distance_m': 500,
         'keywords': ['1,1,1-tca', 'tce', 'tetrachlorethylen', 'trichlorethylen', 'trichlor', 'tetrachlor',
                     'vinylchlorid', 'dichlorethylen', 'dichlorethan', 'chlorerede', 'opl.midl', 'opløsningsmidl',
                     'cis-1,2-dichlorethyl', 'trans-1,2-dichloreth', 'chlorethan'],
@@ -51,25 +43,17 @@ LITERATURE_COMPOUND_MAPPING = {
         'literature_basis': 'Regulatory distance tables for chlorinated solvents'
     },
     
-    # 3. Polar compounds - 100m (literature-based)
-    'POLARE': {
-        'fractile_60_m': 75,        # 60% of plumes within this distance
-        'fractile_75_m': 110,        # 75% of plumes within this distance  
-        'fractile_90_m': 150,        # 90% of plumes within this distance
-        'maksimal_m': 300,          # Maximum plume length
-        'distance_m': 300,          # Keep for backward compatibility
+    # 3. Polar compounds - 300m (literature-based)
+    'POLARE_FORBINDELSER': {
+        'distance_m': 300,
         'keywords': ['mtbe', 'methyl tert-butyl ether', 'acetone', 'keton'],
         'description': 'Polar compounds like MTBE and acetone',
         'literature_basis': 'MTBE groundwater mobility studies'
     },
     
-    # 4. Phenolic compounds - 300m (literature-based)
+    # 4. Phenolic compounds - 100m (literature-based)
     'PHENOLER': {
-        'fractile_60_m': 50,        # 60% of plumes within this distance
-        'fractile_75_m': 60,       # 75% of plumes within this distance  
-        'fractile_90_m': 70,       # 90% of plumes within this distance
-        'maksimal_m': 100,          # Maximum plume length
-        'distance_m': 100,          # Keep for backward compatibility
+        'distance_m': 100,
         'keywords': ['phenol', 'fenol', 'cod', 'klorofenol'],
         'description': 'Phenolic compounds including COD',
         'literature_basis': 'Phenol mobility and degradation studies'
@@ -77,35 +61,23 @@ LITERATURE_COMPOUND_MAPPING = {
     
     # 5. Chlorinated hydrocarbons - 200m (literature-based)
     'KLOREDE_KULBRINTER': {
-        'fractile_60_m': 60,        # 60% of plumes within this distance
-        'fractile_75_m': 100,       # 75% of plumes within this distance  
-        'fractile_90_m': 160,       # 90% of plumes within this distance
-        'maksimal_m': 200,          # Maximum plume length
-        'distance_m': 200,          # Keep for backward compatibility
+        'distance_m': 200,
         'keywords': ['chloroform', 'kloroform', 'kulbrinter', 'klorede', 'bromoform', 'dibromethane', 'bromerede'],
         'description': 'Chlorinated/brominated hydrocarbons',
         'literature_basis': 'Chloroform and brominated compound mobility data'
     },
     
     # 6. Chlorinated phenols - 200m (literature-based)
-    'CHLORPHENOLER': {
-        'fractile_60_m': 60,        # 60% of plumes within this distance
-        'fractile_75_m': 100,       # 75% of plumes within this distance  
-        'fractile_90_m': 160,       # 90% of plumes within this distance
-        'maksimal_m': 200,          # Maximum plume length
-        'distance_m': 200,          # Keep for backward compatibility
+    'KLOREREDE_PHENOLER': {
+        'distance_m': 200,
         'keywords': ['dichlorophenol', 'chlorphenol', 'diklorofenol', 'klorofenol'],
         'description': 'Chlorinated phenolic compounds',
         'literature_basis': 'Chlorinated phenol transport studies'
     },
     
     # 7. PAH compounds - 30m (literature-based)
-    'PAHER': {
-        'fractile_60_m': 9,         # 60% of plumes within this distance
-        'fractile_75_m': 15,        # 75% of plumes within this distance  
-        'fractile_90_m': 24,        # 90% of plumes within this distance
-        'maksimal_m': 30,           # Maximum plume length
-        'distance_m': 30,           # Keep for backward compatibility
+    'PAH_FORBINDELSER': {
+        'distance_m': 30,
         'keywords': ['pah', 'fluoranthen', 'benzo', 'naftalen', 'naphtalen', 'naphthalen', 'pyren', 'anthracen', 'antracen',
                     'tjære', 'tar', 'phenanthren', 'fluoren', 'acenaphthen', 'acenaphthylen', 'chrysen', 'chrysene',
                     'benzfluranthen', 'methylnaphthalen', 'benz(ghi)perylen'],
@@ -115,11 +87,7 @@ LITERATURE_COMPOUND_MAPPING = {
     
     # 8. Pesticides - 500m (literature-based)
     'PESTICIDER': {
-        'fractile_60_m': 150,       # 60% of plumes within this distance
-        'fractile_75_m': 250,       # 75% of plumes within this distance  
-        'fractile_90_m': 400,       # 90% of plumes within this distance
-        'maksimal_m': 500,          # Maximum plume length
-        'distance_m': 500,          # Keep for backward compatibility
+        'distance_m': 500,
         'keywords': ['pesticid', 'herbicid', 'fungicid', 'mechlorprop', 'mcpp', 'atrazin', 'glyphosat',
                     'perfluor', 'pfos', 'pfoa', 'perfluoroctansulfonsyre', 'pfas', 'mcpa', 'dichlorprop',
                     '2,4-d', 'diuron', 'simazin', 'fluazifop', 'ampa', 'ddt', 'triazol', 'dichlorbenzamid',
@@ -141,11 +109,7 @@ LITERATURE_COMPOUND_MAPPING = {
     
     # 9. Inorganic compounds - 150m (literature-based)
     'UORGANISKE_FORBINDELSER': {
-        'fractile_60_m': 45,        # 60% of plumes within this distance
-        'fractile_75_m': 75,        # 75% of plumes within this distance  
-        'fractile_90_m': 120,       # 90% of plumes within this distance
-        'maksimal_m': 150,          # Maximum plume length
-        'distance_m': 150,          # Keep for backward compatibility
+        'distance_m': 150,
         'keywords': ['arsen', 'arsenic', 'cyanid', 'cyanide', 'tungmetal', 'bly', 'cadmium', 'krom', 'chrom',
                     'nikkel', 'zink', 'kobber', 'kviksølv', 'jern', 'mangan', 'aluminium', 'sølv', 'barium',
                     'kobolt', 'metaller', 'tributyltin', 'tbt', 'tin', 'molybden', 'antimon', 'calcium',
@@ -154,21 +118,29 @@ LITERATURE_COMPOUND_MAPPING = {
                     'tributhyltinnaphth', 'nitrit'],
         'description': 'Inorganic compounds including heavy metals and salts',
         'literature_basis': 'Heavy metal mobility and salt transport studies'
+    },
+    
+    # 10. Landfill leachate compounds - 500m (conservative approach)
+    'LOSSEPLADS': {
+        'distance_m': 500,
+        'keywords': ['lossepladsperkolat', 'lossepladsgas', 'methan', 'perkolat', 'deponeringsgas', 'fyldplads'],
+        'description': 'Landfill leachate and gas compounds with complex mixture characteristics',
+        'literature_basis': 'Conservative approach for landfill plume assessment'
     }
 }
 
 def categorize_contamination_substance_refined(substance_text):
     """
-    Categorize using only literature-based categories + OTHER.
+    Categorize using only literature-based categories + ANDRE.
     
     Args:
         substance_text (str): The contamination substance text
         
     Returns:
-        tuple: (category_name, distance_m) or ('OTHER', None) if no match
+        tuple: (category_name, distance_m) or ('ANDRE', None) if no match
     """
     if pd.isna(substance_text) or not isinstance(substance_text, str):
-        return 'OTHER', None
+        return 'ANDRE', None
     
     substance_lower = substance_text.lower().strip()
     
@@ -179,7 +151,7 @@ def categorize_contamination_substance_refined(substance_text):
                 return category, info['distance_m']
     
     # If no match found in literature categories
-    return 'OTHER', None
+    return 'ANDRE', None
 
 def analyze_and_export_compounds():
     """
@@ -187,7 +159,7 @@ def analyze_and_export_compounds():
     """
     print("REFINED COMPOUND CATEGORIZATION ANALYSIS")
     print("=" * 60)
-    print("Using only 9 literature-based categories + OTHER catch-all")
+    print("Using 10 literature-based categories + ANDRE catch-all")
     print()
     
     # Load data
@@ -273,15 +245,15 @@ def analyze_and_export_compounds():
         
         # Sheet 2: Detailed substance breakdown by category
         for category in category_counts.index:
-            if category == 'OTHER':
-                # For OTHER category, show top substances for manual review
-                other_substances = results_df[results_df['category'] == 'OTHER']['substance'].value_counts()
+            if category == 'ANDRE':
+                # For ANDRE category, show top substances for manual review
+                other_substances = results_df[results_df['category'] == 'ANDRE']['substance'].value_counts()
                 other_df = pd.DataFrame({
                     'Substance': other_substances.index,
                     'Frequency': other_substances.values,
                     'Notes': ['Needs manual review'] * len(other_substances)
                 })
-                sheet_name = 'OTHER_substances'[:31]  # Excel sheet name limit
+                sheet_name = 'ANDRE_substances'[:31]  # Excel sheet name limit
                 other_df.to_excel(writer, sheet_name=sheet_name, index=False)
             else:
                 # For categorized substances, show what was matched
@@ -321,15 +293,15 @@ def analyze_and_export_compounds():
     print(f"Total OTHER substances: {len(other_substances):,} unique substances")
     print(f"Top 10 OTHER substances:")
     for i, (substance, count) in enumerate(other_substances.head(10).items(), 1):
-        pct = count / len(results_df[results_df['category'] == 'OTHER']) * 100
+        pct = count / len(results_df[results_df['category'] == 'ANDRE']) * 100
         print(f"  {i:2d}. '{substance}': {count:,} ({pct:.1f}%)")
     
     print(f"\nExcel file created: {excel_file}")
     print("\nReady for boss review!")
     print("\nNext steps:")
-    print("1. Review OTHER category substances in Excel")
+    print("1. Review ANDRE category substances in Excel")
     print("2. Check multi-substance localities")
-    print("3. Decide on default distance for OTHER category")
+    print("3. Decide on default distance for ANDRE category")
     
     return results_df, excel_file
 

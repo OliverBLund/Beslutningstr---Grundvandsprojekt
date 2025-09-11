@@ -4,7 +4,7 @@ Step 5 Visualizations: Professional Risk Assessment Plots
 Creates clean, professional visualizations for contamination risk assessment:
 - Broad analysis using 500m threshold
 - Compound-specific analysis using category-based thresholds
-- Proper handling of "OTHER" category
+- Proper handling of "ANDRE" category
 """
 
 import pandas as pd
@@ -466,7 +466,7 @@ def create_compound_comparison_summary(figures_path):
             'KLOREDE_KULBRINTER': COLORS['accent'],
             'PHENOLER': '#FF7043',
             'POLARE': '#26A69A',
-            'OTHER': COLORS['other']  # Use specific gray for OTHER
+            'ANDRE': COLORS['other']  # Use specific gray for ANDRE
         }
         
         # Create legend labels with cleaner names
@@ -479,7 +479,7 @@ def create_compound_comparison_summary(figures_path):
             'KLOREDE_KULBRINTER': 'Chlorinated Hydrocarbons',
             'PHENOLER': 'Phenols',
             'POLARE': 'Polar Compounds',
-            'OTHER': 'Other/Unidentified'
+            'ANDRE': 'Other/Unidentified'
         }
         
         # Create stacked bars
@@ -545,15 +545,15 @@ def create_compound_comparison_summary(figures_path):
         # Add summary text box
         reduction_pct = (1 - compound_df['Lokalitet_ID'].nunique() / len(general_df)) * 100
         
-        # Calculate OTHER percentage
-        other_general = general_compound_counts.get('OTHER', 0)
-        other_compound = compound_compound_counts.get('OTHER', 0)
+        # Calculate ANDRE percentage
+        other_general = general_compound_counts.get('ANDRE', 0)
+        other_compound = compound_compound_counts.get('ANDRE', 0)
         other_pct_general = (other_general / sum(general_compound_counts.values()) * 100) if sum(general_compound_counts.values()) > 0 else 0
         other_pct_compound = (other_compound / sum(compound_compound_counts.values()) * 100) if sum(compound_compound_counts.values()) > 0 else 0
         
         textstr = f'''Key Results:
 • {reduction_pct:.1f}% reduction in qualifying sites
-• "OTHER" category: {other_pct_general:.1f}% (500m) vs {other_pct_compound:.1f}% (compound-specific)
+• "ANDRE" category: {other_pct_general:.1f}% (500m) vs {other_pct_compound:.1f}% (compound-specific)
 • {len(compound_df) - compound_df["Lokalitet_ID"].nunique()} sites have multiple qualifying compounds'''
         
         ax.text(0.02, 0.98, textstr, transform=ax.transAxes, fontsize=10,
@@ -637,7 +637,7 @@ def create_compound_boxplot_comparison(figures_path):
         
         # Color boxes based on occurrence count
         for i, (patch, category, count) in enumerate(zip(box_plot['boxes'], categories, category_counts)):
-            if category == 'OTHER':
+            if category == 'ANDRE':
                 patch.set_facecolor(COLORS['other'])
                 patch.set_alpha(0.9)
                 patch.set_edgecolor('black')
@@ -701,7 +701,7 @@ def create_category_prevalence_chart(figures_path):
         # Left: Pie chart with all categories
         colors = []
         for cat in category_counts.index:
-            if cat == 'OTHER':
+            if cat == 'ANDRE':
                 colors.append(COLORS['other'])
             else:
                 colors.append(COLORS['categories'][len(colors) % len(COLORS['categories'])])
@@ -712,13 +712,13 @@ def create_category_prevalence_chart(figures_path):
                                             autopct='%1.1f%%',
                                             startangle=90)
         
-        # Highlight OTHER category if it exists
+        # Highlight ANDRE category if it exists
         for i, cat in enumerate(category_counts.index):
-            if cat == 'OTHER':
+            if cat == 'ANDRE':
                 wedges[i].set_edgecolor('black')
                 wedges[i].set_linewidth(2)
         
-        ax1.set_title('All Compound Categories Distribution\n(Including "OTHER")', 
+        ax1.set_title('All Compound Categories Distribution\n(Including "ANDRE")', 
                       fontsize=14, fontweight='bold')
         
         # Right: Bar chart comparing counts
@@ -736,13 +736,13 @@ def create_category_prevalence_chart(figures_path):
                     ha='center', fontweight='bold')
         
         # Add summary statistics
-        other_count = category_counts.get('OTHER', 0)
+        other_count = category_counts.get('ANDRE', 0)
         other_pct = (other_count / category_counts.sum() * 100) if other_count > 0 else 0
         identified_count = category_counts.sum() - other_count
         
         summary_text = f'''Key Insights:
 • Total categories: {len(category_counts)}
-• "OTHER" compounds: {other_count:,} ({other_pct:.1f}%)
+• "ANDRE" compounds: {other_count:,} ({other_pct:.1f}%)
 • Identified compounds: {identified_count:,} ({100-other_pct:.1f}%)
 • Most common: {category_counts.index[0]} ({category_counts.values[0]:,})'''
         
@@ -794,7 +794,7 @@ def create_category_sites_distribution(figures_path):
         # Left plot: Sites per category
         colors1 = []
         for cat in categories:
-            if cat == 'OTHER':
+            if cat == 'ANDRE':
                 colors1.append(COLORS['other'])
             else:
                 colors1.append(COLORS['categories'][len(colors1) % len(COLORS['categories'])])
@@ -875,8 +875,8 @@ def create_other_category_analysis(figures_path):
             
         compound_df = pd.read_csv(compound_file)
         
-        # Filter for OTHER category only
-        other_df = compound_df[compound_df['Qualifying_Category'] == 'OTHER']
+        # Filter for ANDRE category only
+        other_df = compound_df[compound_df['Qualifying_Category'] == 'ANDRE']
         
         if other_df.empty:
             print("No OTHER category data found")
@@ -928,8 +928,8 @@ def create_other_category_analysis(figures_path):
                 ax3.set_title('Top 10 Activities Associated with OTHER Compounds')
                 ax3.invert_yaxis()
         
-        # 4. Distance comparison: OTHER vs all other categories
-        non_other_df = compound_df[compound_df['Qualifying_Category'] != 'OTHER']
+        # 4. Distance comparison: ANDRE vs all other categories
+        non_other_df = compound_df[compound_df['Qualifying_Category'] != 'ANDRE']
         
         if not non_other_df.empty:
             other_distances = other_df['Final_Distance_m'].dropna()
@@ -951,7 +951,7 @@ def create_other_category_analysis(figures_path):
                      verticalalignment='top', 
                      bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         
-        plt.suptitle('Deep Dive: "OTHER" Category Analysis', fontsize=16, fontweight='bold')
+        plt.suptitle('Deep Dive: "ANDRE" Category Analysis', fontsize=16, fontweight='bold')
         plt.tight_layout()
         safe_save_figure(figures_path, "10_other_category_deep_dive")
         
@@ -1005,8 +1005,8 @@ def create_compound_distance_histogram(category_data, category, figures_path):
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Use gray color for OTHER, category color for others
-    color = COLORS['other'] if category == 'OTHER' else COLORS['primary']
+    # Use gray color for ANDRE, category color for others
+    color = COLORS['other'] if category == 'ANDRE' else COLORS['primary']
     
     ax.hist(distances, bins=30, color=color, alpha=0.7, edgecolor='white', linewidth=0.5)
     
@@ -1053,7 +1053,7 @@ def create_compound_activity_distribution(category_data, category, figures_path)
     fig, ax = plt.subplots(figsize=(12, 6))
     
     # Use appropriate color
-    color = COLORS['other'] if category == 'OTHER' else COLORS['secondary']
+    color = COLORS['other'] if category == 'ANDRE' else COLORS['secondary']
     
     # Create horizontal bar chart
     y_pos = range(len(top_activities))
@@ -1105,7 +1105,7 @@ def create_compound_industry_distribution(category_data, category, figures_path)
     fig, ax = plt.subplots(figsize=(12, 6))
     
     # Use appropriate color
-    color = COLORS['other'] if category == 'OTHER' else COLORS['success']
+    color = COLORS['other'] if category == 'ANDRE' else COLORS['success']
     
     # Create horizontal bar chart
     y_pos = range(len(top_industries))

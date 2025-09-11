@@ -10,6 +10,7 @@ Combines results from all workflow steps with focus on Step 5 risk assessment.
 """
 
 import pandas as pd
+import geopandas as gpd
 import os
 from datetime import datetime
 from config import get_output_path, get_visualization_path
@@ -27,6 +28,11 @@ class ReportGenerator:
     def _load_all_data(self):
         """Load all relevant data files from the workflow."""
         try:
+            # Step 3 data - GVFK polygons with V1/V2 sites
+            step3_file = get_output_path('step3_gvfk_polygons')
+            if os.path.exists(step3_file):
+                self.data['step3_gvfks'] = gpd.read_file(step3_file)
+            
             # Step 4 data
             step4_file = get_output_path('step4_final_distances_for_risk_assessment')
             if os.path.exists(step4_file):
@@ -50,6 +56,10 @@ class ReportGenerator:
     
     def _calculate_statistics(self):
         """Calculate key statistics from loaded data."""
+        # Step 3 statistics - count actual GVFKs with V1/V2 sites
+        if 'step3_gvfks' in self.data:
+            self.stats['step3_gvfk_count'] = len(self.data['step3_gvfks'])
+        
         if 'step4' in self.data:
             self.stats['total_sites_analyzed'] = len(self.data['step4'])
         
@@ -95,9 +105,13 @@ class ReportGenerator:
         print("-" * 40)
         print(f"{'Step | Stage':<40} {'Count':<10} {'% of Total':<15}")
         print(f"{'─'*40} {'─'*10} {'─'*15}")
+        # Get actual Step 3 count
+        step3_count = self.stats.get('step3_gvfk_count', 432)  # fallback to old value if file not found
+        step3_percentage = step3_count / 2043 * 100
+        
         print(f"{'STEP 1 | Total GVFKs in Denmark':<40} {'2,043':<10} {'100.0%':<15}")
         print(f"{'STEP 2 | With river contact':<40} {'593':<10} {'29.0%':<15}")
-        print(f"{'STEP 3 | With V1/V2 sites + contact':<40} {'432':<10} {'21.1%':<15}")
+        print(f"{'STEP 3 | With V1/V2 sites + contact':<40} {f'{step3_count:,}':<10} {f'{step3_percentage:.1f}%':<15}")
         
         general_gvfks = self.stats.get('general_gvfks', 0)
         compound_gvfks = self.stats.get('compound_gvfks', 0)
@@ -155,6 +169,10 @@ class ReportGenerator:
         """Generate professional HTML report for presentations."""
         if output_path is None:
             output_path = os.path.join(os.path.dirname(get_output_path('workflow_summary')), 'risk_assessment_report.html')
+        
+        # Get Step 3 variables for HTML
+        step3_count = self.stats.get('step3_gvfk_count', 432)  # fallback to old value if file not found
+        step3_percentage = step3_count / 2043 * 100
         
         html_content = f"""
 <!DOCTYPE html>
@@ -435,11 +453,11 @@ class ReportGenerator:
                         <tr>
                             <td><strong>STEP 3</strong></td>
                             <td>GVFKs with V1/V2 sites + river contact</td>
-                            <td><strong>432</strong></td>
-                            <td>21.1%</td>
+                            <td><strong>{step3_count:,}</strong></td>
+                            <td>{step3_percentage:.1f}%</td>
                             <td>
                                 <div class="progress-bar">
-                                    <div class="progress-fill" style="width: 21.1%">21%</div>
+                                    <div class="progress-fill" style="width: {step3_percentage:.1f}%">{step3_percentage:.0f}%</div>
                                 </div>
                             </td>
                         </tr>

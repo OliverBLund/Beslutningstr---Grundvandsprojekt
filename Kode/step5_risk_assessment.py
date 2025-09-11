@@ -106,7 +106,7 @@ def categorize_contamination_substance(substance_text):
         tuple: (category_name, distance_m) 
     """
     if pd.isna(substance_text) or not isinstance(substance_text, str):
-        return 'OTHER', _DEFAULT_OTHER_DISTANCE
+        return 'ANDRE', _DEFAULT_OTHER_DISTANCE
     
     # Load categorization data
     cat_data = _load_categorization_from_excel()
@@ -125,8 +125,8 @@ def categorize_contamination_substance(substance_text):
             distance = cat_data['category_distances'].get(known_category, _DEFAULT_OTHER_DISTANCE)
             return known_category, distance
     
-    # Default to OTHER category
-    return 'OTHER', _DEFAULT_OTHER_DISTANCE
+    # Default to ANDRE category
+    return 'ANDRE', _DEFAULT_OTHER_DISTANCE
 
 def run_step5():
     """Execute Step 5 risk assessment."""
@@ -143,20 +143,43 @@ def run_step5():
     distance_results = pd.read_csv(step4_file)
     print(f"Loaded {len(distance_results)} localities from Step 4")
     
-    # Run both assessments
-    general_sites = _run_general_assessment(distance_results)
-    compound_combinations, compound_sites = _run_compound_assessment(distance_results)
+    # Separate sites with and without substance data
+    sites_with_substances, sites_without_substances = _separate_sites_by_substance_data(distance_results)
+    
+    # Run both assessments on sites with substance data
+    general_sites = _run_general_assessment(sites_with_substances)
+    compound_combinations, compound_sites = _run_compound_assessment(sites_with_substances)
+    
+    # Handle sites without substance data separately
+    unknown_substance_sites = _handle_unknown_substance_sites(sites_without_substances)
+    
+    # Branch analysis disabled - no longer needed
+    branch_analysis_results = None
+    print(f"ⓘ Branch analysis disabled")
     
     # Print summary
     _print_summary(distance_results, general_sites, compound_combinations, compound_sites)
+    
+    # Generate Step 5 visualizations
+    print(f"\nGenerating Step 5 visualizations...")
+    try:
+        from step5_visualizations import create_step5_visualizations
+        create_step5_visualizations()
+        print(f"✓ Step 5 visualizations completed")
+    except ImportError:
+        print(f"⚠ Step 5 visualization module not found")
+    except Exception as e:
+        print(f"⚠ Could not create Step 5 visualizations: {e}")
     
     print(f"\n✓ STEP 5 ANALYSIS COMPLETED")
     
     # Return format compatible with main_workflow.py
     return {
         'general_results': (general_sites, {'total_sites': len(general_sites)}),
-        'compound_results': (compound_combinations, {'unique_sites': len(compound_sites),
-                                                      'total_combinations': len(compound_combinations)}),
+        'compound_results': (compound_sites, {'unique_sites': len(compound_sites),
+                                              'total_combinations': len(compound_combinations)}),
+        'unknown_substance_results': (unknown_substance_sites, {'total_sites': len(unknown_substance_sites)}),
+        'branch_analysis_results': (branch_analysis_results, {'status': 'completed' if branch_analysis_results else 'skipped'}),
         'multi_threshold_results': {},  # Empty for compatibility
         'success': True
     }
@@ -506,14 +529,76 @@ def generate_gvfk_risk_summary():
     
     return None
 
+def _separate_sites_by_substance_data(distance_results):
+    """
+    Separate sites into those with and without substance data.
+    
+    Args:
+        distance_results (DataFrame): All sites from Step 4
+        
+    Returns:
+        tuple: (sites_with_substances, sites_without_substances)
+    """
+    # Check which sites have substance data
+    has_substances = distance_results['Lokalitetensstoffer'].notna() & \
+                     (distance_results['Lokalitetensstoffer'].astype(str).str.strip() != '') & \
+                     (distance_results['Lokalitetensstoffer'].astype(str) != 'nan')
+    
+    sites_with_substances = distance_results[has_substances].copy()
+    sites_without_substances = distance_results[~has_substances].copy()
+    
+    print(f"Data separation: {len(sites_with_substances)} sites with substances, {len(sites_without_substances)} sites without substances")
+    
+    return sites_with_substances, sites_without_substances
+
+def _handle_unknown_substance_sites(sites_without_substances):
+    """
+    Handle sites without substance data separately.
+    These sites are "parked" for separate analysis.
+    
+    Args:
+        sites_without_substances (DataFrame): Sites without substance data
+        
+    Returns:
+        DataFrame: Sites without substances (unchanged, just documented)
+    """
+    if sites_without_substances.empty:
+        print("No sites without substance data found.")
+        return sites_without_substances
+    
+    print(f"\nUnknown Substance Sites Analysis:")
+    print(f"  Total sites without substance data: {len(sites_without_substances)}")
+    
+    # Save these sites separately
+    if len(sites_without_substances) > 0:
+        unknown_path = get_output_path('step5_unknown_substance_sites')
+        sites_without_substances.to_csv(unknown_path, index=False)
+        print(f"  ✓ Saved to: {unknown_path}")
+        
+        # Basic statistics
+        if 'Final_Distance_m' in sites_without_substances.columns:
+            mean_dist = sites_without_substances['Final_Distance_m'].mean()
+            median_dist = sites_without_substances['Final_Distance_m'].median()
+            within_500m = (sites_without_substances['Final_Distance_m'] <= 500).sum()
+            print(f"  Distance statistics: mean={mean_dist:.0f}m, median={median_dist:.0f}m")
+            print(f"  Sites within 500m: {within_500m} ({within_500m/len(sites_without_substances)*100:.1f}%)")
+        
+        # Branch information if available
+        if 'Lokalitetensbranche' in sites_without_substances.columns:
+            branches = sites_without_substances['Lokalitetensbranche'].value_counts()
+            print(f"  Top branches: {', '.join(branches.head(3).index.tolist())}")
+    
+    return sites_without_substances
+
 if __name__ == "__main__":
     # Run Step 5 risk assessment
     results = run_step5()
     
     if results['success']:
         print(f"\nStep 5 completed successfully:")
-        print(f"  General assessment: {results['general_sites']} sites")
-        print(f"  Compound-specific: {results['compound_sites']} sites")
+        print(f"  General assessment: {results['general_results'][1]['total_sites']} sites")
+        print(f"  Compound-specific: {results['compound_results'][1]['unique_sites']} sites")
+        print(f"  Branch analysis: {results['branch_analysis_results'][1]['status']}")
         
         # Generate GVFK summary
         gvfk_summary = generate_gvfk_risk_summary()

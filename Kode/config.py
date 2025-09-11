@@ -46,7 +46,9 @@ OUTPUT_FILES = {
     'step5_high_risk_sites': os.path.join(RESULTS_PATH, f'step5_high_risk_sites_{WORKFLOW_SETTINGS["risk_threshold_m"]}m.csv'),
     'step5_compound_specific_sites': os.path.join(RESULTS_PATH, 'step5_compound_specific_sites.csv'),
     'step5_compound_detailed_combinations': os.path.join(RESULTS_PATH, 'step5_compound_detailed_combinations.csv'),
+    'step5_unknown_substance_sites': os.path.join(RESULTS_PATH, 'step5_unknown_substance_sites.csv'),
     'step5_compound_gvfk_high_risk': os.path.join(RESULTS_PATH, 'step5_compound_gvfk_high_risk.shp'),
+    'step5_gvfk_risk_summary': os.path.join(RESULTS_PATH, 'step5_gvfk_risk_summary.csv'),
     'workflow_summary': os.path.join(RESULTS_PATH, 'workflow_summary.csv'),
     
     # Category analysis files (for compound-specific visualizations)

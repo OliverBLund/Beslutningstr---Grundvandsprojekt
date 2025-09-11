@@ -98,19 +98,176 @@ def run_step3(rivers_gvfk):
     print("\n2. CONTAMINATION FILTERING (sites with active contamination only)")
     print("-" * 65)
     
-    # Filter V1 to only sites with active contaminations
+    # Filter V1 to sites with either contamination substances OR branch data
     if 'Lokalitetensstoffer' not in v1_csv_raw.columns:
         raise ValueError("'Lokalitetensstoffer' column not found in V1 CSV")
+    if 'Lokalitetensbranche' not in v1_csv_raw.columns:
+        raise ValueError("'Lokalitetensbranche' column not found in V1 CSV")
     
-    v1_csv = v1_csv_raw.dropna(subset=['Lokalitetensstoffer'])
-    v1_csv = v1_csv[v1_csv['Lokalitetensstoffer'].str.strip() != '']
+    # Analyze data breakdown in detail - using UNIQUE LOCALITIES
+    print(f"\nDetailed V1 Data Analysis (UNIQUE LOCALITIES):")
+    v1_has_substances = (v1_csv_raw['Lokalitetensstoffer'].notna() & 
+                         (v1_csv_raw['Lokalitetensstoffer'].astype(str).str.strip() != ''))
+    v1_has_branch = (v1_csv_raw['Lokalitetensbranche'].notna() & 
+                     (v1_csv_raw['Lokalitetensbranche'].astype(str).str.strip() != ''))
     
-    # Filter V2 to only sites with active contaminations
+    # Create unique locality analysis
+    v1_localities = v1_csv_raw.groupby('Lokalitetsnr').agg({
+        'Lokalitetensstoffer': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any(),
+        'Lokalitetensbranche': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any()
+    }).reset_index()
+    
+    v1_substance_only_localities = (v1_localities['Lokalitetensstoffer'] & ~v1_localities['Lokalitetensbranche']).sum()
+    v1_branch_only_localities = (~v1_localities['Lokalitetensstoffer'] & v1_localities['Lokalitetensbranche']).sum()
+    v1_both_localities = (v1_localities['Lokalitetensstoffer'] & v1_localities['Lokalitetensbranche']).sum()
+    v1_neither_localities = (~v1_localities['Lokalitetensstoffer'] & ~v1_localities['Lokalitetensbranche']).sum()
+    v1_total_localities = len(v1_localities)
+    
+    print(f"  Unique localities with substances only: {v1_substance_only_localities:,} ({v1_substance_only_localities/v1_total_localities*100:.1f}%)")
+    print(f"  Unique localities with branch only: {v1_branch_only_localities:,} ({v1_branch_only_localities/v1_total_localities*100:.1f}%)")
+    print(f"  Unique localities with both: {v1_both_localities:,} ({v1_both_localities/v1_total_localities*100:.1f}%)")
+    print(f"  Unique localities with neither: {v1_neither_localities:,} ({v1_neither_localities/v1_total_localities*100:.1f}%)")
+    print(f"  Total qualified unique localities (substance OR branch): {v1_substance_only_localities + v1_branch_only_localities + v1_both_localities:,}")
+    
+    # COMPARATIVE ANALYSIS: Old approach (substance-only) vs New approach (substance OR branch)
+    print(f"\n{'='*60}")
+    print(f"COMPARATIVE ANALYSIS: Impact of Including Branch-Only Sites")
+    print(f"{'='*60}")
+    
+    # Old approach: Only sites with substance data
+    v1_old_approach = v1_csv_raw[v1_has_substances]
+    v1_old_sites = len(v1_old_approach)
+    v1_old_localities = v1_old_approach['Lokalitetsnr'].nunique()
+    
+    # New approach: Sites with substance OR branch data  
+    v1_new_approach = v1_csv_raw[v1_has_substances | v1_has_branch]
+    v1_new_sites = len(v1_new_approach)
+    v1_new_localities = v1_new_approach['Lokalitetsnr'].nunique()
+    
+    # Calculate differences
+    v1_added_sites = v1_new_sites - v1_old_sites
+    v1_added_localities = v1_new_localities - v1_old_localities
+    
+    print(f"V1 Dataset Comparison:")
+    print(f"  Old approach (substance-only):")
+    print(f"    Sites: {v1_old_sites:,}")
+    print(f"    Unique localities: {v1_old_localities:,}")
+    print(f"  New approach (substance OR branch):")
+    print(f"    Sites: {v1_new_sites:,}")
+    print(f"    Unique localities: {v1_new_localities:,}")
+    print(f"  Net addition from branch-only sites:")
+    print(f"    Additional sites: +{v1_added_sites:,} ({v1_added_sites/v1_old_sites*100:.1f}%)")
+    print(f"    Additional localities: +{v1_added_localities:,} ({v1_added_localities/v1_old_localities*100:.1f}%)")
+    
+    # Keep sites that have either substance data OR branch data (not both required)
+    v1_csv = v1_csv_raw[v1_has_substances | v1_has_branch]
+    
+    # Filter V2 to sites with either contamination substances OR branch data
     if 'Lokalitetensstoffer' not in v2_csv_raw.columns:
         raise ValueError("'Lokalitetensstoffer' column not found in V2 CSV")
+    if 'Lokalitetensbranche' not in v2_csv_raw.columns:
+        raise ValueError("'Lokalitetensbranche' column not found in V2 CSV")
     
-    v2_csv = v2_csv_raw.dropna(subset=['Lokalitetensstoffer'])
-    v2_csv = v2_csv[v2_csv['Lokalitetensstoffer'].str.strip() != '']
+    # Analyze V2 data breakdown - using UNIQUE LOCALITIES
+    print(f"\nDetailed V2 Data Analysis (UNIQUE LOCALITIES):")
+    v2_has_substances = (v2_csv_raw['Lokalitetensstoffer'].notna() & 
+                         (v2_csv_raw['Lokalitetensstoffer'].astype(str).str.strip() != ''))
+    v2_has_branch = (v2_csv_raw['Lokalitetensbranche'].notna() & 
+                     (v2_csv_raw['Lokalitetensbranche'].astype(str).str.strip() != ''))
+    
+    # Create unique locality analysis
+    v2_localities = v2_csv_raw.groupby('Lokalitetsnr').agg({
+        'Lokalitetensstoffer': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any(),
+        'Lokalitetensbranche': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any()
+    }).reset_index()
+    
+    v2_substance_only_localities = (v2_localities['Lokalitetensstoffer'] & ~v2_localities['Lokalitetensbranche']).sum()
+    v2_branch_only_localities = (~v2_localities['Lokalitetensstoffer'] & v2_localities['Lokalitetensbranche']).sum()
+    v2_both_localities = (v2_localities['Lokalitetensstoffer'] & v2_localities['Lokalitetensbranche']).sum()
+    v2_neither_localities = (~v2_localities['Lokalitetensstoffer'] & ~v2_localities['Lokalitetensbranche']).sum()
+    v2_total_localities = len(v2_localities)
+    
+    print(f"  Unique localities with substances only: {v2_substance_only_localities:,} ({v2_substance_only_localities/v2_total_localities*100:.1f}%)")
+    print(f"  Unique localities with branch only: {v2_branch_only_localities:,} ({v2_branch_only_localities/v2_total_localities*100:.1f}%)")
+    print(f"  Unique localities with both: {v2_both_localities:,} ({v2_both_localities/v2_total_localities*100:.1f}%)")
+    print(f"  Unique localities with neither: {v2_neither_localities:,} ({v2_neither_localities/v2_total_localities*100:.1f}%)")
+    print(f"  Total qualified unique localities (substance OR branch): {v2_substance_only_localities + v2_branch_only_localities + v2_both_localities:,}")
+    
+    # V2 Comparative analysis
+    v2_old_approach = v2_csv_raw[v2_has_substances]
+    v2_old_sites = len(v2_old_approach)
+    v2_old_localities = v2_old_approach['Lokalitetsnr'].nunique()
+    
+    v2_new_approach = v2_csv_raw[v2_has_substances | v2_has_branch]
+    v2_new_sites = len(v2_new_approach)
+    v2_new_localities = v2_new_approach['Lokalitetsnr'].nunique()
+    
+    v2_added_sites = v2_new_sites - v2_old_sites
+    v2_added_localities = v2_new_localities - v2_old_localities
+    
+    print(f"\nV2 Dataset Comparison:")
+    print(f"  Old approach (substance-only):")
+    print(f"    Sites: {v2_old_sites:,}")
+    print(f"    Unique localities: {v2_old_localities:,}")
+    print(f"  New approach (substance OR branch):")
+    print(f"    Sites: {v2_new_sites:,}")
+    print(f"    Unique localities: {v2_new_localities:,}")
+    print(f"  Net addition from branch-only sites:")
+    print(f"    Additional sites: +{v2_added_sites:,} ({v2_added_sites/v2_old_sites*100:.1f}%)")
+    print(f"    Additional localities: +{v2_added_localities:,} ({v2_added_localities/v2_old_localities*100:.1f}%)")
+    
+    # Keep sites that have either substance data OR branch data (not both required)
+    v2_csv = v2_csv_raw[v2_has_substances | v2_has_branch]
+    
+    # Show the impact of the new filtering approach - UNIQUE LOCALITIES
+    print(f"\nFiltering Impact Comparison (UNIQUE LOCALITIES):")
+    
+    # Calculate old approach unique localities (substances only)
+    v1_old_unique = v1_localities[v1_localities['Lokalitetensstoffer']]['Lokalitetsnr'].nunique()
+    v2_old_unique = v2_localities[v2_localities['Lokalitetensstoffer']]['Lokalitetsnr'].nunique()
+    
+    # Calculate new approach unique localities (substances OR branch)
+    v1_new_unique = v1_localities[v1_localities['Lokalitetensstoffer'] | v1_localities['Lokalitetensbranche']]['Lokalitetsnr'].nunique()
+    v2_new_unique = v2_localities[v2_localities['Lokalitetensstoffer'] | v2_localities['Lokalitetensbranche']]['Lokalitetsnr'].nunique()
+    
+    print(f"  OLD approach (substances only):")
+    print(f"    V1 unique localities: {v1_old_unique:,}")
+    print(f"    V2 unique localities: {v2_old_unique:,}")
+    print(f"  NEW approach (substances OR branch):")
+    print(f"    V1 unique localities: {v1_new_unique:,} (+{v1_new_unique - v1_old_unique:,})")
+    print(f"    V2 unique localities: {v2_new_unique:,} (+{v2_new_unique - v2_old_unique:,})")
+    
+    # Show which additional localities we're gaining
+    if v1_branch_only_localities > 0:
+        v1_branch_only_ids = v1_localities[(~v1_localities['Lokalitetensstoffer'] & v1_localities['Lokalitetensbranche'])]['Lokalitetsnr'].tolist()
+        print(f"    V1 additional branch-only localities (first 10): {v1_branch_only_ids[:10]}")
+    
+    if v2_branch_only_localities > 0:
+        v2_branch_only_ids = v2_localities[(~v2_localities['Lokalitetensstoffer'] & v2_localities['Lokalitetensbranche'])]['Lokalitetsnr'].tolist()
+        print(f"    V2 additional branch-only localities (first 10): {v2_branch_only_ids[:10]}")
+    
+    # COMBINED IMPACT SUMMARY
+    total_old_sites = v1_old_sites + v2_old_sites  
+    total_new_sites = v1_new_sites + v2_new_sites
+    total_added_sites = total_new_sites - total_old_sites
+    
+    total_old_localities = v1_old_localities + v2_old_localities
+    total_new_localities = v1_new_localities + v2_new_localities  
+    total_added_localities = total_new_localities - total_old_localities
+    
+    print(f"\n{'='*60}")
+    print(f"COMBINED IMPACT SUMMARY")
+    print(f"{'='*60}")
+    print(f"Total sites (V1 + V2):")
+    print(f"  Old approach (substance-only): {total_old_sites:,}")
+    print(f"  New approach (substance OR branch): {total_new_sites:,}")
+    print(f"  Net sites added: +{total_added_sites:,} ({total_added_sites/total_old_sites*100:.1f}%)")
+    print(f"")
+    print(f"Total localities (V1 + V2):")
+    print(f"  Old approach (substance-only): {total_old_localities:,}")
+    print(f"  New approach (substance OR branch): {total_new_localities:,}")
+    print(f"  Net localities added: +{total_added_localities:,} ({total_added_localities/total_old_localities*100:.1f}%)")
+    print(f"{'='*60}")
     
     # Report filtered results
     v1_unique_filtered = v1_csv['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v1_csv.columns else 0
@@ -183,6 +340,35 @@ def run_step3(rivers_gvfk):
     gvfk_with_v1v2_names = set()
     if not v1v2_combined.empty:
         gvfk_with_v1v2_names = set(v1v2_combined['Navn'].unique())
+    
+    # DIAGNOSTIC: Check if branch-only sites contribute to new GVFKs
+    print(f"\nGVFK Impact Analysis:")
+    print(f"  Total GVFKs with V1/V2 sites: {len(gvfk_with_v1v2_names):,}")
+    
+    if not v1v2_combined.empty and 'Lokalitetensstoffer' in v1v2_combined.columns:
+        # Check GVFKs from sites with substances only
+        substance_sites = v1v2_combined[
+            v1v2_combined['Lokalitetensstoffer'].notna() & 
+            (v1v2_combined['Lokalitetensstoffer'].astype(str).str.strip() != '') &
+            (v1v2_combined['Lokalitetensstoffer'].astype(str) != 'nan')
+        ]
+        gvfk_from_substance_sites = set(substance_sites['Navn'].unique()) if not substance_sites.empty else set()
+        
+        # Check GVFKs from branch-only sites (sites without substances)
+        branch_only_sites = v1v2_combined[
+            ~(v1v2_combined['Lokalitetensstoffer'].notna() & 
+              (v1v2_combined['Lokalitetensstoffer'].astype(str).str.strip() != '') &
+              (v1v2_combined['Lokalitetensstoffer'].astype(str) != 'nan'))
+        ]
+        gvfk_from_branch_only_sites = set(branch_only_sites['Navn'].unique()) if not branch_only_sites.empty else set()
+        
+        print(f"  GVFKs from substance-containing sites: {len(gvfk_from_substance_sites):,}")
+        print(f"  GVFKs from branch-only sites: {len(gvfk_from_branch_only_sites):,}")
+        print(f"  NEW GVFKs added by branch-only sites: {len(gvfk_from_branch_only_sites - gvfk_from_substance_sites):,}")
+        
+        if gvfk_from_branch_only_sites - gvfk_from_substance_sites:
+            new_gvfks = list(gvfk_from_branch_only_sites - gvfk_from_substance_sites)[:5]
+            print(f"  Examples of new GVFKs from branch-only sites: {new_gvfks}")
     
     # Generate summary statistics and save results
     _save_step3_results(v1v2_combined, gvfk_with_v1v2_names)
