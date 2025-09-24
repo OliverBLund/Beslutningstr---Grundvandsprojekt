@@ -92,7 +92,7 @@ Nærværende metodebeskrivelse dokumenterer **den komplette risikovurdering (tri
 
 **Tilstandsvurderingen** - den kvantitative vurdering af faktiske koncentrationer og overskridelser i vandløb - vil blive gennemført som næste projektfase efter finalisering af risikovurderingsmetodikken.
 
-Metoden præsenteret her identificerer **1.713 højrisiko-lokaliteter** gennem stofspecifik vurdering (ud af 16.934 relevante lokaliteter), som danner grundlag for den kommende tilstandsvurdering og prioritering af miljøindsats.
+Metoden præsenteret her identificerer **2.013 højrisiko-lokaliteter** gennem stofspecifik vurdering (ud af 35.728 analyserede lokaliteter), som danner grundlag for den kommende tilstandsvurdering og prioritering af miljøindsats.
 
 # Datagrundlag
 
@@ -251,10 +251,10 @@ grundvandsforekomster (VP3)
 **Proceslogik (`step3_v1v2_sites.py`)**:
 
 1. **Aktiv forureningsfiltrering (kritisk kvalitetskontrol)**:
-   - Filtrer hvor `Lokalitetensstoffer` ikke er null/tom
-   - **V1**: 84.601 → 34.232 rækker (60% reduktion)
-   - **V2**: 134.636 → 121.984 rækker (9% reduktion)
-   - **Årsag**: Kun lokaliteter med dokumenterede aktive forureninger er relevante for risikovurdering
+   - Filtrer hvor `Lokalitetensstoffer` ELLER `Lokalitetensbranche` ikke er null/tom
+   - **V1**: 84.601 → 84.401 rækker (99.8% retained)
+   - **V2**: 134.636 → 134.491 rækker (99.9% retained)
+   - **Årsag**: Inkluderer lokaliteter med dokumenterede aktive forureninger ELLER brancheoplysninger, da branch-information kan indikere potentielle forureningsrisici også uden dokumenterede stoffer
 
 2. **Geometri-processering**:
    - Indlæs shapefiles med `geopandas.read_file()`
@@ -292,15 +292,15 @@ grundvandsforekomster (VP3)
 - **Returnerer**: (sæt_med_GVFK_navne, v1v2_kombineret_GeoDataFrame)
 
 **Aktuelle Resultater**:
-- **16.934 unikke V1/V2-lokaliteter** med aktive forureninger
-- **32.391 totale lokalitet-GVFK kombinationer** efter deduplikering
-- **432 GVFK har V1/V2-lokaliteter** (72,9% af vandløbs-GVFK fra Trin 2)
+- **35.728 unikke V1/V2-lokaliteter** med aktive forureninger eller brancheoplysninger
+- **69.627 totale lokalitet-GVFK kombinationer** efter deduplikering
+- **491 GVFK har V1/V2-lokaliteter** (82.8% af vandløbs-GVFK fra Trin 2)
 - Gennemsnitligt 1,9 GVFK per lokalitet
 
 **Lokalitet-fordeling efter type**:
-- **V2**: 12.663 lokaliteter (74,8%)
-- **V1 og V2**: 2.398 lokaliteter (14,2%)
-- **V1**: 1.873 lokaliteter (11,1%)
+- **V2**: 15.610 lokaliteter (43.7%)
+- **V1 og V2**: 3.099 lokaliteter (8.7%)
+- **V1**: 17.019 lokaliteter (47.6%)
 
 **Videre dataflow**: Lokalitet-GVFK kombinationer fra dette trin danner grundlag for afstandsberegninger i Trin 4
 
@@ -309,7 +309,7 @@ grundvandsforekomster (VP3)
 **Formål**: Beregne minimumsafstanden fra hver V1/V2-lokalitet til vandløbssegmenter med grundvandskontakt inden for samme GVFK. Dette kvantificerer forureningsspredningsrisikoen baseret på fysisk afstand.
 
 **Inddata**:
-- **Fra Trin 3**: 16,934 unikke V1/V2-lokaliteter med 32,391 lokalitet-GVFK kombinationer
+- **Fra Trin 3**: 35,728 unikke V1/V2-lokaliteter med 69,627 lokalitet-GVFK kombinationer
 - **Fra datagrundlag**: Vandløbsstrækninger med kontakt til grundvand (`Rivers_gvf_rev20230825_kontakt.shp`)
 
 **Proceslogik (`step4_distances.py`)**:
@@ -317,7 +317,7 @@ grundvandsforekomster (VP3)
 Trin 4 håndterer én-til-mange relationer mellem lokaliteter og GVFK ved at beregne afstande for hver kombination separat:
 
 **1. Afstandsberegning per lokalitet-GVFK kombination**:
-For hver af de 32,391 kombinationer:
+For hver af de 69,627 kombinationer:
 - Hent lokalitetens geometri og tilknyttet GVFK-navn
 - Find matchende vandløbssegmenter hvor `GVForekom` = lokalitetens GVFK OG `Kontakt = 1`
 - Beregn minimumsafstand mellem lokalitetspolygon og alle matchende vandløbssegmenter
@@ -343,10 +343,10 @@ Korrekt afstandsberegning kræver præcis matching mellem lokalitets-GVFK tilkny
 - Beregning: Korteste afstand mellem ethvert punkt på lokalitetspolygonen og ethvert punkt på vandløbslinjen
 
 **Aktuelle Resultater**:
-Algoritmen behandlede 32,391 lokalitet-GVFK kombinationer med følgende resultater:
-- **16,934 unikke lokaliteter** har alle afstande til vandløb (100% success rate)
-- **Gennemsnitlig afstand**: 3,453 meter til nærmeste vandløb
-- **Median afstand**: 1,528 meter til nærmeste vandløb
+Algoritmen behandlede 69,627 lokalitet-GVFK kombinationer med følgende resultater:
+- **35,728 unikke lokaliteter** har alle afstande til vandløb (100% success rate)
+- **Gennemsnitlig afstand**: 3,116 meter til nærmeste vandløb
+- **Median afstand**: 1,368 meter til nærmeste vandløb
 - **Minimum afstand**: 0,0 meter (lokaliteter direkte ved vandløb)
 - **Maksimum afstand**: Varierer afhængigt af GVFK størrelse
 
@@ -403,7 +403,7 @@ Closest_GVFK: DK_GVF_002
 **Formål**: Identificere højrisiko V1/V2-lokaliteter baseret på afstand til vandløb og stofspecifikke mobilitetsegenskaber. Implementerer to-lags risikovurdering med både generelle og stofspecifikke tærskler.
 
 **Inddata**:
-- **Fra Trin 4**: `step4_final_distances_for_risk_assessment.csv` med 16,934 lokaliteter og deres minimumsafstande
+- **Fra Trin 4**: `step4_final_distances_for_risk_assessment.csv` med 35,728 lokaliteter og deres minimumsafstande
 - **Excel-baseret kategorisering**: `compound_categorization_review.xlsx` med litteraturbaserede fanelængder.
 
 **Proceslogik (`step5_risk_assessment.py`)**:
@@ -413,59 +413,96 @@ Closest_GVFK: DK_GVF_002
 - Konservativ screening uafhængig af forureningstype
 - Output: `step5_high_risk_sites.csv` og GVFK-shapefiler
 
-**2. Stofspecifik risikovurdering (litteraturbaserede tærskler)**:
+**2. Stofspecifik risikovurdering med losseplads-override (to-fase tilgang)**:
+
+**Fase 1 - Normal kategorisering**:
 - Parse semikolon-separerede stoffer per lokalitet
-- Kategoriser hvert stof via Excel-mapping til 8 aktive mobilitetsklasser:
-  - **PAHER** (PAH): 30m tærskel
-  - **BTXER** (BTEX): 50m tærskel  
+- Kategoriser hvert stof via Excel-mapping til 9 aktive mobilitetsklasser:
+  - **PAH_FORBINDELSER** (PAH): 30m tærskel
+  - **BTXER** (BTEX): 50m tærskel (undtagen Benzen: 200m tærskel)
   - **PHENOLER**: 100m tærskel
   - **UORGANISKE_FORBINDELSER**: 150m tærskel
   - **POLARE**: 300m tærskel
-  - **CHLORINATED_SOLVENTS**: 500m tærskel
+  - **KLOREREDE_OPLØSNINGSMIDLER**: 500m tærskel
   - **PESTICIDER**: 500m tærskel
-  - **OTHER**: 500m tærskel (default)
+  - **LOSSEPLADS**: 500m tærskel (ny kategori for lossepladser)
+  - **ANDRE**: 500m tærskel (default)
 - Evaluér hver stof-lokalitet kombination mod kategori-tærskel
-- Output: `step5_compound_detailed_combinations.csv` med alle kvalificerende kombinationer
+
+**Fase 2 - Losseplads-override (post-processering)**:
+- For kombinationer der kvalificerede i Fase 1:
+- Identificer lokaliteter med losseplads-karakteristika (`Lokalitetensbranche` eller `Lokalitetensaktivitet`)
+- Anvend strengere losseplads-specifikke tærskler for udvalgte kategorier:
+  - **BTXER**: 70m (vs. 50m normal) - Benzen-repræsentativ ved lossepladser
+  - **KLOREREDE_OPLØSNINGSMIDLER**: 100m (vs. 500m normal) - TCE-repræsentativ ved lossepladser
+  - **PHENOLER**: 35m (vs. 100m normal) - Phenol-repræsentativ ved lossepladser
+  - **PESTICIDER**: 180m (vs. 500m normal) - MCPP-repræsentativ ved lossepladser
+  - **UORGANISKE_FORBINDELSER**: 50m (vs. 150m normal) - Arsen-repræsentativ ved lossepladser
+- Reklassificer til **LOSSEPLADS** hovedkategori med **LOSSEPLADS_[ORIGINAL]** subkategori
+- Fjern kombinationer der ikke opfylder strengere losseplads-tærskler
+
+**Tærskel-sammenligning (Normal vs. Losseplads-specifik)**:
+
+| Kategori | Normal Tærskel | Losseplads Tærskel | Repræsentativ Forbindelse | Override Status |
+|----------|----------------|-------------------|---------------------------|-----------------|
+| **BTXER** | 50m | **70m** | Benzen | ✓ Override (løsere) |
+| **KLOREREDE_OPLØSNINGSMIDLER** | 500m | **100m** | Tetrachlorethylen (TCE) | ✓ Override (strengere) |
+| **PHENOLER** | 100m | **35m** | Phenol | ✓ Override (strengere) |
+| **PESTICIDER** | 500m | **180m** | MCPP | ✓ Override (strengere) |
+| **UORGANISKE_FORBINDELSER** | 150m | **50m** | Arsen | ✓ Override (strengere) |
+| **PAH_FORBINDELSER** | 30m | - | - | Ingen override |
+| **POLARE** | 300m | - | - | Ingen override |
+| **LOSSEPLADS** | 500m | - | - | Ingen override (allerede losseplads) |
+| **ANDRE** | 500m | - | - | Ingen override |
+
+- Output: `step5_compound_detailed_combinations.csv` med alle kvalificerende kombinationer efter override
 
 **Aktuelle Resultater**:
 
 **Generel vurdering (500m tærskel)**:
-- **3.606 lokaliteter** kvalificerer som højrisiko (21,3% af alle analyserede)
-- **287 unikke GVFKs** påvirket (14,0% af alle danske GVFK)
+- **4.156 lokaliteter** kvalificerer som højrisiko (11,6% af alle analyserede)
+- **300 unikke GVFKs** påvirket (14,7% af alle danske GVFK)
 - **Top kategorier**:
-  - *Brancher*: Servicestationer (651), Autoreparationsværksteder (614), Affaldsbehandling (388)
-  - *Aktiviteter*: Andet (897), Benzin/olie salg (661), Benzin/olie oplag (436)  
+  - *Brancher*: Servicestationer (657), Autoreparationsværksteder (638), Drift af affaldsbehandlingsanlæg (600)
+  - *Aktiviteter*: Andet (935), Benzin og olie, salg af (666), Benzin og olie, erhvervsmæssig oplag af (461)
   - *Stoffer*: Tungmetaller (675), Bly (661), Olieprodukter (561)
 
-**Stofspecifik vurdering (kategori-baserede tærskler)**:
-- **1.713 lokaliteter** kvalificerer (10,1% af alle analyserede)
-- **216 unikke GVFKs** påvirket (10,6% af alle danske GVFK)
-- **4.176 stof-lokalitet kombinationer** (gennemsnit 2,4 stoffer per lokalitet)
-- **1.893 lokaliteter færre** end generel vurdering pga. strengere tærskler
+**Stofspecifik vurdering med losseplads-override (kategori-baserede tærskler)**:
+- **2.013 unikke lokaliteter** kvalificerer (5,6% af alle analyserede)
+- **4.235 stof-lokalitet kombinationer** (gennemsnit 2,1 stoffer per lokalitet)
+- **705 kombinationer** blev reklassificeret til LOSSEPLADS via override-systemet
+- **367 kombinationer** blev fjernet pga. strengere losseplads-tærskler
+
+**Losseplads-override fordeling efter kategori**:
+- **UORGANISKE_FORBINDELSER**: 299 kombinationer (50m tærskel)
+- **BTXER**: 191 kombinationer (70m tærskel)
+- **PESTICIDER**: 114 kombinationer (180m MCPP-tærskel)
+- **KLOREREDE_OPLØSNINGSMIDLER**: 63 kombinationer (100m tærskel)
+- **PHENOLER**: 38 kombinationer (35m tærskel)
 
 **Multi-stof distribution**:
-- **899 lokaliteter** (52%): 1 kvalificerende stof
-- **316 lokaliteter** (18%): 2 kvalificerende stoffer
-- **192 lokaliteter** (11%): 3 kvalificerende stoffer  
-- **306 lokaliteter** (18%): 4+ kvalificerende stoffer
+- **1.483 lokaliteter** (64%): 1 kvalificerende stof
+- **322 lokaliteter** (14%): 2 kvalificerende stoffer
+- **190 lokaliteter** (8%): 3 kvalificerende stoffer
+- **313 lokaliteter** (14%): 4+ kvalificerende stoffer
 - **Maksimum**: 32 stoffer (Lokalitet 751-00018)
 
 **Kategori-fordeling efter forekomst**:
-- **UORGANISKE_FORBINDELSER**: 1.065 forekomster (589 lokaliteter) - 150m tærskel
-- **CHLORINATED_SOLVENTS**: 926 forekomster (480 lokaliteter) - 500m tærskel
-- **BTXER**: 693 forekomster (346 lokaliteter) - 50m tærskel  
+- **UORGANISKE_FORBINDELSER**: 1.055 forekomster (588 lokaliteter) - 150m tærskel
+- **KLOREREDE_OPLØSNINGSMIDLER**: 926 forekomster (480 lokaliteter) - 500m tærskel
+- **LOSSEPLADS**: 854 forekomster (793 lokaliteter) - 500m tærskel
+- **BTXER**: 780 forekomster (433 lokaliteter) - 50m tærskel
 - **PESTICIDER**: 642 forekomster (277 lokaliteter) - 500m tærskel
-- **OTHER**: 560 forekomster (455 lokaliteter) - 500m tærskel
-- **PAHER**: 137 forekomster (77 lokaliteter) - 30m tærskel
-- **PHENOLER**: 75 forekomster (52 lokaliteter) - 100m tærskel
-- **POLARE**: 45 forekomster (44 lokaliteter) - 300m tærskel
+- **ANDRE**: 260 forekomster (238 lokaliteter) - 500m tærskel
+- **PAH_FORBINDELSER**: 137 forekomster (77 lokaliteter) - 30m tærskel
+- **PHENOLER**: 72 forekomster (49 lokaliteter) - 100m tærskel
 
 **GVFK-filtreringskaskade**:
 - **Total GVFK Danmark**: 2.043 (100,0%)
-- **Med vandløbskontakt (Trin 2)**: 593 (29,0%)  
-- **Med V1/V2-lokaliteter (Trin 3)**: 432 (21,1%)
-- **Med sites ≤500m (Generel)**: 287 (14,0%)
-- **Med stofspecifik risiko (Trin 5)**: 216 (10,6%)
+- **Med vandløbskontakt (Trin 2)**: 593 (29,0%)
+- **Med V1/V2-lokaliteter (Trin 3)**: 490 (24,0%)
+- **Med sites ≤500m (Generel)**: 300 (14,7%)
+- **Med stofspecifik risiko (Trin 5)**: 246 (12,0%)
 
 **Metodiske forbedringer implementeret**:
 - **Stofaggregering i Trin 3**: Sikrer alle forureningsstoffer bevares gennem workflow
@@ -479,12 +516,12 @@ Closest_GVFK: DK_GVF_002
 
 ## Planlagt Metodisk Tilgang
 
-Tilstandsvurderingen vil bygge videre på de 1.713 højrisiko-lokaliteter identificeret gennem stofspecifik risikovurdering og omfatte:
+Tilstandsvurderingen vil bygge videre på de 2.013 højrisiko-lokaliteter identificeret gennem stofspecifik risikovurdering og omfatte:
 
 ### Kvantitativ Fluxberegning
-- Beregning af forureningsflux fra de **1.713 højrisiko-lokaliteter** identificeret i risikovurderingen
+- Beregning af forureningsflux fra de **2.013 højrisiko-lokaliteter** identificeret i risikovurderingen
 - Anvendelse af infiltrationsdata fra DK-modellen: **Flux = Areal × Koncentration × Infiltration**
-- Transport af flux langs strømlinjer til relevante kontaktstrækninger inden for de **216 påvirkede GVFK**
+- Transport af flux langs strømlinjer til relevante kontaktstrækninger inden for de **232 påvirkede GVFK**
 
 ### Koncentrationsvurdering i Vandløb
 - Beregning af blandingskoncentration: **C_mix = Forureningsflux / Vandføring**
@@ -510,9 +547,9 @@ Tilstandsvurderingen kræver tæt samarbejde med GEUS vedrørende:
   - V1: 84.601 → **34.232 lokaliteter** med aktive forureninger (60% reduktion)
   - V2: 134.636 → **121.984 lokaliteter** med aktive forureninger (9% reduktion)
   - Eliminerer lokaliteter uden dokumenterede forureningsstoffer
-- **Endelig analyse**: **16.934 unikke lokaliteter** med både aktive forureninger og vandløbskontakt
-- **Generel screening**: **3.606 lokaliteter** inden for 500m (287 GVFK påvirket)
-- **Stofspecifik risikovurdering**: **1.713 højrisiko-lokaliteter** baseret på litteraturbaserede tærskler (216 GVFK påvirket)
+- **Endelig analyse**: **35.728 unikke lokaliteter** med både aktive forureninger og vandløbskontakt
+- **Generel screening**: **4.156 lokaliteter** inden for 500m (300 GVFK påvirket)
+- **Stofspecifik risikovurdering**: **2.013 højrisiko-lokaliteter** baseret på litteraturbaserede tærskler (232 GVFK påvirket)
 - **Output**: Præcise afstande til vandløb med komplet forureningsinformation til risikovurdering
 
 ## Fordele ved denne metode
@@ -530,10 +567,10 @@ Denne metodebeskrivelse præsenterer en systematisk og robust tilgang til identi
 
 De udviklede metoder muliggør:
 
-- **Effektiv risikoidentifikation**: 1.713 højrisiko-lokaliteter identificeret gennem stofspecifik vurdering (ud af 16.934 relevante lokaliteter)
+- **Effektiv risikoidentifikation**: 2.013 højrisiko-lokaliteter identificeret gennem stofspecifik vurdering (ud af 35.728 analyserede lokaliteter)
 - **Prioriteret indsats**: Fokus på lokaliteter inden for stofspecifikke tærskler med dokumenteret grundvandskontakt
-- **To-lags vurdering**: Både generel screening (3.606 sites) og stofspecifik analyse (1.713 sites)  
-- **GVFK-reduktion**: Fra 2.043 danske GVFK til 216 højrisiko GVFK (10,6%)
+- **To-lags vurdering**: Både generel screening (4.156 sites) og stofspecifik analyse (2.013 sites)
+- **GVFK-reduktion**: Fra 2.043 danske GVFK til 232 højrisiko GVFK (11,4%)
 - **Kvantificeret risiko**: Præcise afstandsmålinger og stofspecifikke tærskler som grundlag for risikovurdering
 - **Sporbarhed**: Komplet dokumentation af databehandling og analysemetoder
 

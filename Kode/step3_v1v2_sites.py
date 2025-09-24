@@ -27,7 +27,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pyogrio.raw")
 from shapely.errors import ShapelyDeprecationWarning
 from config import (
     V1_CSV_PATH, V2_CSV_PATH, V1_SHP_PATH, V2_SHP_PATH,
-    get_output_path, ensure_results_directory, GRUNDVAND_PATH
+    get_output_path, ensure_results_directory, ensure_cache_directory, 
+    V1_DISSOLVED_CACHE, V2_DISSOLVED_CACHE, is_cache_valid, GRUNDVAND_PATH
 )
 
 # Suppress shapely deprecation warnings
@@ -302,14 +303,14 @@ def run_step3(rivers_gvfk):
     if locality_col is None:
         raise ValueError("No locality column found in V1 shapefile")
     
-    # Dissolve V1 geometries by locality to handle multipolygons
-    v1_geom = v1_shp.dissolve(by=locality_col, as_index=False)
+    # Load or create dissolved V1 geometries with caching
+    v1_geom = _load_or_dissolve_geometries(v1_shp, V1_DISSOLVED_CACHE, V1_SHP_PATH, locality_col, 'V1')
     
     # Process V2 geometries
     v2_shp = gpd.read_file(V2_SHP_PATH)
     
-    # Dissolve V2 geometries by locality
-    v2_geom = v2_shp.dissolve(by=locality_col, as_index=False)
+    # Load or create dissolved V2 geometries with caching
+    v2_geom = _load_or_dissolve_geometries(v2_shp, V2_DISSOLVED_CACHE, V2_SHP_PATH, locality_col, 'V2')
     
     # Section 3: River-Contact GVFK Filtering & Geometry Processing
     print("\n3. RIVER-CONTACT GVFK FILTERING & GEOMETRY PROCESSING")
@@ -374,6 +375,46 @@ def run_step3(rivers_gvfk):
     _save_step3_results(v1v2_combined, gvfk_with_v1v2_names)
     
     return gvfk_with_v1v2_names, v1v2_combined
+
+def _load_or_dissolve_geometries(shp_data, cache_path, source_path, locality_col, dataset_name):
+    """
+    Load dissolved geometries from cache or create and cache them.
+    
+    Args:
+        shp_data (GeoDataFrame): Raw shapefile data
+        cache_path (str): Path to cache file
+        source_path (str): Path to source shapefile
+        locality_col (str): Column name for dissolving
+        dataset_name (str): 'V1' or 'V2' for logging
+        
+    Returns:
+        GeoDataFrame: Dissolved geometries
+    """
+    # Ensure cache directory exists
+    ensure_cache_directory()
+    
+    # Check if cache is valid
+    if is_cache_valid(cache_path, source_path):
+        print(f"Loading {dataset_name} dissolved geometries from cache: {cache_path}")
+        try:
+            dissolved_geom = gpd.read_file(cache_path)
+            print(f"✓ {dataset_name}: Loaded {len(dissolved_geom):,} dissolved geometries from cache")
+            return dissolved_geom
+        except Exception as e:
+            print(f"Warning: Could not load {dataset_name} cache ({e}), recreating...")
+    
+    # Cache invalid or doesn't exist - dissolve and save
+    print(f"Dissolving {dataset_name} geometries by locality (this may take a few minutes)...")
+    dissolved_geom = shp_data.dissolve(by=locality_col, as_index=False)
+    
+    # Save to cache
+    try:
+        dissolved_geom.to_file(cache_path)
+        print(f"✓ {dataset_name}: Dissolved {len(shp_data):,} → {len(dissolved_geom):,} geometries and saved to cache")
+    except Exception as e:
+        print(f"Warning: Could not save {dataset_name} cache ({e}), continuing without caching")
+    
+    return dissolved_geom
 
 def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type):
     """

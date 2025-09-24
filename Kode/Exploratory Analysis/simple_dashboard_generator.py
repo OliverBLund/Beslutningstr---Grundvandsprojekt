@@ -87,17 +87,26 @@ def create_dashboard(results_df):
                                reverse=True)
     num_categories = len(existing_categories)
     
-    # Color mapping for consistency
+    # Color mapping for consistency - updated for current category names
     colors = {
+        # Current Danish category names
         'BTXER': '#2E86AB',
-        'UORGANISKE_FORBINDELSER': '#A23B72', 
+        'KLOREREDE_OPLØSNINGSMIDLER': '#F18F01',  # Chlorinated solvents - orange
+        'PAH_FORBINDELSER': '#C73E1D',  # PAH compounds - red
+        'POLARE_FORBINDELSER': '#34495E',  # Polar compounds - dark blue
+        'KLOREREDE_PHENOLER': '#16A085',  # Chlorinated phenols - teal
+        'KLOREDE_KULBRINTER': '#95A5A6',  # Chlorinated hydrocarbons - gray
+        'UORGANISKE_FORBINDELSER': '#A23B72',  # Inorganic compounds - purple
+        'LOSSEPLADS': '#D35400',  # Landfill - dark orange
+        'PESTICIDER': '#5B8A3A',  # Pesticides - green
+        'PHENOLER': '#E67E22',  # Phenols - orange
+        'ANDRE': '#8E44AD',  # Others - purple
+
+        # Legacy names for backward compatibility
         'CHLORINATED_SOLVENTS': '#F18F01',
         'PAHER': '#C73E1D',
-        'PESTICIDER': '#5B8A3A',
         'OTHER': '#8E44AD',
-        'PHENOLER': '#E67E22',
-        'POLARE': '#34495E',
-        'KLOREDE_KULBRINTER': '#95A5A6'
+        'POLARE': '#34495E'
     }
     
     # Create subplot titles

@@ -20,6 +20,15 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import V1_CSV_PATH, V2_CSV_PATH
 
+# COMPOUND-SPECIFIC DISTANCE OVERRIDES
+# These override the general category distances for specific compounds
+COMPOUND_SPECIFIC_DISTANCES = {
+    'benzen': 200,  # Override BTXER category (50m) with specific distance
+    'cod': 500,
+    'cyanid': 100
+    # Add more specific compounds here as needed
+}
+
 # REFINED COMPOUND MAPPING - Literature-based categories only
 LITERATURE_COMPOUND_MAPPING = {
     # 1. BTX compounds + Oil products - 50m (literature-based)
@@ -54,8 +63,8 @@ LITERATURE_COMPOUND_MAPPING = {
     # 4. Phenolic compounds - 100m (literature-based)
     'PHENOLER': {
         'distance_m': 100,
-        'keywords': ['phenol', 'fenol', 'cod', 'klorofenol'],
-        'description': 'Phenolic compounds including COD',
+        'keywords': ['phenol', 'fenol', 'klorofenol'],
+        'description': 'Phenolic',
         'literature_basis': 'Phenol mobility and degradation studies'
     },
     
@@ -120,18 +129,20 @@ LITERATURE_COMPOUND_MAPPING = {
         'literature_basis': 'Heavy metal mobility and salt transport studies'
     },
     
-    # 10. Landfill leachate compounds - 500m (conservative approach)
+    # 10. Landfill leachate compounds - 100m (perkolat-specific)
     'LOSSEPLADS': {
-        'distance_m': 500,
-        'keywords': ['lossepladsperkolat', 'lossepladsgas', 'methan', 'perkolat', 'deponeringsgas', 'fyldplads'],
-        'description': 'Landfill leachate and gas compounds with complex mixture characteristics',
-        'literature_basis': 'Conservative approach for landfill plume assessment'
+        'distance_m': 100,
+        'keywords': ['lossepladsperkolat', 'perkolat'],
+        # Commented out for now: 'lossepladsgas', 'methan', 'deponeringsgas', 'fyldplads', 'cod'
+        'description': 'Landfill leachate compounds with focus on perkolat',
+        'literature_basis': 'Perkolat-specific mobility assessment'
     }
 }
 
 def categorize_contamination_substance_refined(substance_text):
     """
     Categorize using only literature-based categories + ANDRE.
+    Checks for compound-specific distance overrides first.
     
     Args:
         substance_text (str): The contamination substance text
@@ -144,7 +155,33 @@ def categorize_contamination_substance_refined(substance_text):
     
     substance_lower = substance_text.lower().strip()
     
-    # Check each literature-based category for keyword matches
+    # First check for compound-specific distance overrides
+    for compound, specific_distance in COMPOUND_SPECIFIC_DISTANCES.items():
+        # Use word boundaries for more precise matching
+        import re
+        if compound == 'benzen':
+            # For benzen, only match pure benzen or benzen at start of substance name
+            # Exclude compound names like "trichlorbenzen", "C6H6 (benzen)-C10", etc.
+            if (substance_lower == 'benzen' or
+                substance_lower.startswith('benzen ') or
+                substance_lower.startswith('benzen-') or
+                substance_lower.startswith('benzen,') or
+                substance_lower.startswith('benzen;')):
+                # Find which category it belongs to
+                for category, info in LITERATURE_COMPOUND_MAPPING.items():
+                    for keyword in info['keywords']:
+                        if keyword in substance_lower:
+                            return category, specific_distance  # Use specific distance instead of category distance
+        else:
+            # For other compounds, use the original substring matching
+            if compound in substance_lower:
+                # Find which category it belongs to
+                for category, info in LITERATURE_COMPOUND_MAPPING.items():
+                    for keyword in info['keywords']:
+                        if keyword in substance_lower:
+                            return category, specific_distance  # Use specific distance instead of category distance
+    
+    # Only check general categories if no specific override was found
     for category, info in LITERATURE_COMPOUND_MAPPING.items():
         for keyword in info['keywords']:
             if keyword in substance_lower:
@@ -183,15 +220,29 @@ def analyze_and_export_compounds():
     
     # Categorize all substances
     results = []
+    compound_specific_count = 0
+    
     for idx, substance in enumerate(substances):
         if idx % 10000 == 0:
             print(f"Processing... {idx:,}/{len(substances):,}")
             
         category, distance = categorize_contamination_substance_refined(substance)
+        
+        # Check if this used a compound-specific distance
+        used_specific_distance = False
+        if distance is not None:
+            substance_lower = substance.lower().strip()
+            for compound, specific_distance in COMPOUND_SPECIFIC_DISTANCES.items():
+                if compound in substance_lower and distance == specific_distance:
+                    used_specific_distance = True
+                    compound_specific_count += 1
+                    break
+        
         results.append({
             'substance': substance,
             'category': category,
             'distance_m': distance,
+            'used_specific_distance': used_specific_distance,
             'dataset': combined_data.loc[substances.index[idx], 'dataset'] if idx < len(combined_data) else 'Unknown'
         })
     
@@ -212,6 +263,18 @@ def analyze_and_export_compounds():
             print(f"{category:25} : {count:6,} ({pct:5.1f}%) - {distance}m")
         else:
             print(f"{category:25} : {count:6,} ({pct:5.1f}%) - No distance")
+    
+    print(f"\nCOMPOUND-SPECIFIC DISTANCE OVERRIDES")
+    print("=" * 40)
+    print(f"Total substances using compound-specific distances: {compound_specific_count:,}")
+    if compound_specific_count > 0:
+        print("Specific overrides used:")
+        for compound, distance in COMPOUND_SPECIFIC_DISTANCES.items():
+            compound_uses = results_df[results_df['used_specific_distance'] == True]['substance'].apply(
+                lambda x: compound in x.lower()
+            ).sum()
+            if compound_uses > 0:
+                print(f"  '{compound}': {distance}m ({compound_uses:,} uses)")
     
     # Create detailed Excel export
     excel_file = "compound_categorization_review.xlsx"
@@ -256,13 +319,18 @@ def analyze_and_export_compounds():
                 sheet_name = 'ANDRE_substances'[:31]  # Excel sheet name limit
                 other_df.to_excel(writer, sheet_name=sheet_name, index=False)
             else:
-                # For categorized substances, show what was matched
-                cat_substances = results_df[results_df['category'] == category]['substance'].value_counts()
+                # For categorized substances, show what was matched with actual distances used
+                cat_data = results_df[results_df['category'] == category]
+                cat_substances = cat_data.groupby('substance').agg({
+                    'distance_m': 'first',  # Get the actual distance used
+                    'substance': 'count'    # Count frequency
+                }).rename(columns={'substance': 'Frequency'})
+                
                 cat_df = pd.DataFrame({
                     'Substance': cat_substances.index,
-                    'Frequency': cat_substances.values,
+                    'Frequency': cat_substances['Frequency'].values,
                     'Category': category,
-                    'Distance_m': LITERATURE_COMPOUND_MAPPING[category]['distance_m']
+                    'Distance_m': cat_substances['distance_m'].values
                 })
                 sheet_name = category[:31]  # Excel sheet name limit
                 cat_df.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -287,11 +355,11 @@ def analyze_and_export_compounds():
     multi_substance_localities = (locality_substances > 1).sum()
     print(f"Localities with multiple substances: {multi_substance_localities:,} ({multi_substance_localities/len(locality_substances)*100:.1f}%)")
     
-    # 2. OTHER category breakdown
-    other_substances = results_df[results_df['category'] == 'OTHER']['substance'].value_counts()
-    print(f"\nOTHER category analysis:")
-    print(f"Total OTHER substances: {len(other_substances):,} unique substances")
-    print(f"Top 10 OTHER substances:")
+    # 2. ANDRE category breakdown
+    other_substances = results_df[results_df['category'] == 'ANDRE']['substance'].value_counts()
+    print(f"\nANDRE category analysis:")
+    print(f"Total ANDRE substances: {len(other_substances):,} unique substances")
+    print(f"Top 10 ANDRE substances:")
     for i, (substance, count) in enumerate(other_substances.head(10).items(), 1):
         pct = count / len(results_df[results_df['category'] == 'ANDRE']) * 100
         print(f"  {i:2d}. '{substance}': {count:,} ({pct:.1f}%)")

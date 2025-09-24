@@ -18,6 +18,11 @@ V2_CSV_PATH = os.path.join(PROJECT_ROOT, "Data", "v2_gvfk_forurening.csv")
 V1_SHP_PATH = os.path.join(BASE_PATH, "V1FLADER.shp")
 V2_SHP_PATH = os.path.join(BASE_PATH, "V2FLADER.shp")
 
+# Cache paths for performance optimization
+CACHE_PATH = os.path.join(RESULTS_PATH, "cache")
+V1_DISSOLVED_CACHE = os.path.join(CACHE_PATH, "v1_dissolved_geometries.shp")
+V2_DISSOLVED_CACHE = os.path.join(CACHE_PATH, "v2_dissolved_geometries.shp")
+
 # Core workflow settings
 WORKFLOW_SETTINGS = {
     'risk_threshold_m': 500,
@@ -65,6 +70,10 @@ OUTPUT_FILES = {
 def ensure_results_directory():
     """Create results directory if it doesn't exist."""
     os.makedirs(RESULTS_PATH, exist_ok=True)
+
+def ensure_cache_directory():
+    """Ensure the cache directory exists."""
+    os.makedirs(CACHE_PATH, exist_ok=True)
 
 def get_output_path(file_key, threshold_m=None):
     """
@@ -122,3 +131,24 @@ def validate_input_files():
         return False
     
     return True
+
+def is_cache_valid(cache_path, source_path):
+    """
+    Check if cache file is newer than source file.
+    
+    Args:
+        cache_path (str): Path to cache file
+        source_path (str): Path to source file
+        
+    Returns:
+        bool: True if cache is valid and newer than source
+    """
+    if not os.path.exists(cache_path):
+        return False
+    if not os.path.exists(source_path):
+        return False
+    
+    cache_time = os.path.getmtime(cache_path)
+    source_time = os.path.getmtime(source_path)
+    
+    return cache_time > source_time
