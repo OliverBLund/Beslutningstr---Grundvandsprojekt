@@ -216,6 +216,21 @@ def run_step3(rivers_gvfk):
     print(f"  Net addition from branch-only sites:")
     print(f"    Additional sites: +{v2_added_sites:,} ({v2_added_sites/v2_old_sites*100:.1f}%)")
     print(f"    Additional localities: +{v2_added_localities:,} ({v2_added_localities/v2_old_localities*100:.1f}%)")
+
+    # DEBUG: Let's understand the V2 discrepancy
+    print(f"\n  DEBUG - V2 Math Check:")
+    print(f"    Branch-only localities: {v2_branch_only_localities:,} (19.3% of new total)")
+    print(f"    Expected increase if only branch-only added: {v2_branch_only_localities}")
+    print(f"    Actual increase: {v2_added_localities}")
+    print(f"    Difference: {v2_added_localities - v2_branch_only_localities}")
+    if v2_added_localities != v2_branch_only_localities:
+        print(f"    → This suggests overlap or filtering effects!")
+
+    # Let's check if the old approach calculation is correct
+    v2_old_recalc = v2_csv_raw[v2_has_substances]['Lokalitetsnr'].nunique()
+    print(f"    V2 old localities (recalculated): {v2_old_recalc}")
+    if v2_old_localities != v2_old_recalc:
+        print(f"    → Mismatch in old calculation: {v2_old_localities} vs {v2_old_recalc}")
     
     # Keep sites that have either substance data OR branch data (not both required)
     v2_csv = v2_csv_raw[v2_has_substances | v2_has_branch]

@@ -2,8 +2,8 @@
 Refined Compound Categorization Analysis - Literature-Based Categories Only
 ===========================================================================
 
-This script analyzes V1/V2 contamination data using 10 literature-based 
-compound categories plus a catch-all "ANDRE" category. Results are exported to 
+This script analyzes V1/V2 contamination data using 11 literature-based
+compound categories plus a catch-all "ANDRE" category. Results are exported to
 Excel for easy review.
 
 Author: Analysis for Boss Discussion
@@ -98,7 +98,7 @@ LITERATURE_COMPOUND_MAPPING = {
     'PESTICIDER': {
         'distance_m': 500,
         'keywords': ['pesticid', 'herbicid', 'fungicid', 'mechlorprop', 'mcpp', 'atrazin', 'glyphosat',
-                    'perfluor', 'pfos', 'pfoa', 'perfluoroctansulfonsyre', 'pfas', 'mcpa', 'dichlorprop',
+                    'mcpa', 'dichlorprop',
                     '2,4-d', 'diuron', 'simazin', 'fluazifop', 'ampa', 'ddt', 'triazol', 'dichlorbenzamid',
                     'desphenyl chloridazon', 'chloridazon', 'dde', 'ddd', 'bentazon', 'dithiocarbamat',
                     'dithiocarbamater', '4-cpp', '2-(2,6-dichlorphenoxy)', 'hexazinon', 'isoproturon',
@@ -111,12 +111,25 @@ LITERATURE_COMPOUND_MAPPING = {
                     'picloram', 'sulfosulfuron', 'epoxiconazol', 'clomazon', 'prothioconazol', 'aminopyralid',
                     'metalaxyl', 'dichlorvos', 'dicamba', 'triadimefon', 'haloxyfop', 'quintozen', 'endosulfan',
                     'dichlorfluanid', 'florasulam', 'aldicarb', 'imidacloprid', 'pendimethalin', 'dinoseb',
-                    'dinoterb', 'amitrol', 'ethofumesat', 'benazolin', 'deet'],
-        'description': 'Pesticides, herbicides, fungicides and PFAS compounds - high mobility',
+                    'dinoterb', 'amitrol', 'ethofumesat', 'benazolin', 'deet', 'N,N-Dimethylsulfamid (DMS)', 'dms'],
+        'description': 'Pesticides, herbicides, and fungicides - high mobility',
         'literature_basis': 'Pesticide leaching studies and regulatory guidelines'
     },
+
+    # 9. PFAS compounds - 500m (literature-based)
+    'PFAS': {
+        'distance_m': 500,
+        'keywords': ['perfluor', 'pfos', 'pfoa', 'pfas', 'perfluoroctansulfonsyre', 'perfluoroctansyre',
+                    'perfluorhexansulfonsyre', 'pfhxs', 'perfluorheptansyre', 'pfhpa', 'perfluorpentansyre',
+                    'pfpea', 'perfluorhexansyre', 'pfhxa', 'perfluorbutansyre', 'pfba', 'perfluoroctansulfonamid',
+                    'pfosa', 'perfluorbutansulfonsyre', 'pfbs', '1h,1h,2h,2h-perfluoroctansulfonsyre',
+                    'perfluornonansyre', 'pfna', 'perfluorpentansulfonsyre', 'pfpes', 'perfluorheptansulfonsyre',
+                    'pfhps'],
+        'description': 'Per- and polyfluoroalkyl substances (forever chemicals) - very high mobility and persistence',
+        'literature_basis': 'PFAS persistence and groundwater mobility studies'
+    },
     
-    # 9. Inorganic compounds - 150m (literature-based)
+    # 10. Inorganic compounds - 150m (literature-based)
     'UORGANISKE_FORBINDELSER': {
         'distance_m': 150,
         'keywords': ['arsen', 'arsenic', 'cyanid', 'cyanide', 'tungmetal', 'bly', 'cadmium', 'krom', 'chrom',
@@ -128,8 +141,8 @@ LITERATURE_COMPOUND_MAPPING = {
         'description': 'Inorganic compounds including heavy metals and salts',
         'literature_basis': 'Heavy metal mobility and salt transport studies'
     },
-    
-    # 10. Landfill leachate compounds - 100m (perkolat-specific)
+
+    # 11. Landfill leachate compounds - 100m (perkolat-specific)
     'LOSSEPLADS': {
         'distance_m': 100,
         'keywords': ['lossepladsperkolat', 'perkolat'],
@@ -196,7 +209,7 @@ def analyze_and_export_compounds():
     """
     print("REFINED COMPOUND CATEGORIZATION ANALYSIS")
     print("=" * 60)
-    print("Using 10 literature-based categories + ANDRE catch-all")
+    print("Using 11 literature-based categories + ANDRE catch-all")
     print()
     
     # Load data

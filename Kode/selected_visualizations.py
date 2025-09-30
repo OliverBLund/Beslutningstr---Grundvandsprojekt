@@ -6,6 +6,60 @@ import pandas as pd
 from matplotlib.patches import FancyArrowPatch
 from config import WORKFLOW_SETTINGS, get_output_path
 
+def create_html_table(data, headers, title, filename, output_dir):
+    """Create a simple HTML table for PowerPoint copy-paste."""
+    os.makedirs(output_dir, exist_ok=True)
+
+    html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h2 {{ color: #1f4e79; margin-bottom: 20px; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        th {{ background-color: #1f4e79; color: white; padding: 12px; text-align: left; border: 1px solid #ddd; }}
+        td {{ padding: 10px; border: 1px solid #ddd; }}
+        tr:nth-child(even) {{ background-color: #f2f2f2; }}
+        tr:hover {{ background-color: #e6f3ff; }}
+        .number {{ text-align: right; }}
+    </style>
+</head>
+<body>
+    <h2>{title}</h2>
+    <table>
+        <thead>
+            <tr>
+"""
+
+    for header in headers:
+        html_content += f"                <th>{header}</th>\n"
+
+    html_content += """            </tr>
+        </thead>
+        <tbody>
+"""
+
+    for row in data:
+        html_content += "            <tr>\n"
+        for item in row:
+            # Check if item looks like a number for right alignment
+            css_class = "number" if isinstance(item, (int, float)) or (isinstance(item, str) and item.replace(',', '').replace('.', '').isdigit()) else ""
+            html_content += f"                <td class='{css_class}'>{item}</td>\n"
+        html_content += "            </tr>\n"
+
+    html_content += """        </tbody>
+    </table>
+</body>
+</html>"""
+
+    filepath = os.path.join(output_dir, filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+    print(f"  HTML table saved: {filepath}")
+    return filepath
+
 def create_distance_histogram_with_thresholds(results_path):
     """
     Create a specialized histogram with distance thresholds highlighted.
@@ -333,8 +387,52 @@ def create_progression_plot(figures_path, required_files):
             'Stofspecifik risiko\n(Trin 5b: Variabel)'
         ]
 
-        # Use actual counts - these should match the analysis output
-        counts = [2043, 593, 491, 300, 232]  # Updated with correct Step 5 counts
+        # Load actual counts from data files - NO FALLBACKS!
+        import pandas as pd
+        from config import get_output_path
+
+        # Step 1: Total GVFK (from original file)
+        if 'all_gvfk' in required_files and os.path.exists(required_files['all_gvfk']):
+            import geopandas as gpd
+            all_gvfk_df = gpd.read_file(required_files['all_gvfk'])
+            total_gvfks = len(all_gvfk_df)
+        else:
+            raise FileNotFoundError("Cannot find all_gvfk file - required for progression plot")
+
+        # Step 2: River contact GVFKs
+        if 'river_gvfk' in required_files and os.path.exists(required_files['river_gvfk']):
+            import geopandas as gpd
+            river_df = gpd.read_file(required_files['river_gvfk'])
+            river_gvfks = len(river_df)
+        else:
+            raise FileNotFoundError("Cannot find river_gvfk file - required for progression plot")
+
+        # Step 3: V1/V2 GVFKs
+        if 'v1v2_gvfk' in required_files and os.path.exists(required_files['v1v2_gvfk']):
+            import geopandas as gpd
+            v1v2_df = gpd.read_file(required_files['v1v2_gvfk'])
+            v1v2_gvfks = len(v1v2_df)
+        else:
+            raise FileNotFoundError("Cannot find v1v2_gvfk file - required for progression plot")
+
+        # Step 5a: General assessment 500m
+        step5a_path = get_output_path('step5_high_risk_sites')
+        if os.path.exists(step5a_path):
+            step5a_df = pd.read_csv(step5a_path)
+            step5a_gvfks = step5a_df['Closest_GVFK'].nunique()
+        else:
+            raise FileNotFoundError(f"Cannot find Step 5a file: {step5a_path}")
+
+        # Step 5b: Compound-specific assessment
+        step5b_path = get_output_path('step5_compound_specific_sites')
+        if os.path.exists(step5b_path):
+            step5b_df = pd.read_csv(step5b_path)
+            step5b_gvfks = step5b_df['Closest_GVFK'].nunique()
+        else:
+            raise FileNotFoundError(f"Cannot find Step 5b file: {step5b_path}")
+
+        counts = [total_gvfks, river_gvfks, v1v2_gvfks, step5a_gvfks, step5b_gvfks]
+        print(f"Loaded actual counts: Total={total_gvfks}, River={river_gvfks}, V1V2={v1v2_gvfks}, Step5a={step5a_gvfks}, Step5b={step5b_gvfks}")
         colors = ['#E6E6E6', '#66B3FF', '#FF6666', '#FF8C42', '#FF3333']
 
         fig, ax = plt.subplots(figsize=(14, 8))
@@ -384,7 +482,7 @@ def create_progression_plot(figures_path, required_files):
         plt.close()
 
         print("Updated GVFK progression plot created successfully")
-        print(f"  Shows both Step 5a (General: 300 GVFK) and Step 5b (Compound-specific: 232 GVFK)")
+        print(f"  Shows both Step 5a (General: {step5a_gvfks} GVFK) and Step 5b (Compound-specific: {step5b_gvfks} GVFK)")
 
     except Exception as e:
         print(f"Error creating progression plot: {e}")
@@ -417,9 +515,10 @@ def create_gvfk_cascade_table_from_data():
                 general_pct = (general_gvfks / total_gvfk) * 100
                 print(f"{'TRIN 5a':<8} {'Generel vurdering (<=500m)':<35} {f'{general_gvfks:,}':<10} {f'{general_pct:.1f}%':<12}")
             else:
-                print(f"{'TRIN 5a':<8} {'Generel vurdering (<=500m)':<35} {'300':<10} {'14,7%':<12}")
-        except:
-            print(f"{'TRIN 5a':<8} {'Generel vurdering (<=500m)':<35} {'300':<10} {'14,7%':<12}")
+                raise FileNotFoundError(f"Cannot find Step 5a file: {general_path}")
+        except Exception as e:
+            print(f"Error loading Step 5a data: {e}")
+            return
 
         try:
             # Load compound sites if available
@@ -430,9 +529,10 @@ def create_gvfk_cascade_table_from_data():
                 compound_pct = (compound_gvfks / total_gvfk) * 100
                 print(f"{'TRIN 5b':<8} {'Stofspecifik risiko':<35} {f'{compound_gvfks:,}':<10} {f'{compound_pct:.1f}%':<12}")
             else:
-                print(f"{'TRIN 5b':<8} {'Stofspecifik risiko':<35} {'232':<10} {'11,4%':<12}")
-        except:
-            print(f"{'TRIN 5b':<8} {'Stofspecifik risiko':<35} {'232':<10} {'11,4%':<12}")
+                raise FileNotFoundError(f"Cannot find Step 5b file: {compound_path}")
+        except Exception as e:
+            print(f"Error loading Step 5b data: {e}")
+            return
 
         print("-" * 60)
         print("Progressiv filtrering fra alle danske GVFK til hojrisiko identifikation")
@@ -441,15 +541,15 @@ def create_gvfk_cascade_table_from_data():
         print(f"Error creating GVFK cascade table: {e}")
 
 def create_compound_category_table_from_data():
-    """Create compound category analysis table from actual Step 5 results."""
+    """Create enhanced compound category analysis table for presentation with threshold details."""
     try:
         from config import get_output_path
         import pandas as pd
 
-        print("\n[LAB] TRIN 5b: STOFKATEGORI ANALYSE")
-        print("=" * 80)
-        print(f"{'Kategori':<30} {'Taerskel':<10} {'Forekomster':<12} {'Unikke lok.':<12} {'Gns/lok.':<10}")
-        print("-" * 80)
+        print("\n[LAB] TRIN 5b: STOFKATEGORI ANALYSE - ENHANCED FOR PRESENTATION")
+        print("=" * 100)
+        print(f"{'Kategori':<30} {'Tærskel Type':<15} {'Tærskel':<15} {'Forekomster':<12} {'Unikke lok.':<12} {'Gns/lok.':<10}")
+        print("-" * 100)
 
         # Load compound combinations data
         combinations_path = get_output_path('step5_compound_detailed_combinations')
@@ -459,19 +559,76 @@ def create_compound_category_table_from_data():
 
         combinations_df = pd.read_csv(combinations_path)
 
-        # Group by category to calculate statistics
+        # Define base thresholds and landfill overrides for reference
+        base_thresholds = {
+            'BTXER': 50,
+            'KLOREREDE_OPLØSNINGSMIDLER': 500,
+            'PHENOLER': 100,
+            'PESTICIDER': 500,
+            'UORGANISKE_FORBINDELSER': 150,
+            'PAH_FORBINDELSER': 30,
+            'LOSSEPLADS': 100,
+            'ANDRE': 500,
+            'KLOREDE_KULBRINTER': 200,
+            'POLARE_FORBINDELSER': 300,
+            'KLOREREDE_PHENOLER': 200
+        }
+
+        landfill_overrides = {
+            'BTXER': 70,
+            'KLOREREDE_OPLØSNINGSMIDLER': 100,
+            'PHENOLER': 35,
+            'PESTICIDER': 180,
+            'UORGANISKE_FORBINDELSER': 50
+        }
+
+        # Analyze threshold distribution per category
         category_stats = []
-        for category in combinations_df['Qualifying_Category'].unique():
+        for category in sorted(combinations_df['Qualifying_Category'].unique()):
             category_data = combinations_df[combinations_df['Qualifying_Category'] == category]
 
-            occurrences = len(category_data)  # Total combinations
-            unique_sites = category_data['Lokalitet_ID'].nunique()  # Unique sites
+            occurrences = len(category_data)
+            unique_sites = category_data['Lokalitet_ID'].nunique()
             avg_per_site = occurrences / unique_sites if unique_sites > 0 else 0
-            threshold = category_data['Category_Threshold_m'].iloc[0] if len(category_data) > 0 else 500
+
+            # Analyze threshold variability
+            thresholds_used = category_data['Category_Threshold_m'].unique()
+
+            if category == 'LOSSEPLADS':
+                # Special handling for LOSSEPLADS with variable overrides
+                threshold_type = "Variable"
+                base_threshold = base_thresholds.get(category, 500)
+                override_thresholds = sorted([t for t in thresholds_used if t != base_threshold])
+
+                if override_thresholds:
+                    threshold_display = f"{base_threshold}m + overrides ({min(override_thresholds):.0f}-{max(override_thresholds):.0f}m)"
+                else:
+                    threshold_display = f"{base_threshold}m"
+
+            elif len(thresholds_used) > 1:
+                # Category with multiple thresholds (compound overrides + base)
+                threshold_type = "Mixed"
+                threshold_display = f"{min(thresholds_used):.0f}-{max(thresholds_used):.0f}m"
+
+            else:
+                # Single threshold
+                threshold_val = thresholds_used[0]
+                base_thresh = base_thresholds.get(category, 500)
+
+                if threshold_val == base_thresh:
+                    threshold_type = "Base"
+                    threshold_display = f"{int(threshold_val)}m"
+                elif category in landfill_overrides and threshold_val == landfill_overrides[category]:
+                    threshold_type = "Landfill Override"
+                    threshold_display = f"{int(threshold_val)}m"
+                else:
+                    threshold_type = "Compound Override"
+                    threshold_display = f"{int(threshold_val)}m"
 
             category_stats.append({
                 'category': category,
-                'threshold': f"{int(threshold)}m",
+                'threshold_type': threshold_type,
+                'threshold_display': threshold_display,
                 'occurrences': occurrences,
                 'unique_sites': unique_sites,
                 'avg_per_site': avg_per_site
@@ -480,35 +637,59 @@ def create_compound_category_table_from_data():
         # Sort by occurrences (descending)
         category_stats.sort(key=lambda x: x['occurrences'], reverse=True)
 
-        # Print table
+        # Print enhanced table
         total_combinations = 0
         total_unique_sites = 0
 
         for stat in category_stats:
             total_combinations += stat['occurrences']
-            # Don't double count sites (some sites may have multiple categories)
-
-            print(f"{stat['category']:<30} {stat['threshold']:<10} {stat['occurrences']:<12,} {stat['unique_sites']:<12,} {stat['avg_per_site']:<10.1f}")
+            print(f"{stat['category']:<30} {stat['threshold_type']:<15} {stat['threshold_display']:<15} {stat['occurrences']:<12,} {stat['unique_sites']:<12,} {stat['avg_per_site']:<10.1f}")
 
         # Calculate total unique sites correctly
         total_unique_sites = combinations_df['Lokalitet_ID'].nunique()
 
-        print("-" * 80)
-        print(f"Total: {total_combinations:,} kombinationer pa tvaers af {total_unique_sites:,} unikke lokaliteter")
+        print("-" * 100)
+        print(f"Total: {total_combinations:,} kombinationer på tværs af {total_unique_sites:,} unikke lokaliteter")
+
+        # Add explanatory notes for presentation
+        print(f"\nTÆRSKEL SYSTEM FORKLARING:")
+        print(f"• Base: Standard kategori-tærskel fra litteratur")
+        print(f"• Landfill Override: Losseplads-specifik tærskel (kan være strengere eller løsere)")
+        print(f"• Compound Override: Stof-specifik tærskel (fx benzen: 200m i stedet for BTXER: 50m)")
+        print(f"• Variable: LOSSEPLADS kategori med multiple tærskler baseret på underkategorier")
+        print(f"• Mixed: Kategori der anvender både base og override tærskler")
+
+        # Export to HTML for PowerPoint
+        print("\n  Exporting Table 1 to HTML for PowerPoint...")
+        html_output_dir = os.path.join(os.path.dirname(get_output_path('step5_high_risk_sites')), "Presentation_Tables")
+
+        table_data = []
+        for stat in category_stats:
+            table_data.append([
+                stat['category'],
+                stat['threshold_type'],
+                stat['threshold_display'],
+                f"{stat['occurrences']:,}",
+                f"{stat['unique_sites']:,}",
+                f"{stat['avg_per_site']:.1f}"
+            ])
+
+        headers = ['Kategori', 'Tærskel Type', 'Tærskel', 'Forekomster', 'Unikke Lokaliteter', 'Gennemsnit/Lokalitet']
+        title = 'Trin 5b: Stofkategori Analyse - Enhanced for Presentation'
+
+        create_html_table(table_data, headers, title, "table1_category_analysis.html", html_output_dir)
 
     except Exception as e:
-        print(f"Error creating compound category table: {e}")
+        print(f"Error creating enhanced compound category table: {e}")
 
 def create_losseplads_subcategory_table_from_data():
-    """Create LOSSEPLADS subcategory breakdown from actual Step 5 override results."""
+    """Create comprehensive LOSSEPLADS impact analysis for presentation with before/after comparison."""
     try:
         from config import get_output_path
         import pandas as pd
 
-        print("\n[FACTORY] LOSSEPLADS UNDERKATEGORI ANALYSE")
-        print("=" * 75)
-        print("Losseplads Override System - Detaljeret Kategorifordeling")
-        print("-" * 75)
+        print("\n[FACTORY] LOSSEPLADS OVERRIDE SYSTEM - PRÆSENTATIONSANALYSE")
+        print("=" * 90)
 
         # Load compound combinations data
         combinations_path = get_output_path('step5_compound_detailed_combinations')
@@ -518,63 +699,270 @@ def create_losseplads_subcategory_table_from_data():
 
         combinations_df = pd.read_csv(combinations_path)
 
-        print(f"{'Original Kategori':<30} {'Override til LOSSEPLADS':<20} {'Taerskel':<15} {'Komb.':<10} {'Sites':<10}")
-        print("-" * 85)
+        # PART 1: LANDFILL OVERRIDE THRESHOLDS TABLE
+        print("\n1. LOSSEPLADS-SPECIFIKKE TÆRSKLER")
+        print("-" * 60)
+        print(f"{'Kategori':<30} {'Base Tærskel':<15} {'Losseplads Tærskel':<18} {'Effekt':<15}")
+        print("-" * 60)
 
-        # Get landfill overrides (where Landfill_Override_Applied == True)
+        landfill_thresholds = {
+            'BTXER': {'base': 50, 'landfill': 70, 'effect': 'Løsere (+20m)'},
+            'KLOREREDE_OPLØSNINGSMIDLER': {'base': 500, 'landfill': 100, 'effect': 'Strengere (-400m)'},
+            'PHENOLER': {'base': 100, 'landfill': 35, 'effect': 'Strengere (-65m)'},
+            'PESTICIDER': {'base': 500, 'landfill': 180, 'effect': 'Strengere (-320m)'},
+            'UORGANISKE_FORBINDELSER': {'base': 150, 'landfill': 50, 'effect': 'Strengere (-100m)'}
+        }
+
+        for category, data in landfill_thresholds.items():
+            print(f"{category:<30} {data['base']:<15}m {data['landfill']:<18}m {data['effect']:<15}")
+
+        print("-" * 60)
+        print("Note: Kategorier ikke på listen bruger deres base tærskel på lossepladser")
+
+        # PART 2: OVERRIDE IMPACT ANALYSIS
         if 'Landfill_Override_Applied' in combinations_df.columns:
             override_data = combinations_df[combinations_df['Landfill_Override_Applied'] == True]
 
             if not override_data.empty:
-                # Group by original category
-                override_stats = override_data.groupby('Original_Category').agg({
-                    'Lokalitet_ID': ['count', 'nunique'],  # Total combinations AND unique sites per original category
-                    'Category_Threshold_m': 'first'  # Get threshold used
-                }).reset_index()
+                print(f"\n2. LOSSEPLADS OVERRIDE RESULTATER")
+                print("-" * 90)
+                print(f"{'Original Kategori':<30} {'Base->Override':<20} {'Kombinationer':<15} {'Unikke Sites':<15} {'Effekt':<15}")
+                print("-" * 90)
 
-                # Flatten column names
-                override_stats.columns = ['Original_Category', 'Combinations', 'Unique_Sites', 'Threshold']
+                # Calculate override statistics
+                override_stats = []
+                for original_cat in override_data['Original_Category'].unique():
+                    cat_data = override_data[override_data['Original_Category'] == original_cat]
+                    combinations = len(cat_data)
+                    unique_sites = cat_data['Lokalitet_ID'].nunique()
 
-                # Sort by combinations count descending
-                override_stats = override_stats.sort_values('Combinations', ascending=False)
+                    # Get threshold info
+                    landfill_threshold = cat_data['Category_Threshold_m'].iloc[0]
+                    base_threshold = landfill_thresholds[original_cat]['base']
 
-                total_combinations = 0
-                total_unique_sites = 0
-                for _, row in override_stats.iterrows():
-                    original_cat = row['Original_Category']
-                    combinations = row['Combinations']
-                    unique_sites = row['Unique_Sites']
-                    threshold = int(row['Threshold'])
-                    total_combinations += combinations
-                    total_unique_sites += unique_sites
+                    threshold_change = f"{base_threshold}m->{int(landfill_threshold)}m"
+                    effect = landfill_thresholds[original_cat]['effect']
 
-                    print(f"{original_cat:<30} {'-> LOSSEPLADS':<20} {f'{threshold}m':<15} {combinations:<10,} {unique_sites:<10,}")
+                    override_stats.append({
+                        'category': original_cat,
+                        'threshold_change': threshold_change,
+                        'combinations': combinations,
+                        'unique_sites': unique_sites,
+                        'effect': effect
+                    })
 
-                print("-" * 85)
-                print(f"{'TOTAL REKLASSIFICERET':<30} {'':<20} {'':<15} {total_combinations:<10,} {total_unique_sites:<10,}")
+                # Sort by combinations (descending)
+                override_stats.sort(key=lambda x: x['combinations'], reverse=True)
 
-                # Calculate removed combinations (would need comparison with before override)
-                # This is harder to calculate from final data, so show what we know
-                print(f"{'INFO: Se step 5 output for fjernet':<30} {'':<20} {'':<15} {'':<10}")
+                total_rescued_combinations = 0
+                total_rescued_sites = 0
+
+                for stat in override_stats:
+                    total_rescued_combinations += stat['combinations']
+                    total_rescued_sites += stat['unique_sites']
+                    print(f"{stat['category']:<30} {stat['threshold_change']:<20} {stat['combinations']:<15,} {stat['unique_sites']:<15,} {stat['effect']:<15}")
+
+                print("-" * 90)
+                print(f"{'TOTAL REKLASSIFICERET':<30} {'':<20} {total_rescued_combinations:<15,} {total_rescued_sites:<15,} {'Reddet af override':<15}")
+
+                # PART 3: LOSSEPLADS SUBCATEGORY BREAKDOWN
+                print(f"\n3. LOSSEPLADS UNDERKATEGORIER EFTER OVERRIDE")
+                print("-" * 70)
+                print(f"{'Losseplads Underkategori':<40} {'Kombinationer':<15} {'Unikke Sites':<15}")
+                print("-" * 70)
+
+                # Get LOSSEPLADS subcategory breakdown
+                losseplads_data = combinations_df[combinations_df['Qualifying_Category'] == 'LOSSEPLADS']
+
+                # Separate original LOSSEPLADS from overridden ones
+                original_losseplads = losseplads_data[
+                    (losseplads_data['Landfill_Override_Applied'] == False) |
+                    (losseplads_data['Landfill_Override_Applied'].isna())
+                ]
+
+                subcategory_stats = []
+
+                # Original LOSSEPLADS (perkolat etc.)
+                if not original_losseplads.empty:
+                    subcategory_stats.append({
+                        'subcategory': 'LOSSEPLADS (Perkolat/Original)',
+                        'combinations': len(original_losseplads),
+                        'unique_sites': original_losseplads['Lokalitet_ID'].nunique()
+                    })
+
+                # Override subcategories
+                if 'Losseplads_Subcategory' in combinations_df.columns:
+                    override_subcats = override_data['Losseplads_Subcategory'].value_counts()
+                    for subcat, count in override_subcats.items():
+                        if pd.notna(subcat):
+                            subcat_data = override_data[override_data['Losseplads_Subcategory'] == subcat]
+                            unique_sites = subcat_data['Lokalitet_ID'].nunique()
+                            subcategory_stats.append({
+                                'subcategory': subcat,
+                                'combinations': count,
+                                'unique_sites': unique_sites
+                            })
+
+                # Sort by combinations (descending)
+                subcategory_stats.sort(key=lambda x: x['combinations'], reverse=True)
+
+                total_losseplads_combinations = 0
+                total_losseplads_sites = 0
+
+                for stat in subcategory_stats:
+                    total_losseplads_combinations += stat['combinations']
+                    total_losseplads_sites += stat['unique_sites'] # Note: This will overcount due to overlap
+                    print(f"{stat['subcategory']:<40} {stat['combinations']:<15,} {stat['unique_sites']:<15,}")
+
+                # Get correct unique site count
+                actual_unique_losseplads_sites = losseplads_data['Lokalitet_ID'].nunique()
+
+                print("-" * 70)
+                print(f"{'TOTAL LOSSEPLADS KATEGORI':<40} {total_losseplads_combinations:<15,} {actual_unique_losseplads_sites:<15,}")
+
+                # PART 4: SUMMARY FOR PRESENTATION
+                print(f"\n4. PRÆSENTATIONS SAMMENFATNING")
+                print("-" * 50)
+                print(f"• Losseplads-specifikke tærskler defineret for 5 kategorier")
+                print(f"• {total_rescued_combinations:,} kombinationer reklassificeret til LOSSEPLADS")
+                print(f"• {total_rescued_sites:,} unikke lokaliteter påvirket af override")
+                print(f"• Override effekt: Både strengere og løsere tærskler afhængig af kategori")
+                print(f"• BTXER: Løsere (50m->70m) - flere lokaliteter kvalificerer")
+                print(f"• Andre kategorier: Strengere tærskler - færre kvalificerer")
+
+                # Export to HTML for PowerPoint
+                print("\n  Exporting Table 2 to HTML for PowerPoint...")
+                html_output_dir = os.path.join(os.path.dirname(get_output_path('step5_high_risk_sites')), "Presentation_Tables")
+
+                # Create HTML table with the override results
+                table_data = []
+                for stat in override_stats:
+                    table_data.append([
+                        stat['category'],
+                        stat['threshold_change'],
+                        f"{stat['combinations']:,}",
+                        f"{stat['unique_sites']:,}",
+                        stat['effect']
+                    ])
+
+                headers = ['Original Kategori', 'Base→Override', 'Kombinationer', 'Unikke Sites', 'Effekt']
+                title = 'LOSSEPLADS Override System - Impact Analysis'
+
+                create_html_table(table_data, headers, title, "table2_losseplads_impact.html", html_output_dir)
 
             else:
-                print("No landfill overrides found in data")
+                print("\nIngen losseplads overrides fundet i data")
         else:
-            print("Landfill override data not available")
-
-        print("-" * 75)
-
-        print("\nLosseplads Karakteristika (Branche/Aktivitet nogleord):")
-        print("- Losseplads, Deponi, Fyldplads")
-        print("- Braending af affald, Sortering og behandling af affald")
-        print("- Kompostering, Genbrugsstation")
-
-        if 'Landfill_Override_Applied' in combinations_df.columns:
-            total_overridden = len(combinations_df[combinations_df['Landfill_Override_Applied'] == True])
-            print(f"\nResultat: {total_overridden:,} kombinationer fik losseplads-specifikke taerskler")
+            print("\nLosseplads override data ikke tilgængelig")
 
     except Exception as e:
-        print(f"Error creating losseplads subcategory table: {e}")
+        print(f"Error creating enhanced losseplads analysis: {e}")
+
+
+def create_threshold_decision_tree_table():
+    """Create threshold decision tree table for presentation clarity."""
+    print("\n[DECISION] TÆRSKEL BESLUTNINGSPROCES - PRÆSENTATION")
+    print("=" * 80)
+    print("Flowchart: Hvordan vælges tærskelværdier for hver stof-lokalitet kombination?")
+    print("-" * 80)
+
+    print(f"{'Trin':<6} {'Betingelse':<40} {'Handling':<25} {'Eksempel':<20}")
+    print("-" * 80)
+
+    decision_steps = [
+        {
+            'step': '1.',
+            'condition': 'Har stoffet stof-specifik override?',
+            'action': 'Brug stof-specifik tærskel',
+            'example': 'benzen -> 200m'
+        },
+        {
+            'step': '2.',
+            'condition': 'Er lokaliteten en losseplads?',
+            'action': 'Tjek for losseplads-tærskel',
+            'example': 'Branche: "Losseplads"'
+        },
+        {
+            'step': '2a.',
+            'condition': 'L- Har kategorien losseplads-tarskel?',
+            'action': 'Brug losseplads-tærskel',
+            'example': 'BTXER -> 70m'
+        },
+        {
+            'step': '2b.',
+            'condition': 'L- Ingen losseplads-tarskel?',
+            'action': 'Brug base kategori-tærskel',
+            'example': 'PAH -> 30m'
+        },
+        {
+            'step': '3.',
+            'condition': 'Almindelig lokalitet?',
+            'action': 'Brug base kategori-tærskel',
+            'example': 'BTXER -> 50m'
+        },
+        {
+            'step': '4.',
+            'condition': 'Intet match (ANDRE kategori)?',
+            'action': 'Brug default tærskel',
+            'example': 'Ukendt stof -> 500m'
+        }
+    ]
+
+    for step_info in decision_steps:
+        print(f"{step_info['step']:<6} {step_info['condition']:<40} {step_info['action']:<25} {step_info['example']:<20}")
+
+    print("-" * 80)
+    print("PRIORITERING: Stof-specifik > Losseplads > Base kategori > Default")
+    print()
+
+    # Summary statistics from actual data
+    print("TÆRSKEL ANVENDELSE I PRAKSIS:")
+    print("-" * 40)
+
+    try:
+        from config import get_output_path
+        import pandas as pd
+
+        combinations_path = get_output_path('step5_compound_detailed_combinations')
+        if os.path.exists(combinations_path):
+            combinations_df = pd.read_csv(combinations_path)
+
+            total_combinations = len(combinations_df)
+
+            # Count different threshold types
+            compound_overrides = 0  # Would need to identify these from data
+            landfill_overrides = len(combinations_df[combinations_df.get('Landfill_Override_Applied', False) == True]) if 'Landfill_Override_Applied' in combinations_df.columns else 0
+            base_thresholds = total_combinations - landfill_overrides  # Approximation
+
+            print(f"• Total kombinationer: {total_combinations:,}")
+            print(f"• Losseplads overrides: {landfill_overrides:,} ({landfill_overrides/total_combinations*100:.1f}%)")
+            print(f"• Base kategori-tærskler: {base_thresholds:,} ({base_thresholds/total_combinations*100:.1f}%)")
+            print(f"• Stof-specifikke overrides: Inkluderet i ovenstående")
+
+            # Export to HTML for PowerPoint
+            print("\n  Exporting Table 3 to HTML for PowerPoint...")
+            html_output_dir = os.path.join(os.path.dirname(get_output_path('step5_high_risk_sites')), "Presentation_Tables")
+
+            # Create decision tree table data
+            table_data = []
+            for step_info in decision_steps:
+                table_data.append([
+                    step_info['step'],
+                    step_info['condition'],
+                    step_info['action'],
+                    step_info['example']
+                ])
+
+            headers = ['Trin', 'Betingelse', 'Handling', 'Eksempel']
+            title = 'Tærskel Beslutningsproces - Flowchart'
+
+            create_html_table(table_data, headers, title, "table3_threshold_decision.html", html_output_dir)
+
+        else:
+            print("• Data ikke tilgængelig - kør Step 5 først")
+
+    except Exception as e:
+        print(f"• Kunne ikke hente statistik: {e}")
 
 
 def create_losseplads_override_impact(figures_path):
@@ -720,10 +1108,20 @@ if __name__ == "__main__":
     create_gvfk_cascade_table_from_data()
     create_compound_category_table_from_data()
     create_losseplads_subcategory_table_from_data()
+    create_threshold_decision_tree_table()
 
     print(f"\nSelected visualizations have been created successfully.")
     print(f"Check step-specific folders in: {os.path.join(results_path, 'Step*_*', 'Figures')}")
     print(f"\nCreated visualizations:")
     print(f"- gvfk_progression.png (Danish, both Step 5a and 5b)")
     print(f"- losseplads_override_impact.png")
-    print(f"- Danish presentation tables printed above") 
+    print(f"- Danish presentation tables printed above")
+    print(f"\n🎯 POWERPOINT-READY TABLES EXPORTED:")
+    print(f"   📁 {os.path.join(results_path, 'Presentation_Tables')}")
+    print(f"   📄 table1_category_analysis.html")
+    print(f"   📄 table2_losseplads_impact.html")
+    print(f"   📄 table3_threshold_decision.html")
+    print(f"\n💡 HOW TO USE:")
+    print(f"   1. Open HTML files in your browser")
+    print(f"   2. Select the table and copy (Ctrl+A, Ctrl+C)")
+    print(f"   3. Paste directly into PowerPoint - formatting will be preserved!") 

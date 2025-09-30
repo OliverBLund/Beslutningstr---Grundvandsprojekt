@@ -23,6 +23,10 @@ import os
 from datetime import datetime
 from config import RESULTS_PATH
 
+# Set matplotlib to use Danish-friendly encoding
+plt.rcParams['font.family'] = 'DejaVu Sans'
+plt.rcParams['axes.unicode_minus'] = False
+
 
 def run_branch_analysis(sites_without_substances, sites_with_substances=None):
     """
@@ -90,6 +94,12 @@ def run_branch_analysis(sites_without_substances, sites_with_substances=None):
     print(f"-" * 19)
     gvfk_stats = _analyze_gvfk_distribution(sites_without_substances, branch_output_dir)
     results['gvfk_analysis'] = gvfk_stats
+
+    # 5. "Generel Risiko" GVFK Impact Analysis
+    print(f"\n5. 'Generel Risiko' GVFK Impact Analysis")
+    print(f"-" * 40)
+    generel_risiko_impact = _analyze_generel_risiko_impact(sites_without_substances, branch_output_dir)
+    results['generel_risiko_impact'] = generel_risiko_impact
     
     # Save comprehensive summary
     _save_analysis_summary(results, sites_without_substances, branch_output_dir)
@@ -159,9 +169,9 @@ def _analyze_distances(sites_without_substances, sites_with_substances, output_d
         print(f"  Distance statistics:")
         print(f"    Mean: {stats['mean_distance']:.0f}m")
         print(f"    Median: {stats['median_distance']:.0f}m")
-        print(f"    Sites ≤250m: {stats['within_250m']:,} ({stats['within_250m']/len(sites_without_substances)*100:.1f}%)")
-        print(f"    Sites ≤500m: {stats['within_500m']:,} ({stats['within_500m']/len(sites_without_substances)*100:.1f}%)")
-        print(f"    Sites ≤1000m: {stats['within_1000m']:,} ({stats['within_1000m']/len(sites_without_substances)*100:.1f}%)")
+        print(f"    Sites <=250m: {stats['within_250m']:,} ({stats['within_250m']/len(sites_without_substances)*100:.1f}%)")
+        print(f"    Sites <=500m: {stats['within_500m']:,} ({stats['within_500m']/len(sites_without_substances)*100:.1f}%)")
+        print(f"    Sites <=1000m: {stats['within_1000m']:,} ({stats['within_1000m']/len(sites_without_substances)*100:.1f}%)")
     
     # Create distance comparison plots
     _create_distance_plots(sites_without_substances, sites_with_substances, output_dir)
@@ -409,15 +419,15 @@ def _analyze_geography(sites_without_substances, output_dir):
 
 def _analyze_gvfk_distribution(sites_without_substances, output_dir):
     """Analyze which GVFKs contain branch-only sites and potential impact."""
-    
+
     # Count sites per GVFK for branch-only sites
     gvfk_counts = sites_without_substances.groupby('Closest_GVFK').size().sort_values(ascending=False)
-    
+
     print(f"  Branch-only sites distributed across {len(gvfk_counts)} GVFKs")
     print(f"  Top GVFKs with branch-only sites:")
     for gvfk, count in gvfk_counts.head(5).items():
         print(f"    {gvfk}: {count:,} sites")
-    
+
     # Analyze sites within 500m threshold by GVFK
     branch_500m = sites_without_substances[sites_without_substances['Final_Distance_m'] <= 500]
     if not branch_500m.empty:
@@ -429,13 +439,105 @@ def _analyze_gvfk_distribution(sites_without_substances, output_dir):
             print(f"    {gvfk}: {count:,} sites ≤500m (of {total_in_gvfk:,} total)")
     else:
         gvfk_500m_counts = pd.Series()
-    
+
     return {
         'total_gvfks_with_branch_sites': len(gvfk_counts),
         'gvfks_with_sites_within_500m': len(gvfk_500m_counts) if not gvfk_500m_counts.empty else 0,
         'top_gvfks': gvfk_counts.head(20).to_dict(),
         'top_gvfks_500m': gvfk_500m_counts.head(10).to_dict() if not gvfk_500m_counts.empty else {},
-        'gvfk_distribution': gvfk_counts.to_dict()
+        'gvfk_distribution': gvfk_counts.to_dict(),
+        'gvfk_500m_counts': gvfk_500m_counts
+    }
+
+
+def _analyze_generel_risiko_impact(sites_without_substances, output_dir):
+    """Analyze how many additional GVFKs would move to 'generel risiko' category with branch-only sites."""
+
+    # Get branch-only sites within 500m (the threshold for "generel risiko")
+    branch_500m = sites_without_substances[sites_without_substances['Final_Distance_m'] <= 500]
+
+    if branch_500m.empty:
+        print(f"  No branch-only sites within 500m threshold")
+        return {
+            'branch_sites_500m': 0,
+            'additional_gvfks': 0,
+            'current_generel_risiko_gvfks': 0,
+            'expanded_generel_risiko_gvfks': 0
+        }
+
+    # Get unique GVFKs from branch-only sites within 500m
+    branch_gvfks_500m = set(branch_500m['Closest_GVFK'].unique())
+
+    # Load current Step 5a general assessment (500m sites) - this is the true "generel risiko" baseline
+    try:
+        from config import RESULTS_PATH
+
+        # Try GVFK risk summary first
+        current_gvfk_file = os.path.join(RESULTS_PATH, 'step5_gvfk_risk_summary.csv')
+        if os.path.exists(current_gvfk_file):
+            current_gvfk_df = pd.read_csv(current_gvfk_file)
+            current_generel_risiko_gvfks = set(current_gvfk_df['GVFK'].unique())
+            current_count = len(current_generel_risiko_gvfks)
+            print(f"  Using GVFK risk summary file: {current_count} GVFKs")
+        else:
+            # Fallback to Step 5a general assessment sites (the actual 500m baseline)
+            step5a_file = os.path.join(RESULTS_PATH, 'step5_high_risk_sites_500m.csv')
+            if os.path.exists(step5a_file):
+                step5a_df = pd.read_csv(step5a_file)
+                current_generel_risiko_gvfks = set(step5a_df['Closest_GVFK'].unique())
+                current_count = len(current_generel_risiko_gvfks)
+                print(f"  Using Step 5a general assessment file: {current_count} GVFKs")
+            else:
+                raise FileNotFoundError(f"Neither GVFK risk summary nor Step 5a file found")
+
+    except Exception as e:
+        print(f"  Error: Could not load current 'generel risiko' baseline: {e}")
+        raise
+
+    # Calculate overlap and new GVFKs
+    already_in_generel_risiko = branch_gvfks_500m & current_generel_risiko_gvfks
+    new_generel_risiko_gvfks = branch_gvfks_500m - current_generel_risiko_gvfks
+
+    # Calculate totals
+    additional_gvfks = len(new_generel_risiko_gvfks)
+    expanded_total = current_count + additional_gvfks
+
+    print(f"  GENEREL RISIKO GVFK IMPACT ANALYSIS:")
+    print(f"  Current 'generel risiko' GVFKs (with substance/landfill sites ≤500m): {current_count}")
+    print(f"  Branch-only sites ≤500m: {len(branch_500m):,} sites")
+    print(f"  GVFKs with branch-only sites ≤500m: {len(branch_gvfks_500m)}")
+    print(f"  ")
+    print(f"  GVFKs already in 'generel risiko': {len(already_in_generel_risiko)}")
+    print(f"  NEW GVFKs that would be added to 'generel risiko': {additional_gvfks}")
+    print(f"  ")
+    print(f"  EXPANDED TOTAL 'generel risiko' GVFKs: {expanded_total}")
+    print(f"  Percentage increase: {(additional_gvfks/current_count*100) if current_count > 0 else 0:.1f}%")
+
+    # Show some examples of new GVFKs
+    if new_generel_risiko_gvfks:
+        print(f"\n  Examples of NEW 'generel risiko' GVFKs from branch-only sites:")
+        branch_gvfk_counts = branch_500m['Closest_GVFK'].value_counts()
+        new_gvfk_examples = []
+        for gvfk in new_generel_risiko_gvfks:
+            site_count = branch_gvfk_counts.get(gvfk, 0)
+            new_gvfk_examples.append((gvfk, site_count))
+
+        # Sort by site count and show top examples
+        new_gvfk_examples.sort(key=lambda x: x[1], reverse=True)
+        for i, (gvfk, count) in enumerate(new_gvfk_examples[:5]):
+            print(f"    {i+1}. {gvfk}: {count} branch-only sites ≤500m")
+
+    return {
+        'branch_sites_500m': len(branch_500m),
+        'gvfks_with_branch_sites_500m': len(branch_gvfks_500m),
+        'current_generel_risiko_gvfks': current_count,
+        'already_in_generel_risiko': len(already_in_generel_risiko),
+        'additional_gvfks': additional_gvfks,
+        'expanded_generel_risiko_gvfks': expanded_total,
+        'percentage_increase': (additional_gvfks/current_count*100) if current_count > 0 else 0,
+        'new_gvfk_examples': new_gvfk_examples[:10] if 'new_gvfk_examples' in locals() else [],
+        'branch_gvfks_500m': list(branch_gvfks_500m),
+        'new_generel_risiko_gvfks': list(new_generel_risiko_gvfks)
     }
 
 
@@ -1022,9 +1124,21 @@ GVFK DISTRIBUTION:
 Branch-only sites found in {results['gvfk_analysis']['total_gvfks_with_branch_sites']} GVFKs
 Top 3 GVFKs with branch-only sites:
 """
-    
+
     for i, (gvfk, count) in enumerate(list(results['gvfk_analysis']['top_gvfks'].items())[:3]):
         summary_content += f"  {i+1}. {gvfk}: {count:,} sites\n"
+
+    # Add "Generel Risiko" impact if available
+    if 'generel_risiko_impact' in results:
+        gr_impact = results['generel_risiko_impact']
+        summary_content += f"""
+'GENEREL RISIKO' GVFK IMPACT:
+Current 'generel risiko' GVFKs: {gr_impact['current_generel_risiko_gvfks']}
+Branch-only sites ≤500m: {gr_impact['branch_sites_500m']:,} sites
+Additional GVFKs from branch-only sites: {gr_impact['additional_gvfks']}
+EXPANDED TOTAL 'generel risiko' GVFKs: {gr_impact['expanded_generel_risiko_gvfks']}
+Percentage increase: {gr_impact['percentage_increase']:.1f}%
+"""
     
     summary_content += f"""
 FILES GENERATED:
@@ -1091,6 +1205,358 @@ def _print_final_comparison(results, branch_sites_count, substance_sites_count):
     print(f"      A site with 'Auto;Gas' contributes to both categories but counts as 1 site each")
 
 
+def create_danish_presentation_charts(results, branch_sites, output_dir):
+    """Create Danish-language charts for presentation slides."""
+
+    print("\nCreating Danish presentation charts...")
+
+    # Create presentation subfolder
+    presentation_dir = os.path.join(output_dir, 'Presentation')
+    os.makedirs(presentation_dir, exist_ok=True)
+
+    # Color palette for consistency
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E', '#577590', '#F8961E']
+
+    # Generate 500m filtered analysis data for the charts
+    print("  Generating 500m filtered analysis data...")
+    sites_500m = branch_sites[branch_sites['Final_Distance_m'] <= 500] if 'Final_Distance_m' in branch_sites.columns else pd.DataFrame()
+
+    if not sites_500m.empty:
+        # Add 500m filtered branch analysis
+        results['branch_500m_analysis'] = _analyze_branches_500m(sites_500m)
+        results['activity_500m_analysis'] = _analyze_activities_500m(sites_500m)
+        print(f"    ✓ Filtered data for {len(sites_500m)} sites ≤500m")
+    else:
+        print(f"    ! No sites ≤500m found or distance column missing")
+
+    # 1. Top 5 Branches Chart (Danish) - 500m filtered
+    _create_top_branches_danish_chart(results, presentation_dir, colors)
+
+    # 2. Top 5 Activities Chart (Danish) - 500m filtered
+    _create_top_activities_danish_chart(results, presentation_dir, colors)
+
+    # 3. GVFK Impact Chart (Danish)
+    _create_gvfk_impact_danish_chart(results, presentation_dir, colors)
+
+    # 4. Distance Distribution Chart (Danish)
+    _create_distance_distribution_danish_chart(results, presentation_dir, colors)
+
+    print(f"  ✓ Danish presentation charts saved to: {presentation_dir}")
+
+
+def _analyze_branches_500m(sites_500m):
+    """Analyze branch distribution for sites ≤500m only."""
+
+    all_branches = []
+    for branch_str in sites_500m['Lokalitetensbranche']:
+        if pd.notna(branch_str) and str(branch_str).strip():
+            branches = [b.strip() for b in str(branch_str).split(';') if b.strip()]
+            all_branches.extend(branches)
+
+    if not all_branches:
+        return {'top_branches': {}, 'total_branch_occurrences': 0}
+
+    branch_counts = pd.Series(all_branches).value_counts()
+
+    return {
+        'top_branches': branch_counts.to_dict(),
+        'total_branch_occurrences': len(all_branches)
+    }
+
+
+def _analyze_activities_500m(sites_500m):
+    """Analyze activity distribution for sites ≤500m only."""
+
+    all_activities = []
+    for activity_str in sites_500m['Lokalitetensaktivitet']:
+        if pd.notna(activity_str) and str(activity_str).strip():
+            activities = [a.strip() for a in str(activity_str).split(';') if a.strip()]
+            all_activities.extend(activities)
+
+    if not all_activities:
+        return {'top_activities': {}, 'total_activity_occurrences': 0}
+
+    activity_counts = pd.Series(all_activities).value_counts()
+
+    return {
+        'top_activities': activity_counts.to_dict(),
+        'total_activity_occurrences': len(all_activities)
+    }
+
+
+def _create_top_branches_danish_chart(results, output_dir, colors):
+    """Create top 5 branches chart in Danish - filtered to sites ≤500m only."""
+
+    plt.figure(figsize=(14, 8))
+
+    # Use the 500m filtered data if available
+    if 'branch_500m_analysis' in results and results['branch_500m_analysis']['top_branches']:
+        # Get top 5 branches from sites ≤500m
+        top_branches = list(results['branch_500m_analysis']['top_branches'].items())[:5]
+        total_occurrences = results['branch_500m_analysis']['total_branch_occurrences']
+        sites_count = results['distance_analysis']['within_500m']
+
+        branch_names = [branch for branch, count in top_branches]
+        branch_counts = [count for branch, count in top_branches]
+        percentages = [(count/total_occurrences)*100 for count in branch_counts]
+
+        # Create horizontal bar chart
+        bars = plt.barh(range(len(branch_names)), branch_counts, color=colors[0], alpha=0.8, height=0.6)
+
+        plt.yticks(range(len(branch_names)), branch_names, fontsize=16, fontweight='bold')
+        plt.xlabel('Antal forekomster', fontsize=18, fontweight='bold')
+        plt.title('Top 5 Brancher - Lokaliteter ≤500m uden stofdata\n({:,} lokaliteter analyseret)'.format(sites_count),
+                 fontsize=20, fontweight='bold', pad=25)
+        plt.grid(True, alpha=0.3, axis='x')
+
+        # Set tick font sizes
+        plt.xticks(fontsize=16, fontweight='bold')
+
+        # Add value labels with percentages
+        for i, (bar, count, pct) in enumerate(zip(bars, branch_counts, percentages)):
+            width = bar.get_width()
+            plt.text(width + max(branch_counts)*0.01, bar.get_y() + bar.get_height()/2,
+                    f'{count:,} ({pct:.1f}%)', ha='left', va='center', fontsize=14, fontweight='bold')
+
+        # Clean styling
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
+        plt.gca().set_facecolor('#FAFAFA')
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'top_5_brancher_500m_dansk.png'),
+                    dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        print(f"    ✓ Top 5 brancher chart (≤500m, Danish) saved")
+    else:
+        print(f"    ! No 500m branch data available - skipping filtered branch chart")
+
+
+def _create_top_activities_danish_chart(results, output_dir, colors):
+    """Create top 5 activities chart in Danish - filtered to sites ≤500m only."""
+
+    plt.figure(figsize=(14, 8))
+
+    # Use the 500m filtered data if available
+    if 'activity_500m_analysis' in results and results['activity_500m_analysis']['top_activities']:
+        # Get top 5 activities from sites ≤500m
+        top_activities = list(results['activity_500m_analysis']['top_activities'].items())[:5]
+        total_occurrences = results['activity_500m_analysis']['total_activity_occurrences']
+        sites_count = results['distance_analysis']['within_500m']
+
+        activity_names = [activity for activity, count in top_activities]
+        activity_counts = [count for activity, count in top_activities]
+        percentages = [(count/total_occurrences)*100 for count in activity_counts]
+
+        # Create horizontal bar chart
+        bars = plt.barh(range(len(activity_names)), activity_counts, color=colors[1], alpha=0.8, height=0.6)
+
+        plt.yticks(range(len(activity_names)), activity_names, fontsize=16, fontweight='bold')
+        plt.xlabel('Antal forekomster', fontsize=18, fontweight='bold')
+        plt.title('Top 5 Aktiviteter - Lokaliteter ≤500m uden stofdata\n({:,} lokaliteter analyseret)'.format(sites_count),
+                 fontsize=20, fontweight='bold', pad=25)
+        plt.grid(True, alpha=0.3, axis='x')
+
+        # Set tick font sizes
+        plt.xticks(fontsize=16, fontweight='bold')
+
+        # Add value labels with percentages
+        for i, (bar, count, pct) in enumerate(zip(bars, activity_counts, percentages)):
+            width = bar.get_width()
+            plt.text(width + max(activity_counts)*0.01, bar.get_y() + bar.get_height()/2,
+                    f'{count:,} ({pct:.1f}%)', ha='left', va='center', fontsize=14, fontweight='bold')
+
+        # Clean styling
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
+        plt.gca().set_facecolor('#FAFAFA')
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'top_5_aktiviteter_500m_dansk.png'),
+                    dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        print(f"    ✓ Top 5 aktiviteter chart (≤500m, Danish) saved")
+    else:
+        print(f"    ! No 500m activity data available - skipping filtered activity chart")
+
+
+def _create_gvfk_impact_danish_chart(results, output_dir, colors):
+    """Create GVFK impact chart in Danish."""
+
+    if 'generel_risiko_impact' not in results:
+        print("    ! GVFK impact data not available")
+        return
+
+    gr_impact = results['generel_risiko_impact']
+
+    plt.figure(figsize=(12, 8))
+
+    # Data for the chart
+    categories = ['Nuværende\n"generel risiko"', 'Nye GVFK\'er fra\nbranche-lokaliteter', 'Udvidet total\n"generel risiko"']
+    values = [gr_impact['current_generel_risiko_gvfks'],
+              gr_impact['additional_gvfks'],
+              gr_impact['expanded_generel_risiko_gvfks']]
+    chart_colors = [colors[2], colors[3], colors[4]]
+
+    # Create bar chart
+    bars = plt.bar(categories, values, color=chart_colors, alpha=0.8, width=0.6)
+
+    plt.ylabel('Antal GVFK\'er', fontsize=18, fontweight='bold')
+    plt.title('GVFK-påvirkning af "generel risiko"\nInkludering af lokaliteter ≤500m uden stofdata',
+             fontsize=20, fontweight='bold', pad=25)
+    plt.grid(True, alpha=0.3, axis='y')
+
+    # Set tick font sizes
+    plt.xticks(fontsize=16, fontweight='bold')
+    plt.yticks(fontsize=16, fontweight='bold')
+
+    # Add value labels
+    for bar, value in zip(bars, values):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height + max(values)*0.01,
+                f'{value:,}', ha='center', va='bottom', fontsize=16, fontweight='bold')
+
+    # Add percentage increase annotation
+    pct_increase = gr_impact['percentage_increase']
+    plt.text(0.5, 0.95, f'Stigning: {pct_increase:.1f}%', transform=plt.gca().transAxes,
+             fontsize=18, fontweight='bold', ha='center', va='top',
+             bbox=dict(boxstyle='round,pad=0.5', facecolor=colors[4], alpha=0.3))
+
+    # Clean styling
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.gca().set_facecolor('#FAFAFA')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'gvfk_pavirkning_dansk.png'),
+                dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    print(f"    ✓ GVFK impact chart (Danish) saved")
+
+
+def _create_distance_distribution_danish_chart(results, output_dir, colors):
+    """Create distance distribution chart in Danish."""
+
+    plt.figure(figsize=(12, 8))
+
+    if 'distance_analysis' in results:
+        # Distance thresholds and counts
+        thresholds = ['≤250m', '≤500m', '≤1000m', '≤1500m', '≤2000m']
+        threshold_keys = ['within_250m', 'within_500m', 'within_1000m', 'within_1500m', 'within_2000m']
+
+        counts = []
+        for key in threshold_keys:
+            if key in results['distance_analysis']:
+                counts.append(results['distance_analysis'][key])
+            else:
+                counts.append(0)
+
+        total_sites = len(results.get('sites_data', []))  # Fallback if not available
+        if total_sites == 0:
+            total_sites = max(counts) if counts else 1  # Avoid division by zero
+
+        percentages = [(count/total_sites)*100 for count in counts]
+
+        # Create bar chart
+        bars = plt.bar(thresholds, counts, color=colors[5], alpha=0.8, width=0.6)
+
+        plt.xlabel('Afstandstærskel til vandløb', fontsize=18, fontweight='bold')
+        plt.ylabel('Antal lokaliteter', fontsize=18, fontweight='bold')
+        plt.title('Afstandsfordeling - Lokaliteter uden stofdata\n(16.866 lokaliteter analyseret)',
+                 fontsize=20, fontweight='bold', pad=25)
+        plt.grid(True, alpha=0.3, axis='y')
+
+        # Set tick font sizes
+        plt.xticks(fontsize=16, fontweight='bold')
+        plt.yticks(fontsize=16, fontweight='bold')
+
+        # Add value labels with percentages
+        for bar, count, pct in zip(bars, counts, percentages):
+            height = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2., height + max(counts)*0.01,
+                    f'{count:,}\n({pct:.1f}%)', ha='center', va='bottom', fontsize=14, fontweight='bold')
+
+        # Highlight 500m threshold
+        plt.axhline(y=results['distance_analysis']['within_500m'], color=colors[3], linestyle='--', alpha=0.7)
+        plt.text(0.02, 0.85, f'Lokaliteter ≤500m: {results["distance_analysis"]["within_500m"]:,} (22,0%)',
+                transform=plt.gca().transAxes, fontsize=14, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor=colors[3], alpha=0.2))
+
+        # Clean styling
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
+        plt.gca().set_facecolor('#FAFAFA')
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'afstandsfordeling_dansk.png'),
+                    dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        print(f"    ✓ Distance distribution chart (Danish) saved")
+
+
 if __name__ == "__main__":
-    print("This module is designed to be called from step5_risk_assessment.py")
-    print("Run main_workflow.py to execute the full analysis pipeline.")
+    import pandas as pd
+    import os
+    from config import RESULTS_PATH
+
+    print("Running Branch Analysis on Parked Sites")
+    print("=" * 50)
+
+    # Load parked sites (sites without substance data)
+    parked_sites_file = os.path.join(RESULTS_PATH, 'step5_unknown_substance_sites.csv')
+    if not os.path.exists(parked_sites_file):
+        print(f"Error: Could not find {parked_sites_file}")
+        exit(1)
+
+    print(f"Loading parked sites from: {parked_sites_file}")
+    parked_sites = pd.read_csv(parked_sites_file)
+    print(f"Loaded {len(parked_sites):,} parked sites")
+
+    # Try to load substance sites for comparison
+    substance_sites = None
+    potential_substance_files = [
+        'step5_general_assessment_500m.csv',
+        'step5_all_combinations_ethylen.csv',
+        'step5_all_combinations_vinylchlorid.csv',
+        'step5_all_combinations_benzene.csv',
+        'step5_all_combinations_trioxan.csv'
+    ]
+
+    substance_sites_list = []
+    for filename in potential_substance_files:
+        filepath = os.path.join(RESULTS_PATH, filename)
+        if os.path.exists(filepath):
+            df = pd.read_csv(filepath)
+            substance_sites_list.append(df)
+            print(f"Found substance file: {filename} ({len(df):,} sites)")
+
+    if substance_sites_list:
+        # Combine and dedupe substance sites
+        substance_sites = pd.concat(substance_sites_list, ignore_index=True)
+        # Remove duplicates based on Lokalitet_ID if it exists
+        if 'Lokalitet_ID' in substance_sites.columns:
+            substance_sites = substance_sites.drop_duplicates(subset='Lokalitet_ID')
+        print(f"Combined substance sites: {len(substance_sites):,} (after deduplication)")
+    else:
+        print("No substance site files found - running analysis on branch-only sites only")
+
+    # Run the branch analysis
+    print(f"\nStarting comprehensive branch analysis...")
+    try:
+        results = run_branch_analysis(parked_sites, substance_sites)
+
+        # Create Danish presentation charts
+        output_dir = os.path.join(RESULTS_PATH, 'branch_analysis')
+        create_danish_presentation_charts(results, parked_sites, output_dir)
+
+        print(f"\n✓ Branch analysis completed successfully!")
+        print(f"Results saved to: {output_dir}")
+        print(f"Danish presentation charts saved to: {os.path.join(output_dir, 'Presentation')}")
+    except Exception as e:
+        print(f"Error during analysis: {e}")
+        import traceback
+        traceback.print_exc()

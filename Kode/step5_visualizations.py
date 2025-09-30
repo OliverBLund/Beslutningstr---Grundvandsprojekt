@@ -128,7 +128,7 @@ def create_distance_distribution(high_risk_sites, figures_path):
         return
     
     fig, ax = setup_professional_plot(figsize=(10, 6))
-    
+
     distances = high_risk_sites['Final_Distance_m']
     
     # Clean histogram with single color
@@ -153,7 +153,8 @@ def create_distance_distribution(high_risk_sites, figures_path):
     ax.set_title('Distance Distribution: High-Risk Sites (≤500m)', fontsize=14, pad=15)
     
     # Add statistics text box
-    stats_text = f'Median: {median_dist:.0f}m\nMean: {mean_dist:.0f}m\nTotal: {len(distances):,} sites'
+    stats_text = f'Median: {median_dist:.0f}m\nMean: {mean_dist:.0f}m\nTotal: {high_risk_sites['Lokalitet_ID'].nunique():,} sites'
+    
     ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, 
             verticalalignment='top', horizontalalignment='right',
             bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.8, edgecolor='gray'),

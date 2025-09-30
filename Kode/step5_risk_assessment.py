@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step 5: Risk Assessment of High-Risk V1/V2 Sites
 ================================================
 
@@ -101,10 +101,20 @@ def run_general_assessment(distance_results):
         DataFrame: Sites within 500m threshold
     """
     risk_threshold_m = WORKFLOW_SETTINGS['risk_threshold_m']
+    total_input = len(distance_results)
 
     high_risk_sites = distance_results[
         distance_results['Final_Distance_m'] <= risk_threshold_m
     ].copy()
+
+    within_threshold = len(high_risk_sites)
+    outside_threshold = total_input - within_threshold
+
+    print("GENERAL ASSESSMENT SUMMARY")
+    print("=" * 30)
+    print(f"Input qualifying sites: {total_input:,}")
+    print(f"  Within {risk_threshold_m} m: {within_threshold:,}")
+    print(f"  Beyond {risk_threshold_m} m: {outside_threshold:,}")
 
     # Save results
     if not high_risk_sites.empty:
@@ -116,10 +126,12 @@ def run_general_assessment(distance_results):
 
         # Count unique GVFKs
         unique_gvfks = high_risk_sites['Closest_GVFK'].dropna().nunique()
-        print(f"General assessment: {len(high_risk_sites)} sites within {risk_threshold_m}m")
-        print(f"  Unique GVFKs affected: {unique_gvfks}")
+        print(f"  Unique GVFKs affected: {unique_gvfks:,}")
+    else:
+        print("  No sites within threshold; skipping shapefile export")
 
     return high_risk_sites
+
 
 
 def run_compound_assessment(distance_results):
@@ -129,9 +141,14 @@ def run_compound_assessment(distance_results):
     Returns:
         tuple: (compound_combinations DataFrame, unique_sites DataFrame)
     """
+    total_input_sites = len(distance_results)
     compound_combinations = apply_compound_filtering(distance_results)
 
     if compound_combinations.empty:
+        print("COMPOUND-SPECIFIC ASSESSMENT SUMMARY")
+        print("=" * 36)
+        print(f"Input qualifying sites: {total_input_sites:,}")
+        print("  No site-substance combinations met the compound thresholds.")
         return compound_combinations, pd.DataFrame()
 
     # Get unique sites for summary
@@ -140,12 +157,23 @@ def run_compound_assessment(distance_results):
     # Save results
     save_compound_results(compound_combinations, unique_sites)
 
-    # Count unique GVFKs
+    qualifying_sites = len(unique_sites)
+    total_combinations = len(compound_combinations)
     unique_gvfks = unique_sites['Closest_GVFK'].dropna().nunique()
-    print(f"Compound-specific assessment: {len(unique_sites)} unique sites, {len(compound_combinations)} combinations")
-    print(f"  Unique GVFKs affected: {unique_gvfks}")
+
+    print("COMPOUND-SPECIFIC ASSESSMENT SUMMARY")
+    print("=" * 36)
+    print(f"Input qualifying sites: {total_input_sites:,}")
+    if total_input_sites > 0:
+        pct_sites = qualifying_sites / total_input_sites * 100
+    else:
+        pct_sites = 0
+    print(f"  Sites meeting compound thresholds: {qualifying_sites:,} ({pct_sites:.1f}%)")
+    print(f"  Site-substance combinations retained: {total_combinations:,}")
+    print(f"  Unique GVFKs affected: {unique_gvfks:,}")
 
     return compound_combinations, unique_sites
+
 
 
 def apply_compound_filtering(distance_results):
@@ -157,9 +185,19 @@ def apply_compound_filtering(distance_results):
     """
     high_risk_combinations = []
 
+    def _has_landfill_keywords(text):
+        if pd.isna(text):
+            return False
+        text_lower = str(text).lower()
+        landfill_keywords = ['losseplads', 'affald', 'depon', 'deponi', 'fyld', 'fyldplads', 'skraldeplads']
+        return any(keyword in text_lower for keyword in landfill_keywords)
+
     for _, row in distance_results.iterrows():
         substances_str = str(row.get('Lokalitetensstoffer', ''))
         site_distance = row['Final_Distance_m']
+        branch_text = row.get('Lokalitetensbranche', '')
+        activity_text = row.get('Lokalitetensaktivitet', '')
+        is_landfill_site = _has_landfill_keywords(branch_text) or _has_landfill_keywords(activity_text)
 
         # Check if site has substance data
         has_substance_data = not (pd.isna(substances_str) or substances_str.strip() == '' or substances_str == 'nan')
@@ -174,8 +212,12 @@ def apply_compound_filtering(distance_results):
                 if compound_threshold is None:
                     compound_threshold = WORKFLOW_SETTINGS.get('risk_threshold_m', 500)
 
+                effective_threshold = compound_threshold
+                if is_landfill_site and category in LANDFILL_THRESHOLDS:
+                    effective_threshold = max(effective_threshold, LANDFILL_THRESHOLDS[category])
+
                 # Check if site is within this compound's threshold
-                if site_distance <= compound_threshold:
+                if site_distance <= effective_threshold:
                     # Create row for this qualifying combination
                     combo_row = row.to_dict()
                     combo_row['Qualifying_Substance'] = substance
@@ -185,9 +227,6 @@ def apply_compound_filtering(distance_results):
                     high_risk_combinations.append(combo_row)
         else:
             # Process branch/activity-based categorization for sites without substance data
-            branch_text = row.get('Lokalitetensbranche', '')
-            activity_text = row.get('Lokalitetensaktivitet', '')
-
             category, compound_threshold = categorize_by_branch_activity(branch_text, activity_text)
 
             if compound_threshold is None:
@@ -337,3 +376,6 @@ if __name__ == "__main__":
 
         # Generate GVFK summary
         gvfk_summary = generate_gvfk_risk_summary()
+
+
+

@@ -164,7 +164,7 @@ def categorize_by_branch_activity(branch_text, activity_text):
         _KEYWORD_STATS['activity'][activity_keyword] = _KEYWORD_STATS['activity'].get(activity_keyword, 0) + 1
 
     if branch_match or activity_match:
-        return 'LOSSEPLADS', 500  # Use 500m threshold for landfills
+        return 'LOSSEPLADS', 100  # Use 500m threshold for landfills
 
     # Default to ANDRE category for non-landfill branch-only sites
     return 'ANDRE', _DEFAULT_OTHER_DISTANCE
@@ -271,13 +271,35 @@ def separate_sites_by_substance_data(distance_results):
     sites_without_qualifying_data = distance_results[~has_qualifying_data].copy()
 
     # Diagnostic output
+    total_sites = len(distance_results)
+    qualifying_count = len(sites_with_qualifying_data)
+    non_qualifying_count = len(sites_without_qualifying_data)
     substance_only = (has_substances & ~has_landfill_data).sum()
     landfill_only = (~has_substances & has_landfill_data).sum()
     both = (has_substances & has_landfill_data).sum()
 
-    print(f"Data separation: {len(sites_with_qualifying_data)} sites with qualifying data, {len(sites_without_qualifying_data)} sites without qualifying data")
-    print(f"  Substance-only sites: {substance_only}")
-    print(f"  Landfill-only sites: {landfill_only}")
-    print(f"  Both substance+landfill: {both}")
+    # Additional diagnostics for parked sites
+    has_branch_text = distance_results['Lokalitetensbranche'].fillna('').astype(str).str.strip() != ''
+    has_activity_text = distance_results['Lokalitetensaktivitet'].fillna('').astype(str).str.strip() != ''
+    has_any_text = has_branch_text | has_activity_text
+    parked_with_text = ((~has_qualifying_data) & has_any_text).sum()
+    parked_without_text = ((~has_qualifying_data) & ~has_any_text).sum()
+
+    print("STEP 5 QUALIFICATION CHECK")
+    print("=" * 35)
+    print(f"Total sites received from Step 4: {total_sites:,}")
+    if total_sites > 0:
+        print(f"  -> Qualifying (substance data or landfill keywords): {qualifying_count:,} ({qualifying_count/total_sites*100:.1f}%)")
+        print(f"  -> Parked (no qualifying data): {non_qualifying_count:,} ({non_qualifying_count/total_sites*100:.1f}%)")
+    else:
+        print(f"  -> Qualifying (substance data or landfill keywords): {qualifying_count}")
+        print(f"  -> Parked (no qualifying data): {non_qualifying_count}")
+    print("Qualifying breakdown:")
+    print(f"  Substance-only sites: {substance_only:,}")
+    print(f"  Landfill-only sites: {landfill_only:,}")
+    print(f"  Both substance+landfill: {both:,}")
+    print("Parked (non-qualifying) breakdown:")
+    print(f"  With branch/activity text but no qualifying keywords: {parked_with_text:,}")
+    print(f"  Without any branch/activity text: {parked_without_text:,}")
 
     return sites_with_qualifying_data, sites_without_qualifying_data

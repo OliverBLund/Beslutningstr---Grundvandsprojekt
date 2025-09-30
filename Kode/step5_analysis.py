@@ -174,22 +174,29 @@ def print_summary(distance_results, general_sites, compound_combinations, compou
 
 def generate_gvfk_risk_summary():
     """
-    Generate a summary table of GVFKs at risk with compound breakdown.
+    Generate a summary table of GVFKs at risk based on Step 5a general assessment (500m threshold).
+    This represents the true "generel risiko" baseline - GVFKs with sites within 500m.
     This should be called after run_step5() completes.
     """
-    # Load compound results
-    compound_file = get_output_path('step5_compound_detailed_combinations')
-    if not os.path.exists(compound_file):
-        print("No compound-specific results found. Run Step 5 first.")
+    # Load Step 5a general assessment results (the true "generel risiko" baseline)
+    general_file = get_output_path('step5_high_risk_sites')
+    if not os.path.exists(general_file):
+        print("No Step 5a general assessment results found. Run Step 5 first.")
         return None
 
-    compound_df = pd.read_csv(compound_file)
+    general_df = pd.read_csv(general_file)
 
-    # Extract all unique GVFKs using consistent method
-    all_gvfks = _extract_unique_gvfk_names(compound_df)
+    # Get all unique GVFKs from general assessment (sites within 500m)
+    all_gvfks = general_df['Closest_GVFK'].dropna().unique()
 
-    if not all_gvfks:
-        print("Warning: No GVFKs found in compound results")
+    # Also load compound combinations for category breakdown (optional)
+    compound_file = get_output_path('step5_compound_detailed_combinations')
+    compound_df = None
+    if os.path.exists(compound_file):
+        compound_df = pd.read_csv(compound_file)
+
+    if len(all_gvfks) == 0:
+        print("Warning: No GVFKs found in general assessment results")
         return None
 
     # Create GVFK summary
@@ -197,42 +204,34 @@ def generate_gvfk_risk_summary():
 
     # Process each GVFK
     for gvfk in all_gvfks:
-        # Find all rows that reference this GVFK
-        gvfk_rows = []
+        # Get sites in this GVFK from general assessment
+        gvfk_sites = general_df[general_df['Closest_GVFK'] == gvfk]
+        unique_sites = len(gvfk_sites)
 
-        # Check in All_Affected_GVFKs
-        if 'All_Affected_GVFKs' in compound_df.columns:
-            for idx, row in compound_df.iterrows():
-                gvfk_list = str(row.get('All_Affected_GVFKs', ''))
-                if gvfk_list and gvfk_list != 'nan':
-                    gvfks = [g.strip() for g in gvfk_list.split(';') if g.strip()]
-                    if gvfk in gvfks:
-                        gvfk_rows.append(row)
+        # Initialize category counts
+        category_counts = {}
+        total_combinations = 0
 
-        # If nothing found, check Closest_GVFK
-        if not gvfk_rows and 'Closest_GVFK' in compound_df.columns:
-            gvfk_data = compound_df[compound_df['Closest_GVFK'] == gvfk]
-            gvfk_rows = [row for _, row in gvfk_data.iterrows()]
+        # If compound data is available, get category breakdown for this GVFK
+        if compound_df is not None:
+            # Find compound combinations for this GVFK
+            gvfk_compounds = compound_df[compound_df['Closest_GVFK'] == gvfk]
+            if not gvfk_compounds.empty:
+                category_counts = gvfk_compounds['Qualifying_Category'].value_counts().to_dict()
+                total_combinations = len(gvfk_compounds)
 
-        if gvfk_rows:
-            # Convert to DataFrame for easier processing
-            gvfk_data = pd.DataFrame(gvfk_rows)
+        # Build summary row for this GVFK
+        summary_row = {
+            'GVFK': gvfk,
+            'Total_Sites': unique_sites,
+            'Total_Combinations': total_combinations
+        }
 
-            # Count sites and categories
-            category_counts = gvfk_data['Qualifying_Category'].value_counts()
-            unique_sites = gvfk_data['Lokalitet_ID'].nunique()
+        # Add counts for each category (if available)
+        for category, count in category_counts.items():
+            summary_row[category] = count
 
-            summary_row = {
-                'GVFK': gvfk,
-                'Total_Sites': unique_sites,
-                'Total_Combinations': len(gvfk_data)
-            }
-
-            # Add counts for each category
-            for category in category_counts.index:
-                summary_row[category] = category_counts[category]
-
-            gvfk_summary.append(summary_row)
+        gvfk_summary.append(summary_row)
 
     # Convert to DataFrame and sort
     if gvfk_summary:
@@ -274,7 +273,7 @@ def handle_unknown_substance_sites(sites_without_substances):
     if len(sites_without_substances) > 0:
         unknown_path = get_output_path('step5_unknown_substance_sites')
         sites_without_substances.to_csv(unknown_path, index=False)
-        print(f"  ✓ Saved to: {unknown_path}")
+        print(f"  Saved to: {unknown_path}")
 
         # Basic statistics
         if 'Final_Distance_m' in sites_without_substances.columns:

@@ -237,13 +237,13 @@ grundvandsforekomster (VP3)
      - **Samme kolonnestruktur som V1**
 
 2. **Shapefiler (geometrisk data)**:
-   - `V1FLADER.shp` (28.717 polygoner → 23.209 unikke lokaliteter)
+   - `V1FLADER.shp` (28.717 polygoner -> 23.209 unikke lokaliteter)
      - **Anvendte kolonner**:
        - `geometry`: Polygongeometrier for forurenede lokaliteter
        - `Lokalitet_`: Lokalitetsidentifikator (matcher Lokalitetsnr fra CSV)
      - **Datatype**: GeoDataFrame med lokalitetspolygoner
 
-   - `V2FLADER.shp` (33.040 polygoner → 21.269 unikke lokaliteter)
+   - `V2FLADER.shp` (33.040 polygoner -> 21.269 unikke lokaliteter)
      - **Samme struktur som V1**
 
 3. **Fra Trin 2**: Liste med 593 GVFK-navne med vandløbskontakt
@@ -252,8 +252,8 @@ grundvandsforekomster (VP3)
 
 1. **Aktiv forureningsfiltrering (kritisk kvalitetskontrol)**:
    - Filtrer hvor `Lokalitetensstoffer` ELLER `Lokalitetensbranche` ikke er null/tom
-   - **V1**: 84.601 → 84.401 rækker (99.8% retained)
-   - **V2**: 134.636 → 134.491 rækker (99.9% retained)
+   - **V1**: 84.601 -> 84.401 rækker (99.8% retained)
+   - **V2**: 134.636 -> 134.491 rækker (99.9% retained)
    - **Årsag**: Inkluderer lokaliteter med dokumenterede aktive forureninger ELLER brancheoplysninger, da branch-information kan indikere potentielle forureningsrisici også uden dokumenterede stoffer
 
 2. **Geometri-processering**:
@@ -266,7 +266,7 @@ grundvandsforekomster (VP3)
    - **Årsag**: Bevarer kun lokaliteter i GVFK med dokumenteret vandløbskontakt
 
 4. **Data-kobling**:
-   - Standardiser kolonnenavne (`Lokalitetsnr` → `Lokalitet_`)
+   - Standardiser kolonnenavne (`Lokalitetsnr` -> `Lokalitet_`)
    - Join CSV-attributter med dissolved geometrier via `Lokalitet_`
    - **Resultat**: Komplet spatial+attribut datasæt
 
@@ -370,20 +370,20 @@ Algoritmen behandlede 69,627 lokalitet-GVFK kombinationer med følgende resultat
 
 **Inddata fra Trin 3**:
 - Lokalitet 12345 findes i 3 lokalitet-GVFK kombinationer:
-  - Lokalitet 12345 → GVFK_A (Navn = "DK_GVF_001")
-  - Lokalitet 12345 → GVFK_B (Navn = "DK_GVF_002") 
-  - Lokalitet 12345 → GVFK_C (Navn = "DK_GVF_003")
+  - Lokalitet 12345 -> GVFK_A (Navn = "DK_GVF_001")
+  - Lokalitet 12345 -> GVFK_B (Navn = "DK_GVF_002") 
+  - Lokalitet 12345 -> GVFK_C (Navn = "DK_GVF_003")
 
 **Niveau 1: Beregning per kombination**:
 - **Kombination 1**: Find vandløbssegmenter hvor `GVForekom = "DK_GVF_001"` AND `Kontakt = 1`
   - Findes: 3 matchende vandløbssegmenter
-  - Afstande: 450m, 720m, 890m → **Minimum: 450m**
+  - Afstande: 450m, 720m, 890m -> **Minimum: 450m**
 - **Kombination 2**: Find vandløbssegmenter hvor `GVForekom = "DK_GVF_002"` AND `Kontakt = 1`
   - Findes: 2 matchende vandløbssegmenter  
-  - Afstande: 320m, 580m → **Minimum: 320m**
+  - Afstande: 320m, 580m -> **Minimum: 320m**
 - **Kombination 3**: Find vandløbssegmenter hvor `GVForekom = "DK_GVF_003"` AND `Kontakt = 1`
   - Findes: 1 matchende vandløbssegment
-  - Afstand: 1200m → **Minimum: 1200m**
+  - Afstand: 1200m -> **Minimum: 1200m**
 
 **Niveau 2: Final minimum per lokalitet**:
 - Sammenlign: 450m (GVFK_A), 320m (GVFK_B), 1200m (GVFK_C)
@@ -397,63 +397,91 @@ Closest_GVFK: DK_GVF_002
 [+ metadata kolonner]
 ```
 
-
 ## Trin 5: Tærskel-vurdering og Kategorisering
 
 **Formål**: Identificere højrisiko V1/V2-lokaliteter baseret på afstand til vandløb og stofspecifikke mobilitetsegenskaber. Implementerer to-lags risikovurdering med både generelle og stofspecifikke tærskler.
 
 **Inddata**:
-- **Fra Trin 4**: `step4_final_distances_for_risk_assessment.csv` med 35,728 lokaliteter og deres minimumsafstande
-- **Excel-baseret kategorisering**: `compound_categorization_review.xlsx` med litteraturbaserede fanelængder.
+- **Fra Trin 4**: `step4_final_distances_for_risk_assessment.csv` med 35.728 lokaliteter og deres minimumsafstande  
+- **Excel-baseret kategorisering**: `compound_categorization_review.xlsx` med litteraturbaserede faner.
+
+**0. For-kvalificering (data qualification)**:
+- Trin 5 modtager alle lokaliteter fra trin 4 (minimumsafstand per lokalitet).
+- Funktionen `separate_sites_by_substance_data` opdeler datasAettet i to grupper:
+  - *Kvalificerende sites*: Mindst én registreret substans eller losseplads nøgleord i branche/aktivitet. Disse fortsætter til de efterfølgende vurderinger.
+  - *Parkede sites*: hverken substansdata eller relevante losseplads nøgleord. De gemmes i `step5_unknown_substance_sites.csv` til dokumentation og manuel opfølgning.
+- De kvalificerende sites udgør grundlaget for både den generelle 500 m screening og den stofspecifikke analyse.
 
 **Proceslogik (`step5_risk_assessment.py`)**:
 
-**1. Generel risikovurdering (500m universal tærskel)**:
-- Filtrer lokaliteter hvor `Final_Distance_m ≤ 500m`
+### 1. Generel risikovurdering (500 m universal tærskel)
+- Filtrer lokaliteter hvor `Final_Distance_m ≤ 500 m`
 - Konservativ screening uafhængig af forureningstype
 - Output: `step5_high_risk_sites.csv` og GVFK-shapefiler
 
-**2. Stofspecifik risikovurdering med losseplads-override (to-fase tilgang)**:
+### 2. Stofspecifik risikovurdering med losseplads-override (to-fase tilgang)
 
-**Fase 1 - Normal kategorisering**:
-- Parse semikolon-separerede stoffer per lokalitet
-- Kategoriser hvert stof via Excel-mapping til 9 aktive mobilitetsklasser:
-  - **PAH_FORBINDELSER** (PAH): 30m tærskel
-  - **BTXER** (BTEX): 50m tærskel (undtagen Benzen: 200m tærskel)
-  - **PHENOLER**: 100m tærskel
-  - **UORGANISKE_FORBINDELSER**: 150m tærskel
-  - **POLARE**: 300m tærskel
-  - **KLOREREDE_OPLØSNINGSMIDLER**: 500m tærskel
-  - **PESTICIDER**: 500m tærskel
-  - **LOSSEPLADS**: 500m tærskel (ny kategori for lossepladser)
-  - **ANDRE**: 500m tærskel (default)
-- Evaluér hver stof-lokalitet kombination mod kategori-tærskel
+#### Fase 1 – Kategorisering og initial screening
+*Kilde: Jordforureningens påvirkning af overfladevand, delprojekt 2: Afstandskriterier og fanebredder. Miljøprojekt nr. 1565, 2014. Tabel 2 og 3.*
 
-**Fase 2 - Losseplads-override (post-processering)**:
-- For kombinationer der kvalificerede i Fase 1:
-- Identificer lokaliteter med losseplads-karakteristika (`Lokalitetensbranche` eller `Lokalitetensaktivitet`)
-- Anvend strengere losseplads-specifikke tærskler for udvalgte kategorier:
-  - **BTXER**: 70m (vs. 50m normal) - Benzen-repræsentativ ved lossepladser
-  - **KLOREREDE_OPLØSNINGSMIDLER**: 100m (vs. 500m normal) - TCE-repræsentativ ved lossepladser
-  - **PHENOLER**: 35m (vs. 100m normal) - Phenol-repræsentativ ved lossepladser
-  - **PESTICIDER**: 180m (vs. 500m normal) - MCPP-repræsentativ ved lossepladser
-  - **UORGANISKE_FORBINDELSER**: 50m (vs. 150m normal) - Arsen-repræsentativ ved lossepladser
-- Reklassificer til **LOSSEPLADS** hovedkategori med **LOSSEPLADS_[ORIGINAL]** subkategori
-- Fjern kombinationer der ikke opfylder strengere losseplads-tærskler
+- Parse semikolon-separerede stoffer per lokalitet og hent kategori samt stofspecifik tærskel fra Excel-mappingen  
+- Kategorierne spejler de aktive mobilitetsklasser (fx **PAH_FORBINDELSER** 30 m, **BTXER** 50 m, **PHENOLER** 100 m, **UORGANISKE_FORBINDELSER** 150 m, **POLARE_FORBINDELSER** 300 m, **KLOREREDE_OPLØSNINGSMIDLER** 500 m, **PESTICIDER** 500 m, **LOSSEPLADS** 500 m, **ANDRE** 500 m) og respekterer stofspecifikke overrides som Benzen 200 m  
+- Registrer allerede her om lokaliteten har losseplads-karakteristika via `Lokalitetensbranche` eller `Lokalitetensaktivitet`  
+- Hvis lokaliteten matcher en kategori i `LANDFILL_THRESHOLDS`, sættes den effektive tærskel til `max(kategori-tærskel, losseplads-tærskel)` for ikke at frasortere kombinationer der kun består på grund af en lempelig lossepladsgrænse; mere restriktive losseplads-tærskler håndteres efterfølgende  
+- Lokaliteter uden stofdata men med losseplads-brancher/aktiviteter klassificeres som **LOSSEPLADS** med en 100 m screenings-tærskel via `categorize_by_branch_activity`  
+- Evaluer hver stof-lokalitet (eller branch-only) kombination mod den effektive tærskel og gem kvalificerende rækker  
 
-**Tærskel-sammenligning (Normal vs. Losseplads-specifik)**:
+#### Fase 2 – Losseplads-override (post-processering)
+*Kilde: Risikovurdering af lossepladsers påvirkning af overfladevand. Bjerg, Poul Løgstrup; Sonne, Anne Thobo; Tuxen, Nina; Skov Nielsen, Sanne; Roost, Sandra. 2014. Tabel 7.1.*
+
+
+- Arbejder kun videre med kombinationer fra Fase 1 og fokuserer på lokaliteter med losseplads-karakteristika  
+- For kategorier der findes i `LANDFILL_THRESHOLDS` anvendes nu den faktiske losseplads-tærskel; kombinationer over grænsen fjernes, mens de resterende reklassificeres  
+- Reklassificering sætter `Qualifying_Category = "LOSSEPLADS"`, udfylder `Losseplads_Subcategory = "LOSSEPLADS_<originalkategori>"`, markerer `Landfill_Override_Applied = True` og logger oprindelsen i `Qualifying_Substance = "Landfill Override: <originalkategori>"`  
+- Kombinationsrækker uden losseplads-flag eller uden relevant tærskel bevares uændret  
+
+#### Eksempler
+- *BTXER ved 60 m med losseplads-flag*: passerer Fase 1 med 70 m (max(50,70)) og forbliver i datasættet efter override, nu mærket som `LOSSEPLADS_BTXER`  
+- *Phenoler ved 80 m med losseplads-flag*: passerer Fase 1 (100 m), men fjernes i Fase 2, fordi losseplads-tærsklen er 35 m  
+- *Branch-only losseplads ved 120 m*: falder allerede i Fase 1, fordi den branch-baserede 100 m tærskel overskrides  
+
+---
+
+### Tærskel-sammenligning (Normal vs. Losseplads-specifik)
 
 | Kategori | Normal Tærskel | Losseplads Tærskel | Repræsentativ Forbindelse | Override Status |
-|----------|----------------|-------------------|---------------------------|-----------------|
-| **BTXER** | 50m | **70m** | Benzen | ✓ Override (løsere) |
-| **KLOREREDE_OPLØSNINGSMIDLER** | 500m | **100m** | Tetrachlorethylen (TCE) | ✓ Override (strengere) |
-| **PHENOLER** | 100m | **35m** | Phenol | ✓ Override (strengere) |
-| **PESTICIDER** | 500m | **180m** | MCPP | ✓ Override (strengere) |
-| **UORGANISKE_FORBINDELSER** | 150m | **50m** | Arsen | ✓ Override (strengere) |
-| **PAH_FORBINDELSER** | 30m | - | - | Ingen override |
-| **POLARE** | 300m | - | - | Ingen override |
-| **LOSSEPLADS** | 500m | - | - | Ingen override (allerede losseplads) |
-| **ANDRE** | 500m | - | - | Ingen override |
+|----------|----------------|--------------------|---------------------------|-----------------|
+| **BTXER** | 50 m | **70 m** | Benzen | ✓ Override (lempligere) |
+| **KLOREREDE_OPLØSNINGSMIDLER** | 500 m | **100 m** | Tetrachlorethylen (TCE) | ✓ Override (strengere) |
+| **PHENOLER** | 100 m | **35 m** | Phenol | ✓ Override (strengere) |
+| **PESTICIDER** | 500 m | **180 m** | MCPP | ✓ Override (strengere) |
+| **UORGANISKE_FORBINDELSER** | 150 m | **50 m** | Arsen | ✓ Override (strengere) |
+| **PAH_FORBINDELSER** | 30 m | - | - | Ingen override |
+| **POLARE_FORBINDELSER** | 300 m | - | - | Ingen override |
+| **LOSSEPLADS** | 100 m | - | - | Ingen override (allerede losseplads) |
+| **ANDRE** | 500 m | - | - | Ingen override |
+
+---
+
+### Litteraturbaserede stofgrupper (`refined_compound_analysis.py`)
+- `refined_compound_analysis.py` grupperer stoffer i 10 kategorier baseret på *Jordforureningens påvirkning af overfladevand, delprojekt 2* (Tabel 2 og 3).  
+- Kortlægningen danner grundlag for ovenstående tærskler og bruges både i foranalysen og i Trin 5.  
+- Kategorierne og deres standardtærskler er:  
+  - **BTXER** – 50 m (BTEX + oliefraktioner; tabel 2).  
+  - **KLOREREDE_OPLØSNINGSMIDLER** – 500 m (klorerede opløsningsmidler; tabel 2).  
+  - **POLARE_FORBINDELSER** – 300 m (MTBE m.fl.; tabel 2).  
+  - **PHENOLER** – 100 m (fenoler; tabel 2).  
+  - **KLOREDE_KULBRINTER** – 200 m (klorerede/bromerede kulbrinter; tabel 3).  
+  - **KLOREREDE_PHENOLER** – 200 m (klorerede fenoler; tabel 3).  
+  - **PAH_FORBINDELSER** – 30 m (PAH; tabel 3).  
+  - **PESTICIDER** – 500 m (pesticider inkl. PFAS-stoffer; tabel 2).  
+  - **UORGANISKE_FORBINDELSER** – 150 m (metaller og uorganika; tabel 3).  
+  - **LOSSEPLADS** – 100 m (landfill-relaterede kilder).  
+- Kategoriseringsscriptet anvender også stofspecifikke overrides (fx Benzen 200 m, cyanid 100 m), som går forud for både normale og losseplads-specifikke kategori-tærskler.  
+- Stoffer der ikke matcher nogen kategori lander i **ANDRE** og får default 500 m (efter manuel opfølgning).  
+
+- **Output**: `step5_compound_detailed_combinations.csv` med alle kvalificerende kombinationer efter override  
+
 
 - Output: `step5_compound_detailed_combinations.csv` med alle kvalificerende kombinationer efter override
 
@@ -544,22 +572,13 @@ Tilstandsvurderingen kræver tæt samarbejde med GEUS vedrørende:
 - **Datagrundlag**: **2.043 grundvandsforekomster** i Danmark
 - **Vandløbskontakt**: **593 GVFK** (29,0%) har kontakt med vandløb
 - **Aktiv forureningsfiltrering**: 
-  - V1: 84.601 → **34.232 lokaliteter** med aktive forureninger (60% reduktion)
-  - V2: 134.636 → **121.984 lokaliteter** med aktive forureninger (9% reduktion)
+  - V1: 84.601 -> **34.232 lokaliteter** med aktive forureninger (60% reduktion)
+  - V2: 134.636 -> **121.984 lokaliteter** med aktive forureninger (9% reduktion)
   - Eliminerer lokaliteter uden dokumenterede forureningsstoffer
 - **Endelig analyse**: **35.728 unikke lokaliteter** med både aktive forureninger og vandløbskontakt
 - **Generel screening**: **4.156 lokaliteter** inden for 500m (300 GVFK påvirket)
 - **Stofspecifik risikovurdering**: **2.013 højrisiko-lokaliteter** baseret på litteraturbaserede tærskler (232 GVFK påvirket)
 - **Output**: Præcise afstande til vandløb med komplet forureningsinformation til risikovurdering
-
-## Fordele ved denne metode
-
-- Fokuserer kun på relevante risikolokaliteter (med dokumenterede aktive forureninger)
-- Eliminerer "støj" fra lokaliteter uden forureningspotentiale
-- Bevarer vigtige attributter til risikovurdering
-- Beregner præcise afstande inden for samme GVFK
-- Identificerer minimale afstande per lokalitet for risikoprioritering
-- Kvantificerer risiko baseret på afstand og forureningskarakteristika
 
 # Konklusion
 
