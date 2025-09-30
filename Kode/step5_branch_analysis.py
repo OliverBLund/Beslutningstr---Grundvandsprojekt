@@ -2,15 +2,34 @@
 Step 5 Branch Analysis: Analyzing sites without substance data
 ============================================================
 
-This module provides detailed analysis of sites that have branch/activity data
-but no specific contamination substance information. This runs as a separate
-analysis track to avoid interfering with the main risk assessment.
+BASELINE COMPARISON - IMPORTANT:
+This analysis compares branch-only sites against Step 5a (general 500m assessment).
+
+Step 5a Baseline ("generel risiko"):
+- ALL substance sites within universal 500m threshold
+- Source: step5_high_risk_sites_500m.csv OR step5_gvfk_risk_summary.csv
+- Result: ~300+ GVFKs (see lines 471-491 for file loading)
+- This is the "generel risiko" category for ALL substance sites regardless of compound type
+
+Branch-only Sites Analysis:
+- Sites WITHOUT substance data but WITH branch/activity information
+- Source: step5_unknown_substance_sites.csv
+- Filtered to ≤500m for "generel risiko" impact analysis (line 457)
+- Result: ~44 additional GVFKs beyond the Step 5a baseline
+
+KEY DISTINCTION vs step6_final_analysis.py:
+- THIS analysis (step5_branch) compares against Step 5a (general 500m, ~300+ GVFKs)
+  resulting in ~44 additional GVFKs (see _analyze_generel_risiko_impact, lines 453-541)
+- step6_final_analysis.py compares against Step 5b (compound-specific, 217 GVFKs)
+  resulting in 92 additional GVFKs - both are CORRECT but measure different things
+- Step 5a has MORE GVFKs (looser threshold), so fewer appear "new" here
 
 The analysis focuses on:
 - Distance distributions compared to substance sites
-- Branch/activity frequency analysis  
+- Branch/activity frequency analysis
 - Geographic distribution patterns
 - Basic risk profiling based on proximity to rivers
+- GVFK impact on "generel risiko" category (lines 453-541)
 
 Output: Separate folder structure under Resultater/branch_analysis/
 """
