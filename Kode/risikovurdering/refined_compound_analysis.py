@@ -1,4 +1,4 @@
-"""
+﻿"""
 Refined Compound Categorization Analysis - Literature-Based Categories Only
 ===========================================================================
 
@@ -37,16 +37,16 @@ LITERATURE_COMPOUND_MAPPING = {
         'keywords': ['btx', 'btex', 'benzen', 'toluene', 'toluen', 'xylen', 'xylene', 'benzin', 'olie-benzen',
                     'aromater', 'aromat', 'c5-c10', 'c10-c25', 'kulbrintefraktion', 'monocyk', 'bicyk',
                     'tex (sum)', 'styren', 'olieprodukter', 'olie', 'fyringsolie', 'dieselolie', 'petroleum',
-                    'diesel', 'fyring', 'fedt', 'smøreolie', 'c25-c35', 'terpentin', 'white spirit'],
+                    'diesel', 'fyring', 'fedt', 'smÃ¸reolie', 'c25-c35', 'terpentin', 'white spirit'],
         'description': 'BTX compounds and oil products including diesel, heating oil, and petroleum products',
         'literature_basis': 'Scientific studies on BTEX mobility in groundwater + oil product mobility'
     },
     
     # 2. Chlorinated solvents - 500m (literature-based)
-    'KLOREREDE_OPLØSNINGSMIDLER': {
+    'KLOREREDE_OPLÃ˜SNINGSMIDLER': {
         'distance_m': 500,
         'keywords': ['1,1,1-tca', 'tce', 'tetrachlorethylen', 'trichlorethylen', 'trichlor', 'tetrachlor',
-                    'vinylchlorid', 'dichlorethylen', 'dichlorethan', 'chlorerede', 'opl.midl', 'opløsningsmidl',
+                    'vinylchlorid', 'dichlorethylen', 'dichlorethan', 'chlorerede', 'opl.midl', 'oplÃ¸sningsmidl',
                     'cis-1,2-dichlorethyl', 'trans-1,2-dichloreth', 'chlorethan'],
         'description': 'Chlorinated solvents with very high groundwater mobility',
         'literature_basis': 'Regulatory distance tables for chlorinated solvents'
@@ -88,7 +88,7 @@ LITERATURE_COMPOUND_MAPPING = {
     'PAH_FORBINDELSER': {
         'distance_m': 30,
         'keywords': ['pah', 'fluoranthen', 'benzo', 'naftalen', 'naphtalen', 'naphthalen', 'pyren', 'anthracen', 'antracen',
-                    'tjære', 'tar', 'phenanthren', 'fluoren', 'acenaphthen', 'acenaphthylen', 'chrysen', 'chrysene',
+                    'tjÃ¦re', 'tar', 'phenanthren', 'fluoren', 'acenaphthen', 'acenaphthylen', 'chrysen', 'chrysene',
                     'benzfluranthen', 'methylnaphthalen', 'benz(ghi)perylen'],
         'description': 'Polycyclic Aromatic Hydrocarbons - very low mobility due to high sorption',
         'literature_basis': 'PAH sorption and transport studies'
@@ -133,7 +133,7 @@ LITERATURE_COMPOUND_MAPPING = {
     'UORGANISKE_FORBINDELSER': {
         'distance_m': 150,
         'keywords': ['arsen', 'arsenic', 'cyanid', 'cyanide', 'tungmetal', 'bly', 'cadmium', 'krom', 'chrom',
-                    'nikkel', 'zink', 'kobber', 'kviksølv', 'jern', 'mangan', 'aluminium', 'sølv', 'barium',
+                    'nikkel', 'zink', 'kobber', 'kviksÃ¸lv', 'jern', 'mangan', 'aluminium', 'sÃ¸lv', 'barium',
                     'kobolt', 'metaller', 'tributyltin', 'tbt', 'tin', 'molybden', 'antimon', 'calcium',
                     'natrium', 'kalium', 'magnesium', 'thallium', 'bor', 'chlorid', 'sulfat', 'nitrat',
                     'fluorid', 'fluor', 'ammoniak', 'ammonium', 'phosphor', 'tributhyltinacetat',

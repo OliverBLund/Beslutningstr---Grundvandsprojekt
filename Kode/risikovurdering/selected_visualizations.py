@@ -1,4 +1,4 @@
-import geopandas as gpd
+﻿import geopandas as gpd
 import matplotlib.pyplot as plt
 import os
 import numpy as np
@@ -277,7 +277,7 @@ def create_distance_histogram_with_thresholds(results_path):
             
             # Set title and labels with analysis type details
             title_suffix = "unikke lokaliteter" if analysis_type == "unikke lokaliteter" else "V1/V2-lokaliteter"
-            plt.title(f'Afstande mellem {title_suffix} og nærmeste kontaktzone\nmed fremhævede tærskelværdier (afstande >20km grupperet)',
+            plt.title(f'Afstande mellem {title_suffix} og nÃ¦rmeste kontaktzone\nmed fremhÃ¦vede tÃ¦rskelvÃ¦rdier (afstande >20km grupperet)',
                      fontsize=14, pad=20)
             ax1.set_xlabel('Afstand (meter) - maksimum 20.000m', fontsize=12)
             ax1.set_ylabel(f'Antal {title_suffix}', fontsize=12)
@@ -291,7 +291,7 @@ def create_distance_histogram_with_thresholds(results_path):
             # Create two separate legends - one for thresholds, one for site types
             threshold_legend = ax1.legend(by_label.values(), by_label.keys(), 
                                         loc='upper center', ncol=3, framealpha=0.9, fontsize=10,
-                                        bbox_to_anchor=(0.5, -0.05), title="Afstandsgrænser")
+                                        bbox_to_anchor=(0.5, -0.05), title="AfstandsgrÃ¦nser")
             
             # Add site type legend if we have type information
             if 'Site_Type' in distance_df.columns:
@@ -340,7 +340,7 @@ def create_distance_histogram_with_thresholds(results_path):
             plt.grid(True, alpha=0.3)
             
             # Add title and labels
-            plt.title(f'Kumulativ fordeling af afstande for {title_suffix}\nmed tærskelværdier',
+            plt.title(f'Kumulativ fordeling af afstande for {title_suffix}\nmed tÃ¦rskelvÃ¦rdier',
                      fontsize=14, pad=20)
             plt.xlabel('Afstand (meter)', fontsize=12)
             plt.ylabel('Kumulativ andel af lokaliteter', fontsize=12)
@@ -381,9 +381,9 @@ def create_progression_plot(figures_path, required_files):
         # Create a bar chart showing the complete GVFK progression
         stages = [
             'Alle GVFK\n(Danmark)',
-            'Vandløbskontakt\n(Trin 2)',
+            'VandlÃ¸bskontakt\n(Trin 2)',
             'V1/V2 lokaliteter\n(Trin 3)',
-            'Generel risiko\n(Trin 5a: ≤500m)',
+            'Generel risiko\n(Trin 5a: â‰¤500m)',
             'Stofspecifik risiko\n(Trin 5b: Variabel)'
         ]
 
@@ -460,7 +460,7 @@ def create_progression_plot(figures_path, required_files):
         ax.set_xticks(range(len(stages)))
         ax.set_xticklabels(stages, fontsize=12, fontweight='bold')
         ax.set_ylabel('Antal GVFK', fontsize=14, fontweight='bold')
-        ax.set_title('GVFK Analyse Progression\nFra alle danske GVFK til højrisiko vurdering',
+        ax.set_title('GVFK Analyse Progression\nFra alle danske GVFK til hÃ¸jrisiko vurdering',
                     fontsize=16, fontweight='bold', pad=20)
 
         # Set y-axis limits with some padding
@@ -471,8 +471,8 @@ def create_progression_plot(figures_path, required_files):
         ax.set_axisbelow(True)
 
         # Add explanation text in Danish
-        explanation = ("Trin 5a: Generel vurdering bruger universel 500m tærskel\n"
-                      "Trin 5b: Stofspecifik vurdering bruger litteraturbaserede variable tærskler")
+        explanation = ("Trin 5a: Generel vurdering bruger universel 500m tÃ¦rskel\n"
+                      "Trin 5b: Stofspecifik vurdering bruger litteraturbaserede variable tÃ¦rskler")
         ax.text(0.02, 0.98, explanation, transform=ax.transAxes,
                fontsize=10, verticalalignment='top',
                bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgray', alpha=0.8))
@@ -548,7 +548,7 @@ def create_compound_category_table_from_data():
 
         print("\n[LAB] TRIN 5b: STOFKATEGORI ANALYSE - ENHANCED FOR PRESENTATION")
         print("=" * 100)
-        print(f"{'Kategori':<30} {'Tærskel Type':<15} {'Tærskel':<15} {'Forekomster':<12} {'Unikke lok.':<12} {'Gns/lok.':<10}")
+        print(f"{'Kategori':<30} {'TÃ¦rskel Type':<15} {'TÃ¦rskel':<15} {'Forekomster':<12} {'Unikke lok.':<12} {'Gns/lok.':<10}")
         print("-" * 100)
 
         # Load compound combinations data
@@ -562,7 +562,7 @@ def create_compound_category_table_from_data():
         # Define base thresholds and landfill overrides for reference
         base_thresholds = {
             'BTXER': 50,
-            'KLOREREDE_OPLØSNINGSMIDLER': 500,
+            'KLOREREDE_OPLÃ˜SNINGSMIDLER': 500,
             'PHENOLER': 100,
             'PESTICIDER': 500,
             'UORGANISKE_FORBINDELSER': 150,
@@ -576,7 +576,7 @@ def create_compound_category_table_from_data():
 
         landfill_overrides = {
             'BTXER': 70,
-            'KLOREREDE_OPLØSNINGSMIDLER': 100,
+            'KLOREREDE_OPLÃ˜SNINGSMIDLER': 100,
             'PHENOLER': 35,
             'PESTICIDER': 180,
             'UORGANISKE_FORBINDELSER': 50
@@ -649,15 +649,15 @@ def create_compound_category_table_from_data():
         total_unique_sites = combinations_df['Lokalitet_ID'].nunique()
 
         print("-" * 100)
-        print(f"Total: {total_combinations:,} kombinationer på tværs af {total_unique_sites:,} unikke lokaliteter")
+        print(f"Total: {total_combinations:,} kombinationer pÃ¥ tvÃ¦rs af {total_unique_sites:,} unikke lokaliteter")
 
         # Add explanatory notes for presentation
-        print(f"\nTÆRSKEL SYSTEM FORKLARING:")
-        print(f"• Base: Standard kategori-tærskel fra litteratur")
-        print(f"• Landfill Override: Losseplads-specifik tærskel (kan være strengere eller løsere)")
-        print(f"• Compound Override: Stof-specifik tærskel (fx benzen: 200m i stedet for BTXER: 50m)")
-        print(f"• Variable: LOSSEPLADS kategori med multiple tærskler baseret på underkategorier")
-        print(f"• Mixed: Kategori der anvender både base og override tærskler")
+        print(f"\nTÃ†RSKEL SYSTEM FORKLARING:")
+        print(f"â€¢ Base: Standard kategori-tÃ¦rskel fra litteratur")
+        print(f"â€¢ Landfill Override: Losseplads-specifik tÃ¦rskel (kan vÃ¦re strengere eller lÃ¸sere)")
+        print(f"â€¢ Compound Override: Stof-specifik tÃ¦rskel (fx benzen: 200m i stedet for BTXER: 50m)")
+        print(f"â€¢ Variable: LOSSEPLADS kategori med multiple tÃ¦rskler baseret pÃ¥ underkategorier")
+        print(f"â€¢ Mixed: Kategori der anvender bÃ¥de base og override tÃ¦rskler")
 
         # Export to HTML for PowerPoint
         print("\n  Exporting Table 1 to HTML for PowerPoint...")
@@ -674,7 +674,7 @@ def create_compound_category_table_from_data():
                 f"{stat['avg_per_site']:.1f}"
             ])
 
-        headers = ['Kategori', 'Tærskel Type', 'Tærskel', 'Forekomster', 'Unikke Lokaliteter', 'Gennemsnit/Lokalitet']
+        headers = ['Kategori', 'TÃ¦rskel Type', 'TÃ¦rskel', 'Forekomster', 'Unikke Lokaliteter', 'Gennemsnit/Lokalitet']
         title = 'Trin 5b: Stofkategori Analyse - Enhanced for Presentation'
 
         create_html_table(table_data, headers, title, "table1_category_analysis.html", html_output_dir)
@@ -688,7 +688,7 @@ def create_losseplads_subcategory_table_from_data():
         from config import get_output_path
         import pandas as pd
 
-        print("\n[FACTORY] LOSSEPLADS OVERRIDE SYSTEM - PRÆSENTATIONSANALYSE")
+        print("\n[FACTORY] LOSSEPLADS OVERRIDE SYSTEM - PRÃ†SENTATIONSANALYSE")
         print("=" * 90)
 
         # Load compound combinations data
@@ -700,14 +700,14 @@ def create_losseplads_subcategory_table_from_data():
         combinations_df = pd.read_csv(combinations_path)
 
         # PART 1: LANDFILL OVERRIDE THRESHOLDS TABLE
-        print("\n1. LOSSEPLADS-SPECIFIKKE TÆRSKLER")
+        print("\n1. LOSSEPLADS-SPECIFIKKE TÃ†RSKLER")
         print("-" * 60)
-        print(f"{'Kategori':<30} {'Base Tærskel':<15} {'Losseplads Tærskel':<18} {'Effekt':<15}")
+        print(f"{'Kategori':<30} {'Base TÃ¦rskel':<15} {'Losseplads TÃ¦rskel':<18} {'Effekt':<15}")
         print("-" * 60)
 
         landfill_thresholds = {
-            'BTXER': {'base': 50, 'landfill': 70, 'effect': 'Løsere (+20m)'},
-            'KLOREREDE_OPLØSNINGSMIDLER': {'base': 500, 'landfill': 100, 'effect': 'Strengere (-400m)'},
+            'BTXER': {'base': 50, 'landfill': 70, 'effect': 'LÃ¸sere (+20m)'},
+            'KLOREREDE_OPLÃ˜SNINGSMIDLER': {'base': 500, 'landfill': 100, 'effect': 'Strengere (-400m)'},
             'PHENOLER': {'base': 100, 'landfill': 35, 'effect': 'Strengere (-65m)'},
             'PESTICIDER': {'base': 500, 'landfill': 180, 'effect': 'Strengere (-320m)'},
             'UORGANISKE_FORBINDELSER': {'base': 150, 'landfill': 50, 'effect': 'Strengere (-100m)'}
@@ -717,7 +717,7 @@ def create_losseplads_subcategory_table_from_data():
             print(f"{category:<30} {data['base']:<15}m {data['landfill']:<18}m {data['effect']:<15}")
 
         print("-" * 60)
-        print("Note: Kategorier ikke på listen bruger deres base tærskel på lossepladser")
+        print("Note: Kategorier ikke pÃ¥ listen bruger deres base tÃ¦rskel pÃ¥ lossepladser")
 
         # PART 2: OVERRIDE IMPACT ANALYSIS
         if 'Landfill_Override_Applied' in combinations_df.columns:
@@ -821,14 +821,14 @@ def create_losseplads_subcategory_table_from_data():
                 print(f"{'TOTAL LOSSEPLADS KATEGORI':<40} {total_losseplads_combinations:<15,} {actual_unique_losseplads_sites:<15,}")
 
                 # PART 4: SUMMARY FOR PRESENTATION
-                print(f"\n4. PRÆSENTATIONS SAMMENFATNING")
+                print(f"\n4. PRÃ†SENTATIONS SAMMENFATNING")
                 print("-" * 50)
-                print(f"• Losseplads-specifikke tærskler defineret for 5 kategorier")
-                print(f"• {total_rescued_combinations:,} kombinationer reklassificeret til LOSSEPLADS")
-                print(f"• {total_rescued_sites:,} unikke lokaliteter påvirket af override")
-                print(f"• Override effekt: Både strengere og løsere tærskler afhængig af kategori")
-                print(f"• BTXER: Løsere (50m->70m) - flere lokaliteter kvalificerer")
-                print(f"• Andre kategorier: Strengere tærskler - færre kvalificerer")
+                print(f"â€¢ Losseplads-specifikke tÃ¦rskler defineret for 5 kategorier")
+                print(f"â€¢ {total_rescued_combinations:,} kombinationer reklassificeret til LOSSEPLADS")
+                print(f"â€¢ {total_rescued_sites:,} unikke lokaliteter pÃ¥virket af override")
+                print(f"â€¢ Override effekt: BÃ¥de strengere og lÃ¸sere tÃ¦rskler afhÃ¦ngig af kategori")
+                print(f"â€¢ BTXER: LÃ¸sere (50m->70m) - flere lokaliteter kvalificerer")
+                print(f"â€¢ Andre kategorier: Strengere tÃ¦rskler - fÃ¦rre kvalificerer")
 
                 # Export to HTML for PowerPoint
                 print("\n  Exporting Table 2 to HTML for PowerPoint...")
@@ -845,7 +845,7 @@ def create_losseplads_subcategory_table_from_data():
                         stat['effect']
                     ])
 
-                headers = ['Original Kategori', 'Base→Override', 'Kombinationer', 'Unikke Sites', 'Effekt']
+                headers = ['Original Kategori', 'Baseâ†’Override', 'Kombinationer', 'Unikke Sites', 'Effekt']
                 title = 'LOSSEPLADS Override System - Impact Analysis'
 
                 create_html_table(table_data, headers, title, "table2_losseplads_impact.html", html_output_dir)
@@ -853,7 +853,7 @@ def create_losseplads_subcategory_table_from_data():
             else:
                 print("\nIngen losseplads overrides fundet i data")
         else:
-            print("\nLosseplads override data ikke tilgængelig")
+            print("\nLosseplads override data ikke tilgÃ¦ngelig")
 
     except Exception as e:
         print(f"Error creating enhanced losseplads analysis: {e}")
@@ -861,9 +861,9 @@ def create_losseplads_subcategory_table_from_data():
 
 def create_threshold_decision_tree_table():
     """Create threshold decision tree table for presentation clarity."""
-    print("\n[DECISION] TÆRSKEL BESLUTNINGSPROCES - PRÆSENTATION")
+    print("\n[DECISION] TÃ†RSKEL BESLUTNINGSPROCES - PRÃ†SENTATION")
     print("=" * 80)
-    print("Flowchart: Hvordan vælges tærskelværdier for hver stof-lokalitet kombination?")
+    print("Flowchart: Hvordan vÃ¦lges tÃ¦rskelvÃ¦rdier for hver stof-lokalitet kombination?")
     print("-" * 80)
 
     print(f"{'Trin':<6} {'Betingelse':<40} {'Handling':<25} {'Eksempel':<20}")
@@ -873,37 +873,37 @@ def create_threshold_decision_tree_table():
         {
             'step': '1.',
             'condition': 'Har stoffet stof-specifik override?',
-            'action': 'Brug stof-specifik tærskel',
+            'action': 'Brug stof-specifik tÃ¦rskel',
             'example': 'benzen -> 200m'
         },
         {
             'step': '2.',
             'condition': 'Er lokaliteten en losseplads?',
-            'action': 'Tjek for losseplads-tærskel',
+            'action': 'Tjek for losseplads-tÃ¦rskel',
             'example': 'Branche: "Losseplads"'
         },
         {
             'step': '2a.',
             'condition': 'L- Har kategorien losseplads-tarskel?',
-            'action': 'Brug losseplads-tærskel',
+            'action': 'Brug losseplads-tÃ¦rskel',
             'example': 'BTXER -> 70m'
         },
         {
             'step': '2b.',
             'condition': 'L- Ingen losseplads-tarskel?',
-            'action': 'Brug base kategori-tærskel',
+            'action': 'Brug base kategori-tÃ¦rskel',
             'example': 'PAH -> 30m'
         },
         {
             'step': '3.',
             'condition': 'Almindelig lokalitet?',
-            'action': 'Brug base kategori-tærskel',
+            'action': 'Brug base kategori-tÃ¦rskel',
             'example': 'BTXER -> 50m'
         },
         {
             'step': '4.',
             'condition': 'Intet match (ANDRE kategori)?',
-            'action': 'Brug default tærskel',
+            'action': 'Brug default tÃ¦rskel',
             'example': 'Ukendt stof -> 500m'
         }
     ]
@@ -916,7 +916,7 @@ def create_threshold_decision_tree_table():
     print()
 
     # Summary statistics from actual data
-    print("TÆRSKEL ANVENDELSE I PRAKSIS:")
+    print("TÃ†RSKEL ANVENDELSE I PRAKSIS:")
     print("-" * 40)
 
     try:
@@ -934,10 +934,10 @@ def create_threshold_decision_tree_table():
             landfill_overrides = len(combinations_df[combinations_df.get('Landfill_Override_Applied', False) == True]) if 'Landfill_Override_Applied' in combinations_df.columns else 0
             base_thresholds = total_combinations - landfill_overrides  # Approximation
 
-            print(f"• Total kombinationer: {total_combinations:,}")
-            print(f"• Losseplads overrides: {landfill_overrides:,} ({landfill_overrides/total_combinations*100:.1f}%)")
-            print(f"• Base kategori-tærskler: {base_thresholds:,} ({base_thresholds/total_combinations*100:.1f}%)")
-            print(f"• Stof-specifikke overrides: Inkluderet i ovenstående")
+            print(f"â€¢ Total kombinationer: {total_combinations:,}")
+            print(f"â€¢ Losseplads overrides: {landfill_overrides:,} ({landfill_overrides/total_combinations*100:.1f}%)")
+            print(f"â€¢ Base kategori-tÃ¦rskler: {base_thresholds:,} ({base_thresholds/total_combinations*100:.1f}%)")
+            print(f"â€¢ Stof-specifikke overrides: Inkluderet i ovenstÃ¥ende")
 
             # Export to HTML for PowerPoint
             print("\n  Exporting Table 3 to HTML for PowerPoint...")
@@ -954,15 +954,15 @@ def create_threshold_decision_tree_table():
                 ])
 
             headers = ['Trin', 'Betingelse', 'Handling', 'Eksempel']
-            title = 'Tærskel Beslutningsproces - Flowchart'
+            title = 'TÃ¦rskel Beslutningsproces - Flowchart'
 
             create_html_table(table_data, headers, title, "table3_threshold_decision.html", html_output_dir)
 
         else:
-            print("• Data ikke tilgængelig - kør Step 5 først")
+            print("â€¢ Data ikke tilgÃ¦ngelig - kÃ¸r Step 5 fÃ¸rst")
 
     except Exception as e:
-        print(f"• Kunne ikke hente statistik: {e}")
+        print(f"â€¢ Kunne ikke hente statistik: {e}")
 
 
 def create_losseplads_override_impact(figures_path):
@@ -1064,7 +1064,7 @@ def create_losseplads_override_impact(figures_path):
         # Add explanation text
         explanation = (f"{total_combinations:,} stof-lokalitet kombinationer fra {total_sites:,} unikke lokaliteter "
                       f"blev reklassificeret fra deres oprindelige kategorier til LOSSEPLADS-kategorier "
-                      f"med losseplads-specifikke tærskler.")
+                      f"med losseplads-specifikke tÃ¦rskler.")
         fig.text(0.1, 0.02, explanation, fontsize=10, style='italic', wrap=True)
 
         plt.tight_layout()
@@ -1116,12 +1116,12 @@ if __name__ == "__main__":
     print(f"- gvfk_progression.png (Danish, both Step 5a and 5b)")
     print(f"- losseplads_override_impact.png")
     print(f"- Danish presentation tables printed above")
-    print(f"\n🎯 POWERPOINT-READY TABLES EXPORTED:")
-    print(f"   📁 {os.path.join(results_path, 'Presentation_Tables')}")
-    print(f"   📄 table1_category_analysis.html")
-    print(f"   📄 table2_losseplads_impact.html")
-    print(f"   📄 table3_threshold_decision.html")
-    print(f"\n💡 HOW TO USE:")
+    print(f"\nðŸŽ¯ POWERPOINT-READY TABLES EXPORTED:")
+    print(f"   ðŸ“ {os.path.join(results_path, 'Presentation_Tables')}")
+    print(f"   ðŸ“„ table1_category_analysis.html")
+    print(f"   ðŸ“„ table2_losseplads_impact.html")
+    print(f"   ðŸ“„ table3_threshold_decision.html")
+    print(f"\nðŸ’¡ HOW TO USE:")
     print(f"   1. Open HTML files in your browser")
     print(f"   2. Select the table and copy (Ctrl+A, Ctrl+C)")
     print(f"   3. Paste directly into PowerPoint - formatting will be preserved!") 

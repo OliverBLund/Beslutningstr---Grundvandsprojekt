@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step 5 Risk Assessment - Analysis and Reporting Functions
 ========================================================
 
@@ -9,7 +9,7 @@ import pandas as pd
 import os
 from collections import Counter
 from config import get_output_path
-from step5_utils import _extract_unique_gvfk_names, get_keyword_stats
+from .step5_utils import _extract_unique_gvfk_names, get_keyword_stats
 
 
 def print_keyword_summary():
@@ -156,7 +156,7 @@ def print_summary(distance_results, general_sites, compound_combinations, compou
     if not general_sites.empty and 'Closest_GVFK' in general_sites.columns:
         general_gvfks = general_sites['Closest_GVFK'].dropna().nunique()
         general_pct = (general_gvfks / 2043) * 100
-        print(f"{'With sites ≤500m (General)':<45} {general_gvfks:<8,} {general_pct:<10.1f}%")
+        print(f"{'With sites â‰¤500m (General)':<45} {general_gvfks:<8,} {general_pct:<10.1f}%")
 
     # Compound-specific assessment
     if not compound_sites.empty and 'Closest_GVFK' in compound_sites.columns:
@@ -167,7 +167,7 @@ def print_summary(distance_results, general_sites, compound_combinations, compou
     # Difference explanation
     if general_count > 0:
         reduction = general_count - compound_unique
-        print(f"\nDifference Analysis ({general_count:,} → {compound_unique:,} sites):")
+        print(f"\nDifference Analysis ({general_count:,} â†’ {compound_unique:,} sites):")
         print(f"- {reduction:,} sites excluded due to stricter compound-specific thresholds")
         print(f"- Main exclusions: Sites with PAH (30m), BTEX (50m), or other low-mobility compounds")
 
@@ -242,7 +242,7 @@ def generate_gvfk_risk_summary():
         output_path = get_output_path('step5_gvfk_risk_summary')
         gvfk_df.to_csv(output_path, index=False)
 
-        print(f"\n✓ GVFK risk summary saved: {output_path}")
+        print(f"\nâœ“ GVFK risk summary saved: {output_path}")
         print(f"  Total GVFKs at risk: {len(gvfk_df)}")
         print(f"  Top 5 GVFKs by site count: {', '.join(gvfk_df.head()['GVFK'].tolist())}")
 

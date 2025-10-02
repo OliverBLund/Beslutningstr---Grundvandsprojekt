@@ -1,4 +1,4 @@
-"""
+﻿"""
 Main workflow orchestrator for groundwater contamination analysis.
 
 This script runs the complete analysis workflow:
@@ -18,10 +18,10 @@ from shapely.errors import ShapelyDeprecationWarning
 from config import validate_input_files, get_output_path
 
 # Import step modules
-from step1_all_gvfk import run_step1
-from step2_river_contact import run_step2
-from step3_v1v2_sites import run_step3
-from step5_risk_assessment import run_step5
+from risikovurdering.step1_all_gvfk import run_step1
+from risikovurdering.step2_river_contact import run_step2
+from risikovurdering.step3_v1v2_sites import run_step3
+from risikovurdering.step5_risk_assessment import run_step5
 
 # Suppress shapely deprecation warnings
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -73,7 +73,7 @@ def main():
     }
     
     # Step 4: Calculate distances
-    from step4_distances import run_step4
+    from risikovurdering.step4_distances import run_step4
     distance_results = run_step4(v1v2_sites)
     if distance_results is None:
         print("ERROR: Step 4 failed. Distance calculation unsuccessful.")
@@ -212,7 +212,7 @@ def generate_workflow_summary(results):
     print(f"Total unique groundwater aquifers (GVFK): {total_gvfk}")
     print(f"GVFKs in contact with targeted rivers: {river_contact_count} ({(river_contact_count/total_gvfk*100):.1f}%)")
     print(f"GVFKs with river contact AND V1/V2 sites: {gvfk_with_v1v2_count} ({(gvfk_with_v1v2_count/total_gvfk*100):.1f}%)")
-    print(f"GVFKs with high-risk sites (≤500m from rivers): {high_risk_gvfk_count} ({(high_risk_gvfk_count/total_gvfk*100):.1f}% of total, {(high_risk_gvfk_count/gvfk_with_v1v2_count*100 if gvfk_with_v1v2_count > 0 else 0):.1f}% of V1/V2 GVFKs)")
+    print(f"GVFKs with high-risk sites (â‰¤500m from rivers): {high_risk_gvfk_count} ({(high_risk_gvfk_count/total_gvfk*100):.1f}% of total, {(high_risk_gvfk_count/gvfk_with_v1v2_count*100 if gvfk_with_v1v2_count > 0 else 0):.1f}% of V1/V2 GVFKs)")
     
     if unique_sites > 0:
         print(f"Unique V1/V2 sites (localities): {unique_sites}")
@@ -226,7 +226,7 @@ def generate_workflow_summary(results):
         print(f"Median final distance per site: {distance_stats['median_final_distance_m']:.1f}m")
     
     if high_risk_site_count > 0:
-        print(f"High-risk sites - General assessment (≤500m): {high_risk_site_count} ({(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
+        print(f"High-risk sites - General assessment (â‰¤500m): {high_risk_site_count} ({(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
     
     if compound_high_risk_site_count > 0:
         print(f"High-risk sites - Compound-specific assessment: {compound_high_risk_site_count} ({(compound_high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
@@ -246,8 +246,8 @@ def generate_workflow_summary(results):
             'Step 3: GVFKs with River Contact and V1/V2 Sites',
             'Step 3: Unique V1/V2 Sites (Localities)',
             'Step 3: Total Site-GVFK Combinations',
-            'Step 5: GVFKs with High-Risk Sites (≤500m)',
-            'Step 5: High-Risk Sites - General Assessment (≤500m)',
+            'Step 5: GVFKs with High-Risk Sites (â‰¤500m)',
+            'Step 5: High-Risk Sites - General Assessment (â‰¤500m)',
             'Step 5: High-Risk Sites - Compound-Specific Assessment'
         ],
         'Count': [
@@ -307,7 +307,7 @@ def create_visualizations_if_available(results):
     
     try:
         # Try to import and run selected visualizations
-        from selected_visualizations import create_distance_histogram_with_thresholds, create_progression_plot
+        from risikovurdering.selected_visualizations import create_distance_histogram_with_thresholds, create_progression_plot
         
         results_path = "Resultater"
         
@@ -349,7 +349,7 @@ def create_visualizations_if_available(results):
     
     if step5_has_results:
         try:
-            from step5_visualizations import create_step5_visualizations
+            from risikovurdering.step5_visualizations import create_step5_visualizations
             create_step5_visualizations()
         except ImportError:
             print("WARNING: Step 5 visualization module not found.")

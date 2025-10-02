@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step 4: Calculate distances between V1/V2 sites and river segments.
 
 This module calculates distances for each lokalitet-GVFK combination,
@@ -269,7 +269,7 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
     
     if not sampled_combinations.empty:
         try:
-            from create_interactive_map import create_map
+            from .create_interactive_map import create_map
             create_map(sampled_combinations, rivers_with_contact, sampled_results, relevant_gvfk_polygons)
             print(f"Interactive map created: {get_output_path('interactive_distance_map')}")
         except ImportError:

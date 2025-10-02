@@ -1,4 +1,4 @@
-"""
+﻿"""
 Interactive map creation for groundwater contamination distance analysis.
 
 This module creates interactive folium maps showing GVFK polygons, V1/V2 sites,
@@ -217,7 +217,7 @@ def create_map(v1v2_with_distances, rivers_with_contact, valid_results, gvfk_pol
                     line_color = 'red'
                     line_weight = 3
                     line_opacity = 1.0
-                    popup_prefix = "<b>⭐ MINIMUM DISTANCE</b>"
+                    popup_prefix = "<b>â­ MINIMUM DISTANCE</b>"
                     label_style = 'font-size: 10pt; color: red; font-weight: bold; background-color: white; padding: 2px; border: 1px solid red;'
                     label_text = f'{distance:.0f}m MIN'
                 else:
@@ -263,7 +263,7 @@ def create_map(v1v2_with_distances, rivers_with_contact, valid_results, gvfk_pol
     <i class="fa fa-circle" style="color:blue"></i> V2 Sites<br>
     <i class="fa fa-circle" style="color:purple"></i> V1 & V2 Sites<br>
     <i class="fa fa-minus" style="color:darkblue"></i> River Segments<br>
-    <i class="fa fa-minus" style="color:red"></i> <b>⭐ MINIMUM Distance Lines</b><br>
+    <i class="fa fa-minus" style="color:red"></i> <b>â­ MINIMUM Distance Lines</b><br>
     <i class="fa fa-minus" style="color:orange"></i> Additional Distance Lines<br>
     <small><b>Red lines:</b> Shortest pathway per site (critical for risk)<br>
     <b>Orange lines:</b> Other pathways through different GVFKs<br>

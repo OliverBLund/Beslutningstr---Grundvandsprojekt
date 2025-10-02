@@ -13,13 +13,13 @@ import pandas as pd
 import os
 
 from config import get_output_path, ensure_results_directory, WORKFLOW_SETTINGS
-from step5_utils import (
+from .step5_utils import (
     categorize_contamination_substance,
     categorize_by_branch_activity,
     create_gvfk_shapefile,
     separate_sites_by_substance_data
 )
-from step5_analysis import (
+from .step5_analysis import (
     print_keyword_summary,
     print_summary,
     generate_gvfk_risk_summary,
@@ -71,7 +71,7 @@ def run_step5():
     # Generate Step 5 visualizations
     print(f"\nGenerating Step 5 visualizations...")
     try:
-        from step5_visualizations import create_step5_visualizations
+        from .step5_visualizations import create_step5_visualizations
         create_step5_visualizations()
         print(f"✓ Step 5 visualizations completed")
     except ImportError:

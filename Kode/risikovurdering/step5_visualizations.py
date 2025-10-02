@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step 5 Visualizations: Professional Risk Assessment Plots
 
 Creates clean, professional visualizations for contamination risk assessment:
@@ -115,7 +115,7 @@ def create_step5_visualizations():
     print("\nCreating detailed compound-specific plots...")
     create_essential_compound_plots(figures_path)
     
-    print(f"\n✓ All Step 5 visualizations completed in: {figures_path}")
+    print(f"\nâœ“ All Step 5 visualizations completed in: {figures_path}")
 
 # ============================================================================
 # GENERAL ASSESSMENT VISUALIZATIONS (500m threshold)
@@ -150,7 +150,7 @@ def create_distance_distribution(high_risk_sites, figures_path):
     # Clean labels
     ax.set_xlabel('Distance to River (meters)', fontsize=12)
     ax.set_ylabel('Number of Sites', fontsize=12)  # This is correct - one row per site in general assessment
-    ax.set_title('Distance Distribution: High-Risk Sites (≤500m)', fontsize=14, pad=15)
+    ax.set_title('Distance Distribution: High-Risk Sites (â‰¤500m)', fontsize=14, pad=15)
     
     # Add statistics text box
     stats_text = f'Median: {median_dist:.0f}m\nMean: {mean_dist:.0f}m\nTotal: {high_risk_sites['Lokalitet_ID'].nunique():,} sites'
@@ -197,7 +197,7 @@ def create_activity_distribution(high_risk_sites, figures_path):
     ax.set_yticks(y_pos)
     ax.set_yticklabels(activity_counts.index, ha='right')
     ax.set_xlabel('Antal lokaliteter')
-    ax.set_title('Top 15 lokalitetsaktiviteter (højrisiko-lokaliteter)')
+    ax.set_title('Top 15 lokalitetsaktiviteter (hÃ¸jrisiko-lokaliteter)')
     ax.invert_yaxis()
     
     # Add total count
@@ -243,7 +243,7 @@ def create_industry_distribution(high_risk_sites, figures_path):
     ax.set_yticks(y_pos)
     ax.set_yticklabels(industry_counts.index, ha='right')
     ax.set_xlabel('Antal lokaliteter')
-    ax.set_title('Top 15 lokalitetsbrancher (højrisiko-lokaliteter)')
+    ax.set_title('Top 15 lokalitetsbrancher (hÃ¸jrisiko-lokaliteter)')
     ax.invert_yaxis()
     
     # Add total count
@@ -499,10 +499,10 @@ def create_category_sites_distribution(figures_path):
         avg_substances_per_site = total_occurrences / total_sites if total_sites > 0 else 0
         
         summary_text = f'''Summary Statistics:
-• Total unique sites: {total_sites:,}
-• Total occurrences: {total_occurrences:,}
-• Average substances/site: {avg_substances_per_site:.1f}
-• Categories: {len(categories)}'''
+â€¢ Total unique sites: {total_sites:,}
+â€¢ Total occurrences: {total_occurrences:,}
+â€¢ Average substances/site: {avg_substances_per_site:.1f}
+â€¢ Categories: {len(categories)}'''
         
         fig.text(0.5, 0.02, summary_text, ha='center', fontsize=11,
                 bbox=dict(boxstyle='round', facecolor=COLORS['light_gray'], alpha=0.8))
@@ -511,7 +511,7 @@ def create_category_sites_distribution(figures_path):
         plt.tight_layout()
         safe_save_figure(figures_path, "08_category_sites_distribution")
         
-        print(f"✓ Category sites distribution created")
+        print(f"âœ“ Category sites distribution created")
         
     except Exception as e:
         print(f"Error creating category sites distribution: {e}")
@@ -544,7 +544,7 @@ def create_essential_compound_plots(figures_path):
             create_compound_activity_distribution(category_data, category, figures_path)
             create_compound_industry_distribution(category_data, category, figures_path)
             
-        print(f"✓ Created {len(top_categories) * 3} compound-specific detail plots")
+        print(f"âœ“ Created {len(top_categories) * 3} compound-specific detail plots")
         
     except Exception as e:
         print(f"Error creating essential compound plots: {e}")
@@ -711,9 +711,9 @@ if __name__ == "__main__":
         for file_key, description in required_files:
             file_path = get_output_path(file_key)
             if os.path.exists(file_path):
-                print(f"✓ {description}: Found")
+                print(f"âœ“ {description}: Found")
             else:
-                print(f"✗ {description}: Missing - {file_path}")
+                print(f"âœ— {description}: Missing - {file_path}")
                 missing_files.append((file_key, description))
         
         if missing_files:

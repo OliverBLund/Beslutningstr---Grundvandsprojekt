@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step 2: Count how many GVFK are in contact with targeted rivers.
 
 This step identifies groundwater aquifers that have contact with river segments

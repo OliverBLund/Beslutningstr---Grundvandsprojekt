@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step 6: Final Comprehensive Analysis
 =====================================
 
@@ -28,8 +28,8 @@ KEY DISTINCTION vs step5_branch_analysis.py:
 Analysis outputs:
 Phase 1: Data loading and GVFK categorization (lines 42-292)
 Phase 2: GVFK progression metrics and visualizations (lines 294-656)
-Phase 3: Three-way branch/activity comparison (TODO)
-Phase 4: Geographic visualizations (TODO)
+Phase 3: Three-way branch/activity comparison 
+Phase 4: Geographic visualizations 
 """
 
 import pandas as pd
@@ -76,10 +76,10 @@ def load_gvfk_area_volume():
     print("\n[PHASE 1] Loading GVFK area/volume data...")
 
     # Path to area/volume file
-    # GRUNDVAND_PATH is in Data/shp files/, we need Data/volumen areal_genbesøg.csv
+    # GRUNDVAND_PATH is in Data/shp files/, we need Data/volumen areal_genbesÃ¸g.csv
     grundvand_dir = os.path.dirname(GRUNDVAND_PATH)  # Gets Data/shp files
     data_dir = os.path.dirname(grundvand_dir)  # Gets Data
-    area_volume_path = os.path.join(data_dir, "volumen areal_genbesøg.csv")
+    area_volume_path = os.path.join(data_dir, "volumen areal_genbesÃ¸g.csv")
 
     if not os.path.exists(area_volume_path):
         print(f"Warning: Area/volume file not found at {area_volume_path}")
@@ -475,40 +475,40 @@ def create_area_volume_progression_chart(shapefiles, gvfk_categories, gvfk_area_
     width = 0.35
 
     # Area on left axis - with stacked bar for Step 5b+
-    bars1_base = ax1.bar(x_pos - width/2, areas, width, label='Area (km²) - Core',
+    bars1_base = ax1.bar(x_pos - width/2, areas, width, label='Area (kmÂ²) - Core',
                          color='#4CAF50', alpha=0.8, edgecolor='black', linewidth=0.5)
 
     # Add stacked portion for Step 5b+ (last bar only)
     if len(steps) > 0:
         bars1_stack = ax1.bar(x_pos[-1] - width/2, new_area, width,
-                             bottom=core_area, label='Area (km²) - +92 New GVFKs',
+                             bottom=core_area, label='Area (kmÂ²) - +92 New GVFKs',
                              color='#FFC107', alpha=0.8, edgecolor='black', linewidth=0.5)
         # Add annotation showing the increase
         ax1.text(x_pos[-1] - width/2, core_area + new_area/2,
-                f'+{new_area:,.0f}\nkm²', ha='center', va='center',
+                f'+{new_area:,.0f}\nkmÂ²', ha='center', va='center',
                 fontweight='bold', fontsize=9, color='black')
 
-    ax1.set_ylabel('Area (km²)', fontweight='bold', color='#4CAF50', fontsize=12)
+    ax1.set_ylabel('Area (kmÂ²)', fontweight='bold', color='#4CAF50', fontsize=12)
     ax1.tick_params(axis='y', labelcolor='#4CAF50')
     ax1.set_xticks(x_pos)
     ax1.set_xticklabels(steps, fontsize=10)
 
     # Volume on right axis - with stacked bar for Step 5b+
     ax2 = ax1.twinx()
-    bars2_base = ax2.bar(x_pos + width/2, volumes, width, label='Volume (m³) - Core',
+    bars2_base = ax2.bar(x_pos + width/2, volumes, width, label='Volume (mÂ³) - Core',
                          color='#2196F3', alpha=0.8, edgecolor='black', linewidth=0.5)
 
     # Add stacked portion for Step 5b+ (last bar only)
     if len(steps) > 0:
         bars2_stack = ax2.bar(x_pos[-1] + width/2, new_volume, width,
-                             bottom=core_volume, label='Volume (m³) - +92 New GVFKs',
+                             bottom=core_volume, label='Volume (mÂ³) - +92 New GVFKs',
                              color='#FF9800', alpha=0.8, edgecolor='black', linewidth=0.5)
         # Add annotation showing the increase
         ax2.text(x_pos[-1] + width/2, core_volume + new_volume/2,
-                f'+{new_volume:.2e}\nm³', ha='center', va='center',
+                f'+{new_volume:.2e}\nmÂ³', ha='center', va='center',
                 fontweight='bold', fontsize=9, color='black')
 
-    ax2.set_ylabel('Volume (m³)', fontweight='bold', color='#2196F3', fontsize=12)
+    ax2.set_ylabel('Volume (mÂ³)', fontweight='bold', color='#2196F3', fontsize=12)
     ax2.tick_params(axis='y', labelcolor='#2196F3')
 
     # Title and grid
@@ -553,8 +553,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
         rows.append({
             'Step': 'Step 1: All Denmark',
             'GVFK Count': metrics['count'],
-            'Area (km²)': metrics['area_km2'],
-            'Volume (m³)': metrics['volume_m3']
+            'Area (kmÂ²)': metrics['area_km2'],
+            'Volume (mÂ³)': metrics['volume_m3']
         })
         baseline_count = metrics['count']
         baseline_area = metrics['area_km2']
@@ -567,8 +567,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
         rows.append({
             'Step': 'Step 2: River Contact',
             'GVFK Count': metrics['count'],
-            'Area (km²)': metrics['area_km2'],
-            'Volume (m³)': metrics['volume_m3']
+            'Area (kmÂ²)': metrics['area_km2'],
+            'Volume (mÂ³)': metrics['volume_m3']
         })
 
     # Step 3: V1/V2 Sites
@@ -578,8 +578,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
         rows.append({
             'Step': 'Step 3: V1/V2 Sites',
             'GVFK Count': metrics['count'],
-            'Area (km²)': metrics['area_km2'],
-            'Volume (m³)': metrics['volume_m3']
+            'Area (kmÂ²)': metrics['area_km2'],
+            'Volume (mÂ³)': metrics['volume_m3']
         })
 
     # Step 5b: Core (substance sites)
@@ -587,8 +587,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
     rows.append({
         'Step': 'Step 5b: Core (Substance)',
         'GVFK Count': core_metrics['count'],
-        'Area (km²)': core_metrics['area_km2'],
-        'Volume (m³)': core_metrics['volume_m3']
+        'Area (kmÂ²)': core_metrics['area_km2'],
+        'Volume (mÂ³)': core_metrics['volume_m3']
     })
 
     # Step 5b+: Expanded (substance + branch)
@@ -596,8 +596,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
     rows.append({
         'Step': 'Step 5b+: Expanded (+Branch)',
         'GVFK Count': expanded_metrics['count'],
-        'Area (km²)': expanded_metrics['area_km2'],
-        'Volume (m³)': expanded_metrics['volume_m3']
+        'Area (kmÂ²)': expanded_metrics['area_km2'],
+        'Volume (mÂ³)': expanded_metrics['volume_m3']
     })
 
     # Create DataFrame
@@ -606,8 +606,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
     # Add percentage columns
     if baseline_count > 0:
         df['% of Baseline Count'] = (df['GVFK Count'] / baseline_count * 100).round(1)
-        df['% of Baseline Area'] = (df['Area (km²)'] / baseline_area * 100).round(1)
-        df['% of Baseline Volume'] = (df['Volume (m³)'] / baseline_volume * 100).round(1)
+        df['% of Baseline Area'] = (df['Area (kmÂ²)'] / baseline_area * 100).round(1)
+        df['% of Baseline Volume'] = (df['Volume (mÂ³)'] / baseline_volume * 100).round(1)
 
     # Save to CSV
     table_path = os.path.join(output_dir, 'gvfk_progression_table.csv')
@@ -657,7 +657,7 @@ def create_expansion_breakdown_chart(gvfk_categories, gvfk_area_volume, output_d
     ax2 = axes[1]
     areas = [core_metrics['area_km2'], new_metrics['area_km2']]
     bars2 = ax2.bar(categories, areas, color=colors_plot, edgecolor='black', linewidth=0.5)
-    ax2.set_ylabel('Area (km²)', fontweight='bold')
+    ax2.set_ylabel('Area (kmÂ²)', fontweight='bold')
     ax2.set_title('Area Breakdown', fontweight='bold')
     ax2.grid(axis='y', alpha=0.3, linestyle='--')
     ax2.set_axisbelow(True)
@@ -670,7 +670,7 @@ def create_expansion_breakdown_chart(gvfk_categories, gvfk_area_volume, output_d
     ax3 = axes[2]
     volumes = [core_metrics['volume_m3'], new_metrics['volume_m3']]
     bars3 = ax3.bar(categories, volumes, color=colors_plot, edgecolor='black', linewidth=0.5)
-    ax3.set_ylabel('Volume (m³)', fontweight='bold')
+    ax3.set_ylabel('Volume (mÂ³)', fontweight='bold')
     ax3.set_title('Volume Breakdown', fontweight='bold')
     ax3.grid(axis='y', alpha=0.3, linestyle='--')
     ax3.set_axisbelow(True)
@@ -1543,8 +1543,8 @@ def create_new_gvfk_characteristics_table(new_gvfk_sites, gvfk_area_volume,
         table_data.append({
             'GVFK': gvfk,
             'Sites': len(sites_in_gvfk),
-            'Area (km²)': f"{area:.2f}",
-            'Volume (m³)': f"{volume:.0f}",
+            'Area (kmÂ²)': f"{area:.2f}",
+            'Volume (mÂ³)': f"{volume:.0f}",
             'Top Branch': top_branch,
             'Top Activity': top_activity
         })
@@ -1622,7 +1622,7 @@ def run_step6_analysis():
     print("=" * 80)
 
     # Create output directory
-    output_dir = get_visualization_path('step6')
+    output_dir = get_visualization_path('risikovurdering', 'step6')
     os.makedirs(output_dir, exist_ok=True)
     print(f"\nOutput directory: {output_dir}")
 

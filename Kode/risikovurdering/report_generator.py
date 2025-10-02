@@ -1,4 +1,4 @@
-"""
+﻿"""
 Report Generator for Groundwater Risk Assessment
 ================================================
 
@@ -19,7 +19,7 @@ import plotly.graph_objects as go
 import folium
 from folium import plugins
 import numpy as np
-from create_interactive_map import create_map
+from .create_interactive_map import create_map
 
 class ReportGenerator:
     """Generate professional reports from workflow results."""
@@ -104,17 +104,17 @@ class ReportGenerator:
         print("="*80)
         
         # Executive Summary
-        print("\n📊 EXECUTIVE SUMMARY")
+        print("\nðŸ“Š EXECUTIVE SUMMARY")
         print("-" * 40)
         print(f"STEP 4 | Sites with distances calculated: {self.stats.get('total_sites_analyzed', 'N/A'):,}")
-        print(f"STEP 5a | High-risk sites (≤500m): {self.stats.get('general_sites', 'N/A'):,}")
+        print(f"STEP 5a | High-risk sites (â‰¤500m): {self.stats.get('general_sites', 'N/A'):,}")
         print(f"STEP 5b | Compound-specific risk: {self.stats.get('compound_sites', 'N/A'):,}")
         
         # GVFK Cascade
-        print("\n🗺️ GVFK FILTERING CASCADE BY WORKFLOW STEP")
+        print("\nðŸ—ºï¸ GVFK FILTERING CASCADE BY WORKFLOW STEP")
         print("-" * 40)
         print(f"{'Step | Stage':<40} {'Count':<10} {'% of Total':<15}")
-        print(f"{'─'*40} {'─'*10} {'─'*15}")
+        print(f"{'â”€'*40} {'â”€'*10} {'â”€'*15}")
         # Get actual Step 3 count
         step3_count = self.stats.get('step3_gvfk_count', 490)  # fallback updated for branch-only site inclusion
         step3_percentage = step3_count / 2043 * 100
@@ -133,10 +133,10 @@ class ReportGenerator:
         
         # Compound Category Analysis
         if 'categories' in self.stats:
-            print("\n🧪 STEP 5b: COMPOUND CATEGORY BREAKDOWN")
+            print("\nðŸ§ª STEP 5b: COMPOUND CATEGORY BREAKDOWN")
             print("-" * 40)
             print(f"{'Category':<25} {'Occurrences':<15} {'Unique Sites':<15}")
-            print(f"{'─'*25} {'─'*15} {'─'*15}")
+            print(f"{'â”€'*25} {'â”€'*15} {'â”€'*15}")
             
             categories = self.stats['categories']
             category_sites = self.stats.get('category_sites', {})
@@ -157,19 +157,19 @@ class ReportGenerator:
                 print(f"Average substances/site: {avg_per_site:.1f}")
         
         # Key Findings
-        print("\n✅ KEY FINDINGS")
+        print("\nâœ… KEY FINDINGS")
         print("-" * 40)
         
         if 'general_sites' in self.stats and 'compound_sites' in self.stats:
             reduction = self.stats['general_sites'] - self.stats['compound_sites']
             reduction_pct = (reduction / self.stats['general_sites']) * 100
-            print(f"• {reduction:,} sites ({reduction_pct:.1f}%) excluded by compound-specific thresholds")
+            print(f"â€¢ {reduction:,} sites ({reduction_pct:.1f}%) excluded by compound-specific thresholds")
         
         if 'categories' in self.stats:
             top_cat = sorted_cats[0] if sorted_cats else ('Unknown', 0)
-            print(f"• Most common category: {top_cat[0]} ({top_cat[1]:,} occurrences)")
+            print(f"â€¢ Most common category: {top_cat[0]} ({top_cat[1]:,} occurrences)")
         
-        print(f"• Analysis complete with {len(self.stats.get('categories', {})):,} active categories")
+        print(f"â€¢ Analysis complete with {len(self.stats.get('categories', {})):,} active categories")
         
         print("\n" + "="*80)
         print("END OF REPORT")
@@ -366,7 +366,7 @@ class ReportGenerator:
         }}
         
         .key-findings li:before {{
-            content: "✓";
+            content: "âœ“";
             position: absolute;
             left: 0;
             color: #4CAF50;
@@ -396,14 +396,14 @@ class ReportGenerator:
 <body>
     <div class="container">
         <header>
-            <h1>🔬 Groundwater Risk Assessment Report</h1>
+            <h1>ðŸ”¬ Groundwater Risk Assessment Report</h1>
             <div class="timestamp">Generated: {self.timestamp}</div>
         </header>
         
         <div class="content">
             <!-- Executive Summary -->
             <div class="section">
-                <h2>📊 Executive Summary - Workflow Results</h2>
+                <h2>ðŸ“Š Executive Summary - Workflow Results</h2>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <span class="stat-number">{self.stats.get('total_sites_analyzed', 0):,}</span>
@@ -411,7 +411,7 @@ class ReportGenerator:
                     </div>
                     <div class="stat-card">
                         <span class="stat-number">{self.stats.get('general_sites', 0):,}</span>
-                        <span class="stat-label">STEP 5a<br>General Risk (≤500m)</span>
+                        <span class="stat-label">STEP 5a<br>General Risk (â‰¤500m)</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-number">{self.stats.get('compound_sites', 0):,}</span>
@@ -426,7 +426,7 @@ class ReportGenerator:
             
             <!-- GVFK Cascade -->
             <div class="section">
-                <h2>🗺️ GVFK Filtering Cascade by Workflow Step</h2>
+                <h2>ðŸ—ºï¸ GVFK Filtering Cascade by Workflow Step</h2>
                 <table class="cascade-table">
                     <thead>
                         <tr>
@@ -479,7 +479,7 @@ class ReportGenerator:
             html_content += f"""
                         <tr>
                             <td><strong>STEP 5a</strong></td>
-                            <td>GVFKs with sites ≤500m from river</td>
+                            <td>GVFKs with sites â‰¤500m from river</td>
                             <td><strong>{self.stats['general_gvfks']:,}</strong></td>
                             <td>{pct:.1f}%</td>
                             <td>
@@ -521,7 +521,7 @@ class ReportGenerator:
             html_content += """
             <!-- Compound Categories -->
             <div class="section">
-                <h2>🧪 STEP 5b: Compound Category Analysis</h2>
+                <h2>ðŸ§ª STEP 5b: Compound Category Analysis</h2>
                 <table>
                     <thead>
                         <tr>
@@ -537,7 +537,7 @@ class ReportGenerator:
             
             # Add threshold mapping
             thresholds = {
-                'KLOREREDE_OPLØSNINGSMIDLER': 30,
+                'KLOREREDE_OPLÃ˜SNINGSMIDLER': 30,
                 'BTXER': 50,  # Note: Benzen uses 200m threshold
                 'PAH_FORBINDELSER': 200,
                 'ANDRE': 500,
@@ -581,7 +581,7 @@ class ReportGenerator:
         html_content += """
             <!-- Key Findings -->
             <div class="section">
-                <h2>✅ Key Findings</h2>
+                <h2>âœ… Key Findings</h2>
                 <div class="key-findings">
                     <ul>
 """
@@ -613,7 +613,7 @@ class ReportGenerator:
         </div>
         
         <div class="footer">
-            <p>DTU Miljø - Groundwater Risk Assessment Project</p>
+            <p>DTU MiljÃ¸ - Groundwater Risk Assessment Project</p>
             <p>Report generated by automated workflow analysis</p>
         </div>
     </div>
@@ -627,7 +627,7 @@ class ReportGenerator:
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
-        print(f"\n✅ HTML report generated: {output_path}")
+        print(f"\nâœ… HTML report generated: {output_path}")
         return output_path
     
     def _generate_step_by_step_sections(self):
@@ -648,11 +648,11 @@ class ReportGenerator:
         
         return f"""
     <div style="background: white; margin-top: 40px; padding: 40px; border-top: 3px solid #1e3c72;">
-        <h1 style="color: #1e3c72; text-align: center; margin-bottom: 40px; font-size: 2.2em;">🔍 Detailed Step-by-Step Analysis</h1>
+        <h1 style="color: #1e3c72; text-align: center; margin-bottom: 40px; font-size: 2.2em;">ðŸ” Detailed Step-by-Step Analysis</h1>
         
         <!-- GVFK Progression Chart -->
         <div style="margin-bottom: 50px; background: #f8f9fa; padding: 30px; border-radius: 10px; border-left: 5px solid #1e3c72;">
-            <h2 style="color: #1e3c72; margin-bottom: 20px; font-size: 1.8em;">🗺️ GVFK Filtering Progression Through Workflow</h2>
+            <h2 style="color: #1e3c72; margin-bottom: 20px; font-size: 1.8em;">ðŸ—ºï¸ GVFK Filtering Progression Through Workflow</h2>
             <p style="margin-bottom: 20px; color: #666;">Progressive reduction of Denmark's 2,043 groundwater bodies (GVFKs) through each workflow step.</p>
             {gvfk_plot}
         </div>
@@ -670,7 +670,7 @@ class ReportGenerator:
     
     def _create_gvfk_progression_plot(self):
         """Create GVFK filtering progression visualization."""
-        stages = ['Total GVFKs<br>(Denmark)', 'With River<br>Contact', 'With V1/V2<br>Sites', 'General Risk<br>(≤500m)', 'Compound Risk<br>(Variable)']
+        stages = ['Total GVFKs<br>(Denmark)', 'With River<br>Contact', 'With V1/V2<br>Sites', 'General Risk<br>(â‰¤500m)', 'Compound Risk<br>(Variable)']
         values = [2043, 593, self.stats.get('step3_gvfk_count', 432), 
                  self.stats.get('general_gvfks', 300), self.stats.get('compound_gvfks', 245)]
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
@@ -735,7 +735,7 @@ class ReportGenerator:
         
         return f"""
         <div style="margin-bottom: 50px; background: #f8f9fa; padding: 30px; border-radius: 10px; border-left: 5px solid #2ca02c;">
-            <h2 style="color: #2ca02c; margin-bottom: 20px; font-size: 1.8em;">📍 Step 3: Geographic Filtering of V1/V2 Sites</h2>
+            <h2 style="color: #2ca02c; margin-bottom: 20px; font-size: 1.8em;">ðŸ“ Step 3: Geographic Filtering of V1/V2 Sites</h2>
             <p style="margin-bottom: 20px; color: #666;">
                 Step 3 performs <strong>geographic filtering with enhanced site inclusion</strong>: it identifies V1/V2 contamination sites
                 within GVFKs (groundwater bodies) that have river contact from Step 2. Sites are included if they have either documented
@@ -770,7 +770,7 @@ class ReportGenerator:
         if 'step4' not in self.data:
             return f"""
             <div style="margin-bottom: 50px; background: #f8f9fa; padding: 30px; border-radius: 10px; border-left: 5px solid #ff7f0e;">
-                <h2 style="color: #ff7f0e; margin-bottom: 20px; font-size: 1.8em;">📏 Step 4: Distance Calculation</h2>
+                <h2 style="color: #ff7f0e; margin-bottom: 20px; font-size: 1.8em;">ðŸ“ Step 4: Distance Calculation</h2>
                 <p style="color: #666;">Step 4 data not available for detailed analysis.</p>
             </div>
             """
@@ -808,7 +808,7 @@ class ReportGenerator:
         
         return f"""
         <div style="margin-bottom: 50px; background: #f8f9fa; padding: 30px; border-radius: 10px; border-left: 5px solid #ff7f0e;">
-            <h2 style="color: #ff7f0e; margin-bottom: 20px; font-size: 1.8em;">📏 Step 4: Distance Calculation</h2>
+            <h2 style="color: #ff7f0e; margin-bottom: 20px; font-size: 1.8em;">ðŸ“ Step 4: Distance Calculation</h2>
             <p style="margin-bottom: 20px; color: #666;">
                 Step 4 calculates the minimum distance from each contamination site to the nearest river segment 
                 within the same GVFK. These raw distance measurements provide the foundation for risk assessment in Step 5.
@@ -852,7 +852,7 @@ class ReportGenerator:
                 </div>
             </div>
             
-            <h3 style="color: #ff7f0e; margin-bottom: 15px; font-size: 1.4em;">🗺️ Interactive Distance Visualization Map</h3>
+            <h3 style="color: #ff7f0e; margin-bottom: 15px; font-size: 1.4em;">ðŸ—ºï¸ Interactive Distance Visualization Map</h3>
             <p style="color: #666; margin-bottom: 15px;">
                 Interactive map showing calculated distances between contamination sites and river segments.
                 Red lines indicate the minimum distance per site used for risk assessment.
@@ -868,7 +868,7 @@ class ReportGenerator:
         
         return f"""
         <div style="margin-bottom: 50px; background: #f8f9fa; padding: 30px; border-radius: 10px; border-left: 5px solid #d62728;">
-            <h2 style="color: #d62728; margin-bottom: 20px; font-size: 1.8em;">⚠️ Step 5: Risk Assessment</h2>
+            <h2 style="color: #d62728; margin-bottom: 20px; font-size: 1.8em;">âš ï¸ Step 5: Risk Assessment</h2>
             <p style="margin-bottom: 30px; color: #666;">
                 Two complementary approaches to groundwater contamination risk assessment:
                 <strong>General Assessment</strong> (conservative 500m universal threshold) and 
@@ -887,7 +887,7 @@ class ReportGenerator:
         
         return f"""
         <div style="background: white; padding: 25px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h3 style="color: #d62728; margin-bottom: 15px; font-size: 1.5em;">🚨 Step 5a: General Risk Assessment (500m Universal Threshold)</h3>
+            <h3 style="color: #d62728; margin-bottom: 15px; font-size: 1.5em;">ðŸš¨ Step 5a: General Risk Assessment (500m Universal Threshold)</h3>
             <p style="color: #666; margin-bottom: 20px;">
                 Conservative approach: ALL sites within 500 meters of river stretches are considered high-risk, 
                 regardless of contamination type.
@@ -920,7 +920,7 @@ class ReportGenerator:
         if 'compound' not in self.data:
             return """
             <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h3 style="color: #9467bd; margin-bottom: 15px; font-size: 1.5em;">🧪 Step 5b: Compound-Specific Assessment</h3>
+                <h3 style="color: #9467bd; margin-bottom: 15px; font-size: 1.5em;">ðŸ§ª Step 5b: Compound-Specific Assessment</h3>
                 <p style="color: #666;">Compound-specific data not available for detailed analysis.</p>
             </div>
             """
@@ -978,7 +978,7 @@ class ReportGenerator:
         
         return f"""
         <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h3 style="color: #9467bd; margin-bottom: 15px; font-size: 1.5em;">🧪 Step 5b: Compound-Specific Risk Assessment</h3>
+            <h3 style="color: #9467bd; margin-bottom: 15px; font-size: 1.5em;">ðŸ§ª Step 5b: Compound-Specific Risk Assessment</h3>
             <p style="color: #666; margin-bottom: 20px;">
                 Literature-based approach using variable distance thresholds tailored to different contamination categories.
                 Categories range from highly mobile compounds (30m threshold) to less mobile substances (500m threshold).
@@ -1032,10 +1032,10 @@ class ReportGenerator:
             </div>
             <div style="margin-top: 10px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196F3;">
                 <strong>Interactive Map Features:</strong> 
-                • Click on site markers for detailed information 
-                • Red lines show minimum distances (critical for risk assessment)
-                • Orange lines show additional pathways through different GVFKs
-                • Map shows ~1,000 representative sites across Denmark
+                â€¢ Click on site markers for detailed information 
+                â€¢ Red lines show minimum distances (critical for risk assessment)
+                â€¢ Orange lines show additional pathways through different GVFKs
+                â€¢ Map shows ~1,000 representative sites across Denmark
             </div>
             """
         else:
@@ -1043,7 +1043,7 @@ class ReportGenerator:
             return f"""
             <div style="height: 400px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; background: #f9f9f9; border-radius: 8px;">
                 <div style="text-align: center; color: #666;">
-                    <h4 style="color: #ff7f0e; margin-bottom: 15px;">📍 Interactive Map Available</h4>
+                    <h4 style="color: #ff7f0e; margin-bottom: 15px;">ðŸ“ Interactive Map Available</h4>
                     <p>The interactive distance map is generated separately by the workflow.</p>
                     <p><strong>To view the map:</strong> Run the complete workflow to generate<br>
                     <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">{map_path}</code></p>

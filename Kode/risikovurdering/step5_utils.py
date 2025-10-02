@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step 5 Risk Assessment - Utility Functions
 ==========================================
 
@@ -6,125 +6,38 @@ Supporting utilities for Step 5 risk assessment including categorization,
 GVFK handling, and file operations.
 """
 
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
 import pandas as pd
 import geopandas as gpd
-import os
-from config import get_output_path, GRUNDVAND_PATH, WORKFLOW_SETTINGS
 
-# Global cache for categorization data
-_CATEGORIZATION_CACHE = None
-_DEFAULT_OTHER_DISTANCE = 500
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from config import get_output_path, GRUNDVAND_PATH, WORKFLOW_SETTINGS
+from risikovurdering.compound_matching import (
+    DEFAULT_DISTANCE,
+    categorize_substance,
+    get_default_distance,
+)
 
 # Global variable to track keyword statistics
 _KEYWORD_STATS = {'branch': {}, 'activity': {}, 'total_checks': 0}
 
 
-def _load_categorization_from_excel():
-    """Load compound categorization data from Excel file."""
-    global _CATEGORIZATION_CACHE
-
-    if _CATEGORIZATION_CACHE is not None:
-        return _CATEGORIZATION_CACHE
-
-    # Path to Excel file
-    excel_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "compound_categorization_review.xlsx"
-    )
-
-    # Load summary sheet for category distances
-    summary_df = pd.read_excel(excel_path, sheet_name='Summary')
-
-    # Build category → distance mapping
-    category_distances = {}
-    for _, row in summary_df.iterrows():
-        category = row['Category']
-        distance = row['Distance_m']
-        if distance != 'TBD' and pd.notna(distance):
-            category_distances[category] = float(distance)
-        else:
-            category_distances[category] = _DEFAULT_OTHER_DISTANCE
-
-    # Load individual sheets for substance → category mapping AND compound-specific distances
-    substance_to_category = {}
-    substance_to_distance = {}
-    xl_file = pd.ExcelFile(excel_path)
-    category_sheets = [sheet for sheet in xl_file.sheet_names
-                      if sheet not in ['Summary', 'Raw_Data']]
-
-    for sheet_name in category_sheets:
-        sheet_df = pd.read_excel(excel_path, sheet_name=sheet_name)
-
-        if 'Substance' not in sheet_df.columns:
-            raise ValueError(f"Sheet '{sheet_name}' missing required 'Substance' column")
-
-        category = sheet_name.replace('_substances', '').upper()
-
-        for _, row in sheet_df.iterrows():
-            substance = row.get('Substance')
-            distance = row.get('Distance_m')
-
-            if pd.notna(substance):
-                substance_key = str(substance).lower().strip()
-                substance_to_category[substance_key] = category
-
-                # Store compound-specific distance if available
-                if pd.notna(distance) and distance != 'TBD':
-                    substance_to_distance[substance_key] = float(distance)
-
-    _CATEGORIZATION_CACHE = {
-        'category_distances': category_distances,
-        'substance_to_category': substance_to_category,
-        'substance_to_distance': substance_to_distance
-    }
-
-    print(f"Loaded categorization: {len(category_distances)} categories, {len(substance_to_category)} substances, {len(substance_to_distance)} compound-specific distances")
-    return _CATEGORIZATION_CACHE
-
-
-def categorize_contamination_substance(substance_text):
-    """
-    Categorize a contamination substance using Excel-based categorization.
-
-    Args:
-        substance_text (str): The contamination substance text
-
-    Returns:
-        tuple: (category_name, distance_m)
-    """
+def categorize_contamination_substance(substance_text: str):
+    """Categorise a contamination substance using keyword matching."""
     if pd.isna(substance_text) or not isinstance(substance_text, str):
-        return 'ANDRE', _DEFAULT_OTHER_DISTANCE
+        return 'ANDRE', DEFAULT_DISTANCE
 
-    # Load categorization data
-    cat_data = _load_categorization_from_excel()
-    substance_lower = substance_text.lower().strip()
+    category, distance = categorize_substance(substance_text)
+    if pd.isna(distance) or distance is None:
+        distance = get_default_distance(category)
 
-    # Check for exact match first
-    category = cat_data['substance_to_category'].get(substance_lower)
-
-    if category:
-        # Check for compound-specific distance first
-        specific_distance = cat_data['substance_to_distance'].get(substance_lower)
-        if specific_distance is not None:
-            return category, specific_distance
-        # Fall back to category default
-        distance = cat_data['category_distances'].get(category, _DEFAULT_OTHER_DISTANCE)
-        return category, distance
-
-    # Check if substance contains any categorized substances
-    for known_substance, known_category in cat_data['substance_to_category'].items():
-        if known_substance in substance_lower or substance_lower in known_substance:
-            # Check for compound-specific distance first
-            specific_distance = cat_data['substance_to_distance'].get(known_substance)
-            if specific_distance is not None:
-                return known_category, specific_distance
-            # Fall back to category default
-            distance = cat_data['category_distances'].get(known_category, _DEFAULT_OTHER_DISTANCE)
-            return known_category, distance
-
-    # Default to ANDRE category
-    return 'ANDRE', _DEFAULT_OTHER_DISTANCE
-
+    return category, float(distance)
 
 def categorize_by_branch_activity(branch_text, activity_text):
     """
@@ -164,10 +77,10 @@ def categorize_by_branch_activity(branch_text, activity_text):
         _KEYWORD_STATS['activity'][activity_keyword] = _KEYWORD_STATS['activity'].get(activity_keyword, 0) + 1
 
     if branch_match or activity_match:
-        return 'LOSSEPLADS', 100  # Use 500m threshold for landfills
+        return 'LOSSEPLADS', get_default_distance('LOSSEPLADS')
 
     # Default to ANDRE category for non-landfill branch-only sites
-    return 'ANDRE', _DEFAULT_OTHER_DISTANCE
+    return 'ANDRE', DEFAULT_DISTANCE
 
 
 def get_keyword_stats():

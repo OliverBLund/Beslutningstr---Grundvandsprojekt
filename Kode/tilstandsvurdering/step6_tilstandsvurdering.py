@@ -13,10 +13,14 @@ Where:
 import pandas as pd
 import geopandas as gpd
 import rasterio
-import os
 import numpy as np
-from config import get_output_path, ensure_results_directory
-from step6_visualizations import analyze_and_visualize_step6
+from config import (
+    get_output_path,
+    ensure_results_directory,
+    GVFK_LAYER_MAPPING_PATH,
+    GVD_RASTER_DIR,
+)
+from .step6_visualizations import analyze_and_visualize_step6
 
 # Standard concentrations (C) by contamination category [μg/L]
 # Converted from literature values in mg/L to μg/L (multiply by 1000)
@@ -33,9 +37,6 @@ STANDARD_CONCENTRATIONS = {
     'KLOREDE_KULBRINTER': 2200.0             # 2.2 mg/L → 2200 μg/L        
 }
 
-# File paths
-GVFK_LAYER_MAPPING_PATH = r"C:\Users\s194420\OneDrive - Danmarks Tekniske Universitet\Poul Løgstrup Bjergs filer - Work_Projects_Oliver Lund\Beslutningstræ - Grundvands projekt\Data\vp3_h1_grundvandsforekomster_VP3Genbesøg.csv"
-GVD_RASTER_PATH = r"C:\Users\s194420\OneDrive - Danmarks Tekniske Universitet\Poul Løgstrup Bjergs filer - Work_Projects_Oliver Lund\Beslutningstræ - Grundvands projekt\Data\dkm2019_vp3_GVD"
 
 def run_step6():
     """Execute Step 6: Calculate pollution flux for qualified sites."""
@@ -92,7 +93,7 @@ def run_step6():
     sites_with_layers['Pollution_Flux_kg_per_year'] = sites_with_layers['Pollution_Flux_ug_per_year'] / 1000000000.0
     
     # 7. Save results
-    output_path = get_output_path('step4_final_distances_for_risk_assessment').replace('step4_final_distances.csv', 'step6_flux_results.csv')
+    output_path = get_output_path('step6_flux_results')
     sites_with_layers.to_csv(output_path, index=False)
     
     print(f"Calculated flux for {len(sites_with_layers):,} sites")
@@ -140,9 +141,9 @@ def _get_i_value(dk_modellag):
     
     values = []
     for layer in layers:
-        raster_path = os.path.join(GVD_RASTER_PATH, f"DKM_gvd_{layer}.tif")
+        raster_path = GVD_RASTER_DIR / f"DKM_gvd_{layer}.tif"
         
-        if os.path.exists(raster_path):
+        if raster_path.exists():
             with rasterio.open(raster_path) as src:
                 # Sample at raster center for now
                 bounds = src.bounds

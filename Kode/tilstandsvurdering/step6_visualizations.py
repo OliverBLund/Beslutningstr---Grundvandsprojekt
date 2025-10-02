@@ -9,7 +9,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-import os
 from config import get_visualization_path
 
 def analyze_and_visualize_step6(flux_results, match_stats):
@@ -155,7 +154,7 @@ def _create_visualizations(flux_results):
     print("\n5. GENERATING VISUALIZATIONS")
     print("-" * 30)
     
-    viz_path = get_visualization_path('step6')
+    viz_path = get_visualization_path('tilstandsvurdering', 'step6')
     
     # Set style
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -170,7 +169,7 @@ def _create_visualizations(flux_results):
     plt.title('Distribution of Pollution Flux Values (Log Scale)')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_path, 'flux_distribution.png'), dpi=300, bbox_inches='tight')
+    plt.savefig((viz_path / 'flux_distribution.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
     # 2. Category Comparison
@@ -193,7 +192,7 @@ def _create_visualizations(flux_results):
     ax2.ticklabel_format(style='scientific', axis='x', scilimits=(0,0))
     
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_path, 'category_analysis.png'), dpi=300, bbox_inches='tight')
+    plt.savefig((viz_path / 'category_analysis.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
     # 3. Parameter Correlation
@@ -206,7 +205,7 @@ def _create_visualizations(flux_results):
                 square=True, cbar_kws={'label': 'Correlation Coefficient'})
     plt.title('Parameter Correlation Matrix\n(A = Area, I = Raster Value, C = Concentration, J = Flux)')
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_path, 'parameter_correlation.png'), dpi=300, bbox_inches='tight')
+    plt.savefig((viz_path / 'parameter_correlation.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
     # 4. Area vs Flux Scatter
@@ -226,7 +225,7 @@ def _create_visualizations(flux_results):
     plt.colorbar(scatter, label='I Value')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(viz_path, 'area_vs_flux.png'), dpi=300, bbox_inches='tight')
+    plt.savefig((viz_path / 'area_vs_flux.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
     print(f"Visualizations saved to: {viz_path}")

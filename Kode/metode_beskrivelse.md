@@ -88,7 +88,7 @@ Tilgangen følger de etablerede principper for screening af jordforurening mod o
 
 ## Denne Rapports Fokus
 
-Nærværende metodebeskrivelse dokumenterer **den komplette risikovurdering (trin 1-5)** af beslutningstræet. Dette udgør den systematiske identifikation og karakterisering af alle potentielt problematiske lokaliteter baseret på afstand og forureningstyper.
+Nærværende metodebeskrivelse dokumenterer **den komplette risikovurdering (trin 1-5)** af beslutningstræet. Dette udgør den systematiske identifikation og karakterisering af alle potentielt problematiske lokaliteter baseret på afstand og forureningstyper, samt antallet og hvilken GVFK der er i risiko.
 
 **Tilstandsvurderingen** - den kvantitative vurdering af faktiske koncentrationer og overskridelser i vandløb - vil blive gennemført som næste projektfase efter finalisering af risikovurderingsmetodikken.
 
@@ -123,7 +123,7 @@ stedet for opdelte polygoner
 - **Kodeliste-join:** Simpelt join mellem forskellige koder fra DK-jord data
 
 #### Kobling til grundvandsforekomster (ArcGIS spatial analyse)
-- **Overlapsanalyse:** Spatial join mellem de grundvandstruende V1 og V2 lokaliteter og .shp fil med 2,050
+- **Overlapsanalyse:** Spatial join mellem de grundvandstruende V1 og V2 lokaliteter og .shp fil med 2,043
 grundvandsforekomster (VP3)
 - **Join-operation:** "One to many" join med "keep all target features" aktiveret og match option sat til
 "intersect"
@@ -250,8 +250,8 @@ grundvandsforekomster (VP3)
 
 **Proceslogik (`step3_v1v2_sites.py`)**:
 
-1. **Aktiv forureningsfiltrering (kritisk kvalitetskontrol)**:
-   - Filtrer hvor `Lokalitetensstoffer` ELLER `Lokalitetensbranche` ikke er null/tom
+1. **Filtrering**:
+   - Filtrer hvor `Lokalitetensstoffer` ELLER `Lokalitetensbranche / Lokalitetensaktivitet` ikke er null/tom
    - **V1**: 84.601 -> 84.401 rækker (99.8% retained)
    - **V2**: 134.636 -> 134.491 rækker (99.9% retained)
    - **Årsag**: Inkluderer lokaliteter med dokumenterede aktive forureninger ELLER brancheoplysninger, da branch-information kan indikere potentielle forureningsrisici også uden dokumenterede stoffer
