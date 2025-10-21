@@ -79,18 +79,18 @@ def run_step3(rivers_gvfk):
         total_unique_localities = len(v1_lokaliteter | v2_lokaliteter)
         
         print(f"Overlap: {overlap_initial:,} localities present in BOTH datasets")
-        print(f"Total unique localities (V1 âˆª V2): {total_unique_localities:,}")
+        print(f"Total unique localities (V1 ∪ V2): {total_unique_localities:,}")
         
         # Compare with reference documentation  
         print(f"\nValidation against reference documentation:")
         print(f"  Reference V1 localities: 19,603")
         print(f"  Reference V2 localities: 17,660") 
-        print(f"  Reference V1âˆ©V2 overlap: 3,608")
+        print(f"  Reference V1∩V2 overlap: 3,608")
         print(f"  Reference total unique: 110,814 (includes expired/unclear sites)")
         print(f"")
         print(f"  Current V1 localities: {v1_unique_initial:,}")
         print(f"  Current V2 localities: {v2_unique_initial:,}")
-        print(f"  Current V1âˆ©V2 overlap: {overlap_initial:,}")  
+        print(f"  Current V1∩V2 overlap: {overlap_initial:,}")  
         print(f"  Current total unique: {total_unique_localities:,}")
         print(f"")
         print(f"NOTE: Current dataset appears to be a subset focused on active contamination.")
@@ -224,13 +224,13 @@ def run_step3(rivers_gvfk):
     print(f"    Actual increase: {v2_added_localities}")
     print(f"    Difference: {v2_added_localities - v2_branch_only_localities}")
     if v2_added_localities != v2_branch_only_localities:
-        print(f"    â†’ This suggests overlap or filtering effects!")
+        print(f"    → This suggests overlap or filtering effects!")
 
     # Let's check if the old approach calculation is correct
     v2_old_recalc = v2_csv_raw[v2_has_substances]['Lokalitetsnr'].nunique()
     print(f"    V2 old localities (recalculated): {v2_old_recalc}")
     if v2_old_localities != v2_old_recalc:
-        print(f"    â†’ Mismatch in old calculation: {v2_old_localities} vs {v2_old_recalc}")
+        print(f"    → Mismatch in old calculation: {v2_old_localities} vs {v2_old_recalc}")
     
     # Keep sites that have either substance data OR branch data (not both required)
     v2_csv = v2_csv_raw[v2_has_substances | v2_has_branch]
@@ -413,7 +413,7 @@ def _load_or_dissolve_geometries(shp_data, cache_path, source_path, locality_col
         print(f"Loading {dataset_name} dissolved geometries from cache: {cache_path}")
         try:
             dissolved_geom = gpd.read_file(cache_path)
-            print(f"âœ“ {dataset_name}: Loaded {len(dissolved_geom):,} dissolved geometries from cache")
+            print(f"✓ {dataset_name}: Loaded {len(dissolved_geom):,} dissolved geometries from cache")
             return dissolved_geom
         except Exception as e:
             print(f"Warning: Could not load {dataset_name} cache ({e}), recreating...")
@@ -425,7 +425,7 @@ def _load_or_dissolve_geometries(shp_data, cache_path, source_path, locality_col
     # Save to cache
     try:
         dissolved_geom.to_file(cache_path)
-        print(f"âœ“ {dataset_name}: Dissolved {len(shp_data):,} â†’ {len(dissolved_geom):,} geometries and saved to cache")
+        print(f"✓ {dataset_name}: Dissolved {len(shp_data):,} → {len(dissolved_geom):,} geometries and saved to cache")
     except Exception as e:
         print(f"Warning: Could not save {dataset_name} cache ({e}), continuing without caching")
     
@@ -605,10 +605,10 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names):
         v2_only = type_counts.get('V2', 0) 
         both = type_counts.get('V1 og V2', 0)
         
-        print(f"  â€¢ V1 only: {v1_only:,} localities")
-        print(f"  â€¢ V2 only: {v2_only:,} localities") 
-        print(f"  â€¢ Both V1 & V2: {both:,} localities")
-        print(f"  â€¢ TOTAL: {v1_only + v2_only + both:,} localities")
+        print(f"  • V1 only: {v1_only:,} localities")
+        print(f"  • V2 only: {v2_only:,} localities")
+        print(f"  • Both V1 & V2: {both:,} localities")
+        print(f"  • TOTAL: {v1_only + v2_only + both:,} localities")
         
         print(f"\nLokalitet-GVFK combinations: {total_site_gvfk_combinations:,}")
         print(f"GVFKs containing V1/V2 sites: {len(gvfk_with_v1v2_names):,}")

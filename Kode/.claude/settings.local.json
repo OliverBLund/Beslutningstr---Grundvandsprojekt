@@ -4,7 +4,8 @@
       "Bash(grep:*)",
       "Read(//c/Users/s194420/OneDrive - Danmarks Tekniske Universitet/Poul Løgstrup Bjergs filer - Work_Projects_Oliver Lund/Beslutningstræ - Grundvands projekt/Resultater/**)",
       "Bash(python:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

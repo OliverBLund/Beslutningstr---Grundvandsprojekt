@@ -129,11 +129,7 @@ def main():
             'high_risk_sites': high_risk_sites,
             'risk_analysis': general_analysis
         }
-        
-    # Generate professional reports
-    from report_generator import generate_reports
-    generate_reports()
-    
+
     # Create visualizations if available
     create_visualizations_if_available(results)
     
@@ -212,7 +208,7 @@ def generate_workflow_summary(results):
     print(f"Total unique groundwater aquifers (GVFK): {total_gvfk}")
     print(f"GVFKs in contact with targeted rivers: {river_contact_count} ({(river_contact_count/total_gvfk*100):.1f}%)")
     print(f"GVFKs with river contact AND V1/V2 sites: {gvfk_with_v1v2_count} ({(gvfk_with_v1v2_count/total_gvfk*100):.1f}%)")
-    print(f"GVFKs with high-risk sites (â‰¤500m from rivers): {high_risk_gvfk_count} ({(high_risk_gvfk_count/total_gvfk*100):.1f}% of total, {(high_risk_gvfk_count/gvfk_with_v1v2_count*100 if gvfk_with_v1v2_count > 0 else 0):.1f}% of V1/V2 GVFKs)")
+    print(f"GVFKs with high-risk sites (<=500m from rivers): {high_risk_gvfk_count} ({(high_risk_gvfk_count/total_gvfk*100):.1f}% of total, {(high_risk_gvfk_count/gvfk_with_v1v2_count*100 if gvfk_with_v1v2_count > 0 else 0):.1f}% of V1/V2 GVFKs)")
     
     if unique_sites > 0:
         print(f"Unique V1/V2 sites (localities): {unique_sites}")
@@ -226,7 +222,7 @@ def generate_workflow_summary(results):
         print(f"Median final distance per site: {distance_stats['median_final_distance_m']:.1f}m")
     
     if high_risk_site_count > 0:
-        print(f"High-risk sites - General assessment (â‰¤500m): {high_risk_site_count} ({(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
+        print(f"High-risk sites - General assessment (<=500m): {high_risk_site_count} ({(high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
     
     if compound_high_risk_site_count > 0:
         print(f"High-risk sites - Compound-specific assessment: {compound_high_risk_site_count} ({(compound_high_risk_site_count/unique_sites*100 if unique_sites > 0 else 0):.1f}% of sites)")
@@ -246,8 +242,8 @@ def generate_workflow_summary(results):
             'Step 3: GVFKs with River Contact and V1/V2 Sites',
             'Step 3: Unique V1/V2 Sites (Localities)',
             'Step 3: Total Site-GVFK Combinations',
-            'Step 5: GVFKs with High-Risk Sites (â‰¤500m)',
-            'Step 5: High-Risk Sites - General Assessment (â‰¤500m)',
+            'Step 5: GVFKs with High-Risk Sites (<=500m)',
+            'Step 5: High-Risk Sites - General Assessment (<=500m)',
             'Step 5: High-Risk Sites - Compound-Specific Assessment'
         ],
         'Count': [

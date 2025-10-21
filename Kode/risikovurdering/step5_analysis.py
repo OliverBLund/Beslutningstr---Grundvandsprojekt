@@ -156,7 +156,7 @@ def print_summary(distance_results, general_sites, compound_combinations, compou
     if not general_sites.empty and 'Closest_GVFK' in general_sites.columns:
         general_gvfks = general_sites['Closest_GVFK'].dropna().nunique()
         general_pct = (general_gvfks / 2043) * 100
-        print(f"{'With sites â‰¤500m (General)':<45} {general_gvfks:<8,} {general_pct:<10.1f}%")
+        print(f"{'With sites <=500m (General)':<45} {general_gvfks:<8,} {general_pct:<10.1f}%")
 
     # Compound-specific assessment
     if not compound_sites.empty and 'Closest_GVFK' in compound_sites.columns:

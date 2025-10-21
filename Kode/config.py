@@ -34,6 +34,7 @@ V2_SHP_PATH = SHAPE_DIR / "V2FLADER.shp"
 # Tilstandsvurdering specific inputs
 GVFK_LAYER_MAPPING_PATH = DATA_DIR / "vp3_h1_grundvandsforekomster_VP3Genbesøg.csv"
 GVD_RASTER_DIR = DATA_DIR / "dkm2019_vp3_GVD"
+GVFK_AREA_VOLUME_PATH = DATA_DIR / "volumen areal_genbesøg.csv"
 
 # Cache files for repeated spatial operations
 V1_DISSOLVED_CACHE = CACHE_DIR / "v1_dissolved_geometries.shp"
@@ -179,6 +180,7 @@ __all__ = [
     "V2_SHP_PATH",
     "GVFK_LAYER_MAPPING_PATH",
     "GVD_RASTER_DIR",
+    "GVFK_AREA_VOLUME_PATH",
     "V1_DISSOLVED_CACHE",
     "V2_DISSOLVED_CACHE",
     "WORKFLOW_SETTINGS",

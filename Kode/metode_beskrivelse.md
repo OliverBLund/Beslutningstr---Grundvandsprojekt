@@ -403,7 +403,7 @@ Closest_GVFK: DK_GVF_002
 
 **Inddata**:
 - **Fra Trin 4**: `step4_final_distances_for_risk_assessment.csv` med 35.728 lokaliteter og deres minimumsafstande  
-- **Excel-baseret kategorisering**: `compound_categorization_review.xlsx` med litteraturbaserede faner.
+- **Kategoriseringsmodul**: `risikovurdering/compound_matching.py` anvender de litteraturbaserede grupper (tidligere samlet i Excel).
 
 **0. For-kvalificering (data qualification)**:
 - Trin 5 modtager alle lokaliteter fra trin 4 (minimumsafstand per lokalitet).
@@ -424,8 +424,8 @@ Closest_GVFK: DK_GVF_002
 #### Fase 1 – Kategorisering og initial screening
 *Kilde: Jordforureningens påvirkning af overfladevand, delprojekt 2: Afstandskriterier og fanebredder. Miljøprojekt nr. 1565, 2014. Tabel 2 og 3.*
 
-- Parse semikolon-separerede stoffer per lokalitet og hent kategori samt stofspecifik tærskel fra Excel-mappingen  
-- Kategorierne spejler de aktive mobilitetsklasser (fx **PAH_FORBINDELSER** 30 m, **BTXER** 50 m, **PHENOLER** 100 m, **UORGANISKE_FORBINDELSER** 150 m, **POLARE_FORBINDELSER** 300 m, **KLOREREDE_OPLØSNINGSMIDLER** 500 m, **PESTICIDER** 500 m, **LOSSEPLADS** 500 m, **ANDRE** 500 m) og respekterer stofspecifikke overrides som Benzen 200 m  
+- Parse semikolon-separerede stoffer per lokalitet og hent kategori samt stofspecifik tærskel direkte fra Python-modulet (cachet i hukommelsen)  
+- Kategorierne spejler de aktive mobilitetsklasser (fx **PAH_FORBINDELSER** 30 m, **BTXER** 50 m, **PHENOLER** 100 m, **UORGANISKE_FORBINDELSER** 150 m, **POLARE_FORBINDELSER** 300 m, **KLOREREDE_OPLØSNINGSMIDLER** 500 m, **KLOREDE_KULBRINTER** 200 m, **KLOREREDE_PHENOLER** 200 m, **PESTICIDER** 500 m, **PFAS** 500 m, **LOSSEPLADS** 100 m, **ANDRE** 500 m) og respekterer stofspecifikke overrides som Benzen 200 m  
 - Registrer allerede her om lokaliteten har losseplads-karakteristika via `Lokalitetensbranche` eller `Lokalitetensaktivitet`  
 - Hvis lokaliteten matcher en kategori i `LANDFILL_THRESHOLDS`, sættes den effektive tærskel til `max(kategori-tærskel, losseplads-tærskel)` for ikke at frasortere kombinationer der kun består på grund af en lempelig lossepladsgrænse; mere restriktive losseplads-tærskler håndteres efterfølgende  
 - Lokaliteter uden stofdata men med losseplads-brancher/aktiviteter klassificeres som **LOSSEPLADS** med en 100 m screenings-tærskel via `categorize_by_branch_activity`  
@@ -464,7 +464,7 @@ Closest_GVFK: DK_GVF_002
 ---
 
 ### Litteraturbaserede stofgrupper (`refined_compound_analysis.py`)
-- `refined_compound_analysis.py` grupperer stoffer i 10 kategorier baseret på *Jordforureningens påvirkning af overfladevand, delprojekt 2* (Tabel 2 og 3).  
+- `refined_compound_analysis.py` grupperer stoffer i 11 kategorier baseret på *Jordforureningens påvirkning af overfladevand, delprojekt 2* (Tabel 2 og 3).  
 - Kortlægningen danner grundlag for ovenstående tærskler og bruges både i foranalysen og i Trin 5.  
 - Kategorierne og deres standardtærskler er:  
   - **BTXER** – 50 m (BTEX + oliefraktioner; tabel 2).  
@@ -474,10 +474,10 @@ Closest_GVFK: DK_GVF_002
   - **KLOREDE_KULBRINTER** – 200 m (klorerede/bromerede kulbrinter; tabel 3).  
   - **KLOREREDE_PHENOLER** – 200 m (klorerede fenoler; tabel 3).  
   - **PAH_FORBINDELSER** – 30 m (PAH; tabel 3).  
-  - **PESTICIDER** – 500 m (pesticider inkl. PFAS-stoffer; tabel 2).  
+  - **PESTICIDER** – 500 m (pesticider; tabel 2).  
+  - **PFAS** – 500 m (per- og polyfluorerede forbindelser; tabel 2).  
   - **UORGANISKE_FORBINDELSER** – 150 m (metaller og uorganika; tabel 3).  
   - **LOSSEPLADS** – 100 m (landfill-relaterede kilder).  
-- Kategoriseringsscriptet anvender også stofspecifikke overrides (fx Benzen 200 m, cyanid 100 m), som går forud for både normale og losseplads-specifikke kategori-tærskler.  
 - Stoffer der ikke matcher nogen kategori lander i **ANDRE** og får default 500 m (efter manuel opfølgning).  
 
 - **Output**: `step5_compound_detailed_combinations.csv` med alle kvalificerende kombinationer efter override  

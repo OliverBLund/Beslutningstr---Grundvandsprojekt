@@ -11,7 +11,7 @@ Core Scenario (Step 5b):
 - Result: ~1,740 sites spanning 217 GVFKs
 - These sites qualified under literature-based variable thresholds per compound category
 
-Expanded Scenario (Step 5b+):
+Expanded Scenario (Step 5b⁺):
 - Core + branch-only sites (<=500m, no losseplads keywords)
 - Branch-only source: step5_unknown_substance_sites.csv (sites WITHOUT substance data)
 - Filtering: Final_Distance_m <= 500 AND excludes losseplads keywords (see lines 129-139)
@@ -38,16 +38,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import sys
+from pathlib import Path
 from collections import Counter
 
-from config import get_output_path, get_visualization_path, GRUNDVAND_PATH, WORKFLOW_SETTINGS
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-# Professional styling
+from config import get_output_path, get_visualization_path, GRUNDVAND_PATH, WORKFLOW_SETTINGS, GVFK_AREA_VOLUME_PATH
+
+# Professional styling with larger fonts for Word documents (50% increase)
 plt.rcParams.update({
     'font.family': ['Arial', 'DejaVu Sans', 'sans-serif'],
-    'font.size': 10,
-    'axes.titlesize': 14,
-    'axes.labelsize': 12,
+    'font.size': 14,           # Default (was ~10)
+    'axes.titlesize': 20,       # Titles (was 12-15)
+    'axes.labelsize': 16,       # Axis labels (was 11-12)
+    'xtick.labelsize': 14,      # X-tick labels (was 9-10)
+    'ytick.labelsize': 14,      # Y-tick labels (was 9-10)
+    'legend.fontsize': 14,      # Legend (was 9-10)
+    'figure.titlesize': 22,     # Figure title (was 14-15)
     'figure.dpi': 100,
     'savefig.dpi': 300,
     'savefig.bbox': 'tight'
@@ -71,24 +80,16 @@ def load_gvfk_area_volume():
     Load GVFK area and volume data from CSV.
 
     Returns:
-        dict: {gvfk_name: {'area_km2': float, 'volume_m3': float}}
+        dict: {gvfk_name: {'area_km2': float, 'volume_m³': float}}
     """
-    print("\n[PHASE 1] Loading GVFK area/volume data...")
+    print("[PHASE 1] Loading GVFK area/volume data...")
 
-    # Path to area/volume file
-    # GRUNDVAND_PATH is in Data/shp files/, we need Data/volumen areal_genbesÃ¸g.csv
-    grundvand_dir = os.path.dirname(GRUNDVAND_PATH)  # Gets Data/shp files
-    data_dir = os.path.dirname(grundvand_dir)  # Gets Data
-    area_volume_path = os.path.join(data_dir, "volumen areal_genbesÃ¸g.csv")
-
-    if not os.path.exists(area_volume_path):
-        print(f"Warning: Area/volume file not found at {area_volume_path}")
+    if not GVFK_AREA_VOLUME_PATH.exists():
+        print(f"Warning: Area/volume file not found at {GVFK_AREA_VOLUME_PATH}")
         return {}
 
-    # Load with Danish decimal separator
-    df = pd.read_csv(area_volume_path, sep=';', decimal=',', encoding='utf-8')
+    df = pd.read_csv(GVFK_AREA_VOLUME_PATH, sep=';', decimal=',', encoding='utf-8')
 
-    # Create lookup dictionary
     gvfk_data = {}
     for _, row in df.iterrows():
         gvfk_name = row['GVFK']
@@ -97,14 +98,13 @@ def load_gvfk_area_volume():
             volume = float(row['Volumen'])
             gvfk_data[gvfk_name] = {
                 'area_km2': area,
-                'volume_m3': volume
+                'volume_m³': volume
             }
-        except (ValueError, KeyError) as e:
+        except (ValueError, KeyError):
             continue
 
     print(f"  Loaded area/volume data for {len(gvfk_data)} GVFKs")
     return gvfk_data
-
 
 def load_substance_sites():
     """
@@ -329,7 +329,7 @@ def calculate_gvfk_metrics(gvfk_set, gvfk_area_volume):
         gvfk_area_volume: Dictionary with area/volume data per GVFK
 
     Returns:
-        dict: {'count': int, 'area_km2': float, 'volume_m3': float}
+        dict: {'count': int, 'area_km2': float, 'volume_m³': float}
     """
     count = len(gvfk_set)
     total_area = 0.0
@@ -338,12 +338,12 @@ def calculate_gvfk_metrics(gvfk_set, gvfk_area_volume):
     for gvfk in gvfk_set:
         if gvfk in gvfk_area_volume:
             total_area += gvfk_area_volume[gvfk]['area_km2']
-            total_volume += gvfk_area_volume[gvfk]['volume_m3']
+            total_volume += gvfk_area_volume[gvfk]['volume_m³']
 
     return {
         'count': count,
         'area_km2': total_area,
-        'volume_m3': total_volume
+        'volume_m³': total_volume
     }
 
 
@@ -363,21 +363,21 @@ def create_gvfk_count_progression_chart(shapefiles, gvfk_categories, output_dir)
     counts = []
 
     if 'all_dk' in shapefiles:
-        steps.append('Step 1:\nAll Denmark')
+        steps.append('Trin 1:\nAlle Danmark')
         counts.append(len(shapefiles['all_dk']))
 
     if 'step2' in shapefiles:
-        steps.append('Step 2:\nRiver Contact')
+        steps.append('Trin 2:\nVandløbskontakt')
         counts.append(len(shapefiles['step2']))
 
     if 'step3' in shapefiles:
-        steps.append('Step 3:\nV1/V2 Sites')
+        steps.append('Trin 3:\nV1/V2 Lokaliteter')
         counts.append(len(shapefiles['step3']))
 
-    steps.append('Step 5b:\nCore\n(Substance)')
+    steps.append('Trin 5b:\nKerne\n(Substans)')
     counts.append(len(gvfk_categories['core_gvfks']))
 
-    steps.append('Step 5b+:\nExpanded\n(+Branch)')
+    steps.append('Trin 5b⁺:\nUdvidet\n(+Branche)')
     counts.append(len(gvfk_categories['expanded_gvfks']))
 
     # Create figure
@@ -392,11 +392,11 @@ def create_gvfk_count_progression_chart(shapefiles, gvfk_categories, output_dir)
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height,
                 f'{count:,}',
-                ha='center', va='bottom', fontweight='bold', fontsize=11)
+                ha='center', va='bottom', fontweight='bold', fontsize=16)
 
     # Formatting
-    ax.set_ylabel('Number of GVFKs', fontweight='bold')
-    ax.set_title('GVFK Progression Through Workflow', fontweight='bold', fontsize=14, pad=15)
+    ax.set_ylabel('Antal GVFKs', fontweight='bold')
+    ax.set_title('GVFK Progression Gennem Workflow', fontweight='bold', fontsize=20, pad=15)
     ax.grid(axis='y', alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     ax.spines['top'].set_visible(False)
@@ -410,123 +410,145 @@ def create_gvfk_count_progression_chart(shapefiles, gvfk_categories, output_dir)
 
 
 def create_area_volume_progression_chart(shapefiles, gvfk_categories, gvfk_area_volume, output_dir):
-    """
-    Create dual-axis chart showing area and volume progression with stacked bars for Step 5b+.
-
-    Args:
-        shapefiles: Dict with 'all_dk', 'step2', 'step3' GeoDataFrames
-        gvfk_categories: Dict with GVFK sets
-        gvfk_area_volume: Dict with area/volume data
-        output_dir: Output directory path
-    """
+    """Create dual-axis chart showing area/volume progression."""
     print("\n[PHASE 2] Creating area/volume progression chart...")
 
-    # Calculate metrics for each step
-    steps = []
-    areas = []
-    volumes = []
+    labels = []
+    area_core = []
+    area_branch = []
+    volume_core = []
+    volume_branch = []
+    baseline_area = None
+    baseline_volume = None
 
-    # Track Step 5b expansion separately for stacking
-    core_area = 0
-    core_volume = 0
-    new_area = 0
-    new_volume = 0
+    def append_stage(label, gvfk_names):
+        metrics = calculate_gvfk_metrics(gvfk_names, gvfk_area_volume)
+        labels.append(label)
+        area_core.append(metrics['area_km2'])
+        area_branch.append(0.0)
+        volume_core.append(metrics['volume_m³'])
+        volume_branch.append(0.0)
+        return metrics
 
     if 'all_dk' in shapefiles:
-        gvfk_set = set(shapefiles['all_dk']['Navn'].unique())
-        metrics = calculate_gvfk_metrics(gvfk_set, gvfk_area_volume)
-        steps.append('Step 1:\nAll Denmark')
-        areas.append(metrics['area_km2'])
-        volumes.append(metrics['volume_m3'])
+        metrics = append_stage('Trin 1:\nAlle Danmark', set(shapefiles['all_dk']['Navn'].unique()))
+        baseline_area = metrics['area_km2']
+        baseline_volume = metrics['volume_m³']
 
     if 'step2' in shapefiles:
-        gvfk_set = set(shapefiles['step2']['Navn'].unique())
-        metrics = calculate_gvfk_metrics(gvfk_set, gvfk_area_volume)
-        steps.append('Step 2:\nRiver Contact')
-        areas.append(metrics['area_km2'])
-        volumes.append(metrics['volume_m3'])
+        append_stage('Trin 2:\nVandløbskontakt', set(shapefiles['step2']['Navn'].unique()))
 
     if 'step3' in shapefiles:
-        gvfk_set = set(shapefiles['step3']['Navn'].unique())
-        metrics = calculate_gvfk_metrics(gvfk_set, gvfk_area_volume)
-        steps.append('Step 3:\nV1/V2 Sites')
-        areas.append(metrics['area_km2'])
-        volumes.append(metrics['volume_m3'])
+        append_stage('Trin 3:\nV1/V2 Lokaliteter', set(shapefiles['step3']['Navn'].unique()))
 
-    core_metrics = calculate_gvfk_metrics(gvfk_categories['core_gvfks'], gvfk_area_volume)
-    steps.append('Step 5b:\nCore')
-    areas.append(core_metrics['area_km2'])
-    volumes.append(core_metrics['volume_m3'])
+    core_metrics = append_stage('Trin 5b:\nKerne (Substans)', gvfk_categories['core_gvfks'])
     core_area = core_metrics['area_km2']
-    core_volume = core_metrics['volume_m3']
+    core_volume = core_metrics['volume_m³']
 
-    # Calculate just the NEW contribution
     new_metrics = calculate_gvfk_metrics(gvfk_categories['new_gvfks'], gvfk_area_volume)
-    steps.append('Step 5b+:\nExpanded')
-    areas.append(core_area)  # Base for stacking
-    volumes.append(core_volume)  # Base for stacking
-    new_area = new_metrics['area_km2']
-    new_volume = new_metrics['volume_m3']
+    labels.append(f"Trin 5b⁺:\nUdvidet (+{len(gvfk_categories['new_gvfks'])} GVFKs)")
+    area_core.append(core_area)
+    area_branch.append(new_metrics['area_km2'])
+    volume_core.append(core_volume)
+    volume_branch.append(new_metrics['volume_m³'])
 
-    # Create figure with dual axes
-    fig, ax1 = plt.subplots(figsize=(12, 7))
-
-    x_pos = np.arange(len(steps))
+    x = np.arange(len(labels))
     width = 0.35
 
-    # Area on left axis - with stacked bar for Step 5b+
-    bars1_base = ax1.bar(x_pos - width/2, areas, width, label='Area (kmÂ²) - Core',
-                         color='#4CAF50', alpha=0.8, edgecolor='black', linewidth=0.5)
+    area_core_arr = np.array(area_core)
+    area_branch_arr = np.array(area_branch)
+    volume_core_arr = np.array(volume_core)
+    volume_branch_arr = np.array(volume_branch)
 
-    # Add stacked portion for Step 5b+ (last bar only)
-    if len(steps) > 0:
-        bars1_stack = ax1.bar(x_pos[-1] - width/2, new_area, width,
-                             bottom=core_area, label='Area (kmÂ²) - +92 New GVFKs',
-                             color='#FFC107', alpha=0.8, edgecolor='black', linewidth=0.5)
-        # Add annotation showing the increase
-        ax1.text(x_pos[-1] - width/2, core_area + new_area/2,
-                f'+{new_area:,.0f}\nkmÂ²', ha='center', va='center',
-                fontweight='bold', fontsize=9, color='black')
+    fig, ax1 = plt.subplots(figsize=(12, 7))
 
-    ax1.set_ylabel('Area (kmÂ²)', fontweight='bold', color='#4CAF50', fontsize=12)
+    ax1.bar(x - width/2, area_core_arr, width, color='#4CAF50', alpha=0.85,
+            edgecolor='black', linewidth=0.6, label='Areal (km²) – kerne del')
+    ax1.bar(x - width/2, area_branch_arr, width, bottom=area_core_arr,
+            color='#FFC107', alpha=0.8, edgecolor='black', linewidth=0.6,
+            label='Areal (km²) – branche-kun tilføjelse')
+
+    ax1.set_ylabel('Areal (km²)', fontweight='bold', color='#4CAF50')
     ax1.tick_params(axis='y', labelcolor='#4CAF50')
-    ax1.set_xticks(x_pos)
-    ax1.set_xticklabels(steps, fontsize=10)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, fontsize=14)
 
-    # Volume on right axis - with stacked bar for Step 5b+
+    # Add y-axis padding (15% extra space above max)
+    ax1.set_ylim(0, max(area_core_arr + area_branch_arr) * 1.15)
+
     ax2 = ax1.twinx()
-    bars2_base = ax2.bar(x_pos + width/2, volumes, width, label='Volume (mÂ³) - Core',
-                         color='#2196F3', alpha=0.8, edgecolor='black', linewidth=0.5)
+    ax2.bar(x + width/2, volume_core_arr, width, color='#1E88E5', alpha=0.85,
+            edgecolor='black', linewidth=0.6, label='Volumen (m³) – kerne del')
+    ax2.bar(x + width/2, volume_branch_arr, width, bottom=volume_core_arr,
+            color='#FB8C00', alpha=0.8, edgecolor='black', linewidth=0.6,
+            label='Volumen (m³) – branche-kun tilføjelse')
 
-    # Add stacked portion for Step 5b+ (last bar only)
-    if len(steps) > 0:
-        bars2_stack = ax2.bar(x_pos[-1] + width/2, new_volume, width,
-                             bottom=core_volume, label='Volume (mÂ³) - +92 New GVFKs',
-                             color='#FF9800', alpha=0.8, edgecolor='black', linewidth=0.5)
-        # Add annotation showing the increase
-        ax2.text(x_pos[-1] + width/2, core_volume + new_volume/2,
-                f'+{new_volume:.2e}\nmÂ³', ha='center', va='center',
-                fontweight='bold', fontsize=9, color='black')
+    ax2.set_ylabel('Volumen (m³)', fontweight='bold', color='#1E88E5')
+    ax2.tick_params(axis='y', labelcolor='#1E88E5')
 
-    ax2.set_ylabel('Volume (mÂ³)', fontweight='bold', color='#2196F3', fontsize=12)
-    ax2.tick_params(axis='y', labelcolor='#2196F3')
+    # Add y-axis padding (15% extra space above max)
+    ax2.set_ylim(0, max(volume_core_arr + volume_branch_arr) * 1.15)
 
-    # Title and grid
-    ax1.set_title('GVFK Area and Volume Progression\n(Step 5b+ shows stacked contribution from 92 new GVFKs)',
-                  fontweight='bold', fontsize=13, pad=15)
-    ax1.grid(axis='y', alpha=0.3, linestyle='--')
-    ax1.set_axisbelow(True)
+    # Add percentage labels inside bars
+    if baseline_area and baseline_area > 0:
+        for i in range(len(x)):
+            total_area = area_core_arr[i] + area_branch_arr[i]
+            area_pct = (total_area / baseline_area) * 100
 
-    # Combined legend
+            # For Step 5b+ (last bar), show total and additional percentage points
+            if i == len(x) - 1 and area_branch_arr[i] > 0:
+                core_pct = (area_core_arr[i] / baseline_area) * 100
+                additional_pct = area_pct - core_pct  # Percentage points added
+                ax1.text(x[i] - width/2, total_area/2, f'{area_pct:.0f}%\n(+{additional_pct:.1f}%)',
+                         ha='center', va='center', fontweight='bold', color='white', fontsize=13)
+            else:
+                ax1.text(x[i] - width/2, total_area/2, f'{area_pct:.0f}%',
+                         ha='center', va='center', fontweight='bold', color='white', fontsize=14)
+
+    if baseline_volume and baseline_volume > 0:
+        for i in range(len(x)):
+            total_volume = volume_core_arr[i] + volume_branch_arr[i]
+            volume_pct = (total_volume / baseline_volume) * 100
+
+            # For Step 5b+ (last bar), show total and additional percentage points
+            if i == len(x) - 1 and volume_branch_arr[i] > 0:
+                core_pct = (volume_core_arr[i] / baseline_volume) * 100
+                additional_pct = volume_pct - core_pct  # Percentage points added
+                ax2.text(x[i] + width/2, total_volume/2, f'{volume_pct:.0f}%\n(+{additional_pct:.1f}%)',
+                         ha='center', va='center', fontweight='bold', color='white', fontsize=13)
+            else:
+                ax2.text(x[i] + width/2, total_volume/2, f'{volume_pct:.0f}%',
+                         ha='center', va='center', fontweight='bold', color='white', fontsize=14)
+
+    fig.suptitle('GVFK Areal og Volumen Progression', fontsize=22, fontweight='bold')
+    ax1.grid(axis='y', alpha=0.3)
+    ax1.margins(x=0.05)
+
+    # Move legend to upper right inside the plot
     handles1, labels1 = ax1.get_legend_handles_labels()
     handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(handles1 + handles2, labels1 + labels2, loc='upper left', fontsize=9)
+    by_label = dict(zip(labels1 + labels2, handles1 + handles2))
+    ax1.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=13, framealpha=0.95)
 
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'gvfk_area_volume_progression.png'), dpi=300, bbox_inches='tight')
     plt.close()
+    print('  Saved: gvfk_area_volume_progression.png')
 
-    print(f"  Saved: gvfk_area_volume_progression.png")
+    if baseline_area and baseline_area > 0:
+        expanded_area = core_area + area_branch_arr[-1]
+        expanded_volume = core_volume + volume_branch_arr[-1]
+        print('  Area/volume retention relative to baseline:')
+        print(f"    Step 5b (core): {core_area:,.0f} km² ({core_area / baseline_area * 100:.1f}% of baseline area)")
+        print(f"    Step 5b⁺ (expanded): {expanded_area:,.0f} km² ({expanded_area / baseline_area * 100:.1f}% of baseline area)")
+        if baseline_volume and baseline_volume > 0:
+            print(f"    Step 5b (core): {core_volume:,.2e} m³ ({core_volume / baseline_volume * 100:.1f}% of baseline volume)")
+            print(f"    Step 5b⁺ (expanded): {expanded_volume:,.2e} m³ ({expanded_volume / baseline_volume * 100:.1f}% of baseline volume)")
+        if core_area > 0:
+            print(f"    Additional area from branch-only GVFKs: {area_branch_arr[-1]:,.0f} km² (+{area_branch_arr[-1] / core_area * 100:.1f}% vs core)")
+        if core_volume > 0:
+            print(f"    Additional volume from branch-only GVFKs: {volume_branch_arr[-1]:.2e} m³ (+{volume_branch_arr[-1] / core_volume * 100:.1f}% vs core)")
+
 
 
 def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, output_dir):
@@ -545,6 +567,7 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
     print("\n[PHASE 2] Creating progression table...")
 
     rows = []
+    baseline_count = baseline_area = baseline_volume = None
 
     # Step 1: All Denmark (baseline)
     if 'all_dk' in shapefiles:
@@ -553,12 +576,12 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
         rows.append({
             'Step': 'Step 1: All Denmark',
             'GVFK Count': metrics['count'],
-            'Area (kmÂ²)': metrics['area_km2'],
-            'Volume (mÂ³)': metrics['volume_m3']
+            'Area (km²)': metrics['area_km2'],
+            'Volume (m³)': metrics['volume_m³']
         })
         baseline_count = metrics['count']
         baseline_area = metrics['area_km2']
-        baseline_volume = metrics['volume_m3']
+        baseline_volume = metrics['volume_m³']
 
     # Step 2: River Contact
     if 'step2' in shapefiles:
@@ -567,8 +590,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
         rows.append({
             'Step': 'Step 2: River Contact',
             'GVFK Count': metrics['count'],
-            'Area (kmÂ²)': metrics['area_km2'],
-            'Volume (mÂ³)': metrics['volume_m3']
+            'Area (km²)': metrics['area_km2'],
+            'Volume (m³)': metrics['volume_m³']
         })
 
     # Step 3: V1/V2 Sites
@@ -578,8 +601,8 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
         rows.append({
             'Step': 'Step 3: V1/V2 Sites',
             'GVFK Count': metrics['count'],
-            'Area (kmÂ²)': metrics['area_km2'],
-            'Volume (mÂ³)': metrics['volume_m3']
+            'Area (km²)': metrics['area_km2'],
+            'Volume (m³)': metrics['volume_m³']
         })
 
     # Step 5b: Core (substance sites)
@@ -587,17 +610,17 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
     rows.append({
         'Step': 'Step 5b: Core (Substance)',
         'GVFK Count': core_metrics['count'],
-        'Area (kmÂ²)': core_metrics['area_km2'],
-        'Volume (mÂ³)': core_metrics['volume_m3']
+        'Area (km²)': core_metrics['area_km2'],
+        'Volume (m³)': core_metrics['volume_m³']
     })
 
-    # Step 5b+: Expanded (substance + branch)
+    # Step 5b⁺: Expanded (substance + branch)
     expanded_metrics = calculate_gvfk_metrics(gvfk_categories['expanded_gvfks'], gvfk_area_volume)
     rows.append({
-        'Step': 'Step 5b+: Expanded (+Branch)',
+        'Step': 'Step 5b⁺: Expanded (+Branch)',
         'GVFK Count': expanded_metrics['count'],
-        'Area (kmÂ²)': expanded_metrics['area_km2'],
-        'Volume (mÂ³)': expanded_metrics['volume_m3']
+        'Area (km²)': expanded_metrics['area_km2'],
+        'Volume (m³)': expanded_metrics['volume_m³']
     })
 
     # Create DataFrame
@@ -606,8 +629,12 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
     # Add percentage columns
     if baseline_count > 0:
         df['% of Baseline Count'] = (df['GVFK Count'] / baseline_count * 100).round(1)
-        df['% of Baseline Area'] = (df['Area (kmÂ²)'] / baseline_area * 100).round(1)
-        df['% of Baseline Volume'] = (df['Volume (mÂ³)'] / baseline_volume * 100).round(1)
+        df['% of Baseline Area'] = (df['Area (km²)'] / baseline_area * 100).round(1)
+        df['% of Baseline Volume'] = (df['Volume (m³)'] / baseline_volume * 100).round(1)
+
+    df['Δ GVFK vs Previous'] = df['GVFK Count'].diff().fillna(0).astype(int)
+    df['Δ Area vs Previous (km²)'] = df['Area (km²)'].diff().round(1)
+    df['Δ Volume vs Previous (m³)'] = df['Volume (m³)'].diff()
 
     # Save to CSV
     table_path = os.path.join(output_dir, 'gvfk_progression_table.csv')
@@ -657,7 +684,7 @@ def create_expansion_breakdown_chart(gvfk_categories, gvfk_area_volume, output_d
     ax2 = axes[1]
     areas = [core_metrics['area_km2'], new_metrics['area_km2']]
     bars2 = ax2.bar(categories, areas, color=colors_plot, edgecolor='black', linewidth=0.5)
-    ax2.set_ylabel('Area (kmÂ²)', fontweight='bold')
+    ax2.set_ylabel('Area (km²)', fontweight='bold')
     ax2.set_title('Area Breakdown', fontweight='bold')
     ax2.grid(axis='y', alpha=0.3, linestyle='--')
     ax2.set_axisbelow(True)
@@ -668,9 +695,9 @@ def create_expansion_breakdown_chart(gvfk_categories, gvfk_area_volume, output_d
 
     # Volume breakdown
     ax3 = axes[2]
-    volumes = [core_metrics['volume_m3'], new_metrics['volume_m3']]
+    volumes = [core_metrics['volume_m³'], new_metrics['volume_m³']]
     bars3 = ax3.bar(categories, volumes, color=colors_plot, edgecolor='black', linewidth=0.5)
-    ax3.set_ylabel('Volume (mÂ³)', fontweight='bold')
+    ax3.set_ylabel('Volume (m³)', fontweight='bold')
     ax3.set_title('Volume Breakdown', fontweight='bold')
     ax3.grid(axis='y', alpha=0.3, linestyle='--')
     ax3.set_axisbelow(True)
@@ -685,6 +712,76 @@ def create_expansion_breakdown_chart(gvfk_categories, gvfk_area_volume, output_d
 
     print(f"  Saved: gvfk_expansion_breakdown.png")
 
+def create_core_branch_area_summary(shapefiles, gvfk_categories, gvfk_area_volume,
+                                    substance_sites, branch_sites, new_gvfk_sites, output_dir):
+    """Summarise the footprint split between core and branch-only GVFKs."""
+    print("[PHASE 2] Creating core vs expanded summary...")
+
+    baseline_metrics = None
+    if 'all_dk' in shapefiles:
+        baseline_metrics = calculate_gvfk_metrics(set(shapefiles['all_dk']['Navn'].unique()),
+                                                  gvfk_area_volume)
+
+    core_metrics = calculate_gvfk_metrics(gvfk_categories['core_gvfks'], gvfk_area_volume)
+    new_metrics = calculate_gvfk_metrics(gvfk_categories['new_gvfks'], gvfk_area_volume)
+    expanded_metrics = calculate_gvfk_metrics(gvfk_categories['expanded_gvfks'], gvfk_area_volume)
+
+    expanded_site_count = len(substance_sites) + len(branch_sites)
+
+    rows = [
+        {
+            'Group': 'Baseline (All GVFKs)',
+            'GVFK Count': baseline_metrics['count'] if baseline_metrics else None,
+            'Sites': None,
+            'Area (km²)': baseline_metrics['area_km2'] if baseline_metrics else None,
+            'Volume (m³)': baseline_metrics['volume_m³'] if baseline_metrics else None,
+            'Avg sites/GVFK': None,
+        },
+        {
+            'Group': 'Core (Step 5b – substance)',
+            'GVFK Count': core_metrics['count'],
+            'Sites': len(substance_sites),
+            'Area (km²)': core_metrics['area_km2'],
+            'Volume (m³)': core_metrics['volume_m³'],
+            'Avg sites/GVFK': round(len(substance_sites) / core_metrics['count'], 2) if core_metrics['count'] else None,
+        },
+        {
+            'Group': f"Branch-only GVFKs (+{len(gvfk_categories['new_gvfks'])})",
+            'GVFK Count': new_metrics['count'],
+            'Sites': len(new_gvfk_sites),
+            'Area (km²)': new_metrics['area_km2'],
+            'Volume (m³)': new_metrics['volume_m³'],
+            'Avg sites/GVFK': round(len(new_gvfk_sites) / new_metrics['count'], 2) if new_metrics['count'] else None,
+        },
+        {
+            'Group': 'Expanded (Step 5b⁺ – substance + branch)',
+            'GVFK Count': expanded_metrics['count'],
+            'Sites': expanded_site_count,
+            'Area (km²)': expanded_metrics['area_km2'],
+            'Volume (m³)': expanded_metrics['volume_m³'],
+            'Avg sites/GVFK': round(expanded_site_count / expanded_metrics['count'], 2) if expanded_metrics['count'] else None,
+        },
+    ]
+
+    summary_df = pd.DataFrame(rows)
+
+    if baseline_metrics and baseline_metrics['area_km2']:
+        summary_df['% of Baseline Area'] = (summary_df['Area (km²)'] / baseline_metrics['area_km2'] * 100).round(1)
+    if baseline_metrics and baseline_metrics['volume_m³']:
+        summary_df['% of Baseline Volume'] = (summary_df['Volume (m³)'] / baseline_metrics['volume_m³'] * 100).round(1)
+    if baseline_metrics and baseline_metrics['count']:
+        summary_df['% of Baseline GVFKs'] = (summary_df['GVFK Count'] / baseline_metrics['count'] * 100).round(1)
+
+    summary_df['% of Expanded GVFKs'] = (summary_df['GVFK Count'] / expanded_metrics['count'] * 100).round(1)
+    summary_df['% of Expanded Area'] = (summary_df['Area (km²)'] / expanded_metrics['area_km2'] * 100).round(1)
+    summary_df['% of Expanded Volume'] = (summary_df['Volume (m³)'] / expanded_metrics['volume_m³'] * 100).round(1)
+
+    out_path = os.path.join(output_dir, 'core_branch_area_summary.csv')
+    summary_df.to_csv(out_path, index=False)
+    print("  Saved: core_branch_area_summary.csv")
+    print(summary_df.to_string(index=False, na_rep='-'))
+
+    return summary_df
 
 def run_phase2(data, output_dir):
     """
@@ -707,6 +804,9 @@ def run_phase2(data, output_dir):
     create_area_volume_progression_chart(shapefiles, gvfk_categories, gvfk_area_volume, output_dir)
     progression_df = create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, output_dir)
     create_expansion_breakdown_chart(gvfk_categories, gvfk_area_volume, output_dir)
+    create_core_branch_area_summary(shapefiles, gvfk_categories, gvfk_area_volume,
+                                    data['substance_sites'], data['branch_sites'], data['sites_in_new_gvfks'],
+                                    output_dir)
 
     print("\n" + "=" * 60)
     print("[OK] PHASE 2 COMPLETE")
@@ -875,21 +975,22 @@ def create_three_way_comparison_chart(comparison_data, data_type, output_dir):
 
     # Three bars side by side
     bars1 = ax.barh(y_pos - width, counts_A, width,
-                    label='Group A: Substance (1,740 sites)',
+                    label='Gruppe A: Substanslokalteter (1,740 lokaliteter)',
                     color=COLORS['core'], alpha=0.8)
     bars2 = ax.barh(y_pos, counts_B, width,
-                    label='Group B: All Branch-only (3,714 sites)',
+                    label='Gruppe B: Alle Branche-kun (3,714 lokaliteter)',
                     color=COLORS['expanded'], alpha=0.8)
     bars3 = ax.barh(y_pos + width, counts_C, width,
-                    label='Group C: New GVFKs only (241 sites)',
+                    label='Gruppe C: Kun Nye GVFKs (241 lokaliteter)',
                     color=COLORS['new_gvfk'], alpha=0.8)
 
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(item_names, fontsize=10)
-    ax.set_xlabel('Number of Occurrences', fontweight='bold', fontsize=12)
-    ax.set_title(f'Top 15 {data_type.title()}: Three-way Comparison',
-                 fontweight='bold', fontsize=14, pad=15)
-    ax.legend(fontsize=10, loc='lower right')
+    ax.set_yticklabels(item_names, fontsize=14)
+    ax.set_xlabel('Antal Forekomster', fontweight='bold', fontsize=16)
+    data_type_da = 'Brancher' if data_type == 'branches' else 'Aktiviteter'
+    ax.set_title(f'Top 15 {data_type_da}: Tre-vejs Sammenligning',
+                 fontweight='bold', fontsize=20, pad=15)
+    ax.legend(fontsize=14, loc='lower right')
     ax.grid(axis='x', alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
 
@@ -899,7 +1000,7 @@ def create_three_way_comparison_chart(comparison_data, data_type, output_dir):
             width_val = bar.get_width()
             ax.text(width_val + max(counts_A + counts_B + counts_C)*0.01,
                    bar.get_y() + bar.get_height()/2,
-                   f'{int(count)}', ha='left', va='center', fontsize=9,
+                   f'{int(count)}', ha='left', va='center', fontsize=13,
                    color=COLORS['new_gvfk'], fontweight='bold')
 
     # Clean styling
@@ -913,6 +1014,97 @@ def create_three_way_comparison_chart(comparison_data, data_type, output_dir):
     plt.close()
 
     print(f"  Saved: three_way_{data_type}_comparison.png")
+
+
+def create_two_way_comparison_chart(series_A, series_B, data_type, output_dir):
+    """
+    Create improved 2-way comparison chart focusing on Group A vs Group B.
+
+    Args:
+        series_A: Group A (substance sites) value counts
+        series_B: Group B (branch-only sites) value counts
+        data_type: 'branches' or 'activities'
+        output_dir: Output directory path
+    """
+    print(f"\n[PHASE 3] Creating improved 2-way {data_type} comparison chart...")
+
+    # Get all unique items
+    all_items = set(series_A.index) | set(series_B.index)
+
+    # Calculate combined totals for ranking
+    item_totals = []
+    for item in all_items:
+        total = series_A.get(item, 0) + series_B.get(item, 0)
+        item_totals.append((item, total))
+
+    item_totals.sort(key=lambda x: x[1], reverse=True)
+    top_20_items = [item for item, _ in item_totals[:20]]
+
+    # Get counts and calculate percentages
+    counts_A = [series_A.get(item, 0) for item in top_20_items]
+    counts_B = [series_B.get(item, 0) for item in top_20_items]
+
+    total_A = series_A.sum()
+    total_B = series_B.sum()
+
+    pct_A = [(c / total_A * 100) if total_A > 0 else 0 for c in counts_A]
+    pct_B = [(c / total_B * 100) if total_B > 0 else 0 for c in counts_B]
+
+    # Truncate long names
+    item_names = [name[:50] + '...' if len(name) > 50 else name for name in top_20_items]
+
+    # Create figure - larger for better readability
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(22, 12))
+
+    y_pos = np.arange(len(item_names))
+    width = 0.35
+
+    # Left panel: Absolute counts
+    bars1_abs = ax1.barh(y_pos - width/2, counts_A, width,
+                         label='Gruppe A: Substanslokalteter (1,740 lokaliteter)',
+                         color='#2E7D32', alpha=0.85)
+    bars2_abs = ax1.barh(y_pos + width/2, counts_B, width,
+                         label='Gruppe B: Branche-kun lokaliteter (3,714 lokaliteter)',
+                         color='#F57C00', alpha=0.85)
+
+    ax1.set_yticks(y_pos)
+    ax1.set_yticklabels(item_names, fontsize=14)
+    ax1.set_xlabel('Antal Forekomster', fontweight='bold', fontsize=16)
+    data_type_da = 'Brancher' if data_type == 'branches' else 'Aktiviteter'
+    ax1.set_title(f'Top 20 {data_type_da}: Absolutte Antal',
+                  fontweight='bold', fontsize=20, pad=15)
+    ax1.legend(fontsize=14, loc='lower right')
+    ax1.grid(axis='x', alpha=0.3, linestyle='--')
+    ax1.set_axisbelow(True)
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+
+    # Right panel: Percentage comparison
+    bars1_pct = ax2.barh(y_pos - width/2, pct_A, width,
+                         label='Gruppe A: Substanslokalteter',
+                         color='#2E7D32', alpha=0.85)
+    bars2_pct = ax2.barh(y_pos + width/2, pct_B, width,
+                         label='Gruppe B: Branche-kun lokaliteter',
+                         color='#F57C00', alpha=0.85)
+
+    ax2.set_yticks(y_pos)
+    ax2.set_yticklabels([''] * len(item_names))  # No labels on right
+    ax2.set_xlabel('Procent af Total (%)', fontweight='bold', fontsize=16)
+    data_type_da = 'Brancher' if data_type == 'branches' else 'Aktiviteter'
+    ax2.set_title(f'Top 20 {data_type_da}: Relativ Fordeling',
+                  fontweight='bold', fontsize=20, pad=15)
+    ax2.legend(fontsize=14, loc='lower right')
+    ax2.grid(axis='x', alpha=0.3, linestyle='--')
+    ax2.set_axisbelow(True)
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f'two_way_{data_type}_comparison.png'),
+                dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"  Saved: two_way_{data_type}_comparison.png")
 
 
 def create_overlap_visualization(branch_overlap, activity_overlap, output_dir):
@@ -944,16 +1136,16 @@ def create_overlap_visualization(branch_overlap, activity_overlap, output_dir):
 
     bars1 = ax1.bar(range(len(categories)), values_branch, color=colors_plot, alpha=0.8)
     ax1.set_xticks(range(len(categories)))
-    ax1.set_xticklabels(categories, fontsize=9)
-    ax1.set_ylabel('Count', fontweight='bold')
-    ax1.set_title('Branch Overlap Analysis', fontweight='bold', fontsize=12)
+    ax1.set_xticklabels(categories, fontsize=13)
+    ax1.set_ylabel('Antal', fontweight='bold')
+    ax1.set_title('Branche Overlap Analyse', fontweight='bold', fontsize=18)
     ax1.grid(axis='y', alpha=0.3, linestyle='--')
 
     # Add value labels
     for bar in bars1:
         height = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., height,
-                f'{int(height)}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+                f'{int(height)}', ha='center', va='bottom', fontsize=14, fontweight='bold')
 
     # Activity overlap
     values_activity = [
@@ -967,16 +1159,16 @@ def create_overlap_visualization(branch_overlap, activity_overlap, output_dir):
 
     bars2 = ax2.bar(range(len(categories)), values_activity, color=colors_plot, alpha=0.8)
     ax2.set_xticks(range(len(categories)))
-    ax2.set_xticklabels(categories, fontsize=9)
-    ax2.set_ylabel('Count', fontweight='bold')
-    ax2.set_title('Activity Overlap Analysis', fontweight='bold', fontsize=12)
+    ax2.set_xticklabels(categories, fontsize=13)
+    ax2.set_ylabel('Antal', fontweight='bold')
+    ax2.set_title('Aktivitets Overlap Analyse', fontweight='bold', fontsize=18)
     ax2.grid(axis='y', alpha=0.3, linestyle='--')
 
     # Add value labels
     for bar in bars2:
         height = bar.get_height()
         ax2.text(bar.get_x() + bar.get_width()/2., height,
-                f'{int(height)}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+                f'{int(height)}', ha='center', va='bottom', fontsize=14, fontweight='bold')
 
     # Clean styling
     for ax in [ax1, ax2]:
@@ -1145,6 +1337,15 @@ def run_phase3(data, output_dir):
     # Create visualizations
     create_three_way_comparison_chart(comparison_results['branches'], 'branches', output_dir)
     create_three_way_comparison_chart(comparison_results['activities'], 'activities', output_dir)
+
+    # Create improved 2-way comparison charts (Group A vs Group B only)
+    create_two_way_comparison_chart(comparison_results['branches']['A'],
+                                    comparison_results['branches']['B'],
+                                    'branches', output_dir)
+    create_two_way_comparison_chart(comparison_results['activities']['A'],
+                                    comparison_results['activities']['B'],
+                                    'activities', output_dir)
+
     create_overlap_visualization(comparison_results['branch_overlap'],
                                  comparison_results['activity_overlap'],
                                  output_dir)
@@ -1187,32 +1388,33 @@ def create_hexagonal_heatmap(sites_gdf, title, output_path, hex_size_km=10):
 
     # Create hexbin (matplotlib's hexagonal binning)
     # Convert hex size from km to map units (assuming EPSG:25832 in meters)
+    # Make hexagons 25% larger for better visibility
     hex_size_m = hex_size_km * 2000
 
     # Get coordinates
     x = sites_gdf.geometry.x
     y = sites_gdf.geometry.y
 
-    # Create hexbin plot
+    # Create hexbin plot with improved color palette
     hexbin = ax.hexbin(x, y, gridsize=int(100000/hex_size_m),
-                       cmap='YlOrRd', mincnt=1, alpha=0.8, edgecolors='gray', linewidths=0.2)
+                       cmap='plasma', mincnt=1, alpha=0.8, edgecolors='gray', linewidths=0.2)
 
     # Add colorbar
     cbar = plt.colorbar(hexbin, ax=ax, label='Number of sites')
-    cbar.ax.tick_params(labelsize=10)
+    cbar.ax.tick_params(labelsize=14)
 
     # Set title and labels
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
-    ax.set_xlabel('Easting (m)', fontsize=11)
-    ax.set_ylabel('Northing (m)', fontsize=11)
+    ax.set_title(title, fontsize=20, fontweight='bold', pad=15)
+    ax.set_xlabel('Øst (m)', fontsize=16)
+    ax.set_ylabel('Nord (m)', fontsize=16)
 
     # Format axes
     ax.ticklabel_format(style='plain', axis='both')
     ax.grid(True, alpha=0.3, linestyle='--')
 
     # Add site count annotation
-    ax.text(0.02, 0.98, f'Total sites: {len(sites_gdf):,}',
-            transform=ax.transAxes, fontsize=12, fontweight='bold',
+    ax.text(0.02, 0.98, f'Total lokaliteter: {len(sites_gdf):,}',
+            transform=ax.transAxes, fontsize=16, fontweight='bold',
             verticalalignment='top',
             bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
 
@@ -1292,8 +1494,8 @@ def create_side_by_side_heatmaps(substance_sites, expanded_sites, output_dir):
         expanded_gdf = expanded_gdf.copy()
         expanded_gdf['geometry'] = expanded_gdf.geometry.centroid
 
-    # Create side-by-side figure - larger size
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 14))
+    # Create side-by-side figure with space for colorbar
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(28, 14))
 
     # Plot Denmark backdrop on both
     if denmark_gdf is not None:
@@ -1302,43 +1504,37 @@ def create_side_by_side_heatmaps(substance_sites, expanded_sites, output_dir):
         denmark_gdf.boundary.plot(ax=ax2, color='black', linewidth=1.5, zorder=1)
         denmark_gdf.plot(ax=ax2, color='white', alpha=0.3, zorder=0)
 
-    # Larger hexagons - 50% bigger than before
-    gridsize = 27  # Larger hexagons (was 40)
+    # Larger hexagons with better color palette
+    gridsize = 27
 
-    # Core scenario (left) - use Oranges colormap for both
+    # Core scenario (left)
     x1 = substance_gdf.geometry.x
     y1 = substance_gdf.geometry.y
     hexbin1 = ax1.hexbin(x1, y1, gridsize=gridsize,
-                         cmap='Oranges', mincnt=1, alpha=0.7, edgecolors='none', zorder=2)
+                         cmap='plasma', mincnt=1, alpha=0.7, edgecolors='none', zorder=2)
 
-    # Expanded scenario (right) - same Oranges colormap for comparison
+    # Expanded scenario (right)
     x2 = expanded_gdf.geometry.x
     y2 = expanded_gdf.geometry.y
     hexbin2 = ax2.hexbin(x2, y2, gridsize=gridsize,
-                         cmap='Oranges', mincnt=1, alpha=0.7, edgecolors='none', zorder=2)
+                         cmap='plasma', mincnt=1, alpha=0.7, edgecolors='none', zorder=2)
 
-    # IMPORTANT: Use same vmin/vmax for comparable colorbars
+    # Use same vmin/vmax for shared colorbar
     vmax = max(hexbin1.get_array().max(), hexbin2.get_array().max())
     hexbin1.set_clim(vmin=1, vmax=vmax)
     hexbin2.set_clim(vmin=1, vmax=vmax)
 
-    # Smaller colorbars
-    cbar1 = plt.colorbar(hexbin1, ax=ax1, label='Number of sites', shrink=0.6, pad=0.02)
-    cbar1.ax.tick_params(labelsize=9)
-    cbar2 = plt.colorbar(hexbin2, ax=ax2, label='Number of sites', shrink=0.6, pad=0.02)
-    cbar2.ax.tick_params(labelsize=9)
-
-    ax1.set_title(f'Core Scenario: Substance Sites Only\n({len(substance_gdf):,} sites, 217 GVFKs)',
-                  fontsize=14, fontweight='bold', pad=15)
+    ax1.set_title(f'Kerne Scenarie: Kun Substanslokalteter\n({len(substance_gdf):,} lokaliteter, 217 GVFKs)',
+                  fontsize=24, fontweight='bold', pad=15)
     ax1.set_aspect('equal')
     ax1.axis('off')
 
-    ax2.set_title(f'Expanded Scenario: Substance + Branch-only\n({len(expanded_gdf):,} sites, 309 GVFKs)',
-                  fontsize=14, fontweight='bold', pad=15)
+    ax2.set_title(f'Udvidet Scenarie: Substanslokalteter + Branche-kun\n({len(expanded_gdf):,} lokaliteter, 309 GVFKs)',
+                  fontsize=24, fontweight='bold', pad=15)
     ax2.set_aspect('equal')
     ax2.axis('off')
 
-    # Match axis limits to Denmark extent if available
+    # Match axis limits to Denmark extent
     if denmark_gdf is not None:
         bounds = denmark_gdf.total_bounds
         ax1.set_xlim(bounds[0], bounds[2])
@@ -1355,6 +1551,13 @@ def create_side_by_side_heatmaps(substance_sites, expanded_sites, output_dir):
         ax1.set_ylim(ylim)
         ax2.set_xlim(xlim)
         ax2.set_ylim(ylim)
+
+    # Add single shared colorbar on the right with proper spacing
+    sm = plt.cm.ScalarMappable(cmap='plasma', norm=plt.Normalize(vmin=1, vmax=vmax))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=[ax1, ax2], shrink=0.8, aspect=30, pad=0.03, fraction=0.046)
+    cbar.set_label('Antal lokaliteter', fontsize=18, fontweight='bold')
+    cbar.ax.tick_params(labelsize=16)
 
     plt.tight_layout()
     output_path = os.path.join(output_dir, 'hexagonal_heatmap_comparison.png')
@@ -1400,42 +1603,47 @@ def create_gvfk_choropleth_maps(shapefiles, substance_sites, all_sites,
     # Mark new GVFKs
     expanded_gdf['is_new'] = expanded_gdf['Navn'].isin(gvfk_categories['new_gvfks'])
 
-    # Create side-by-side figure - larger size
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 14))
+    # Create side-by-side figure - bigger maps with space for colorbar
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(28, 14))
 
-    # Use same vmin/vmax for comparable legends
+    # Use same vmin/vmax for shared colorbar
     vmin = 1
     vmax = max(core_gdf['site_count'].max(), expanded_gdf['site_count'].max())
 
-    # Core scenario (left) - use Oranges colormap for both
-    core_gdf.plot(column='site_count', ax=ax1, legend=True,
+    # Core scenario (left)
+    core_gdf.plot(column='site_count', ax=ax1, legend=False,
                   cmap='Oranges', edgecolor='black', linewidth=0.3,
-                  vmin=vmin, vmax=vmax,
-                  legend_kwds={'label': 'Sites per GVFK', 'shrink': 0.6, 'pad': 0.02})
-    ax1.set_title(f'Core Scenario: {len(core_gdf)} GVFKs with Substance Sites\n(1,740 sites total)',
-                  fontsize=14, fontweight='bold', pad=15)
+                  vmin=vmin, vmax=vmax)
+    ax1.set_title(f'Kerne Scenarie: {len(core_gdf)} GVFKs med Substanslokalteter\n(1,740 lokaliteter total)',
+                  fontsize=24, fontweight='bold', pad=15)
     ax1.set_aspect('equal')
     ax1.axis('off')
 
-    # Expanded scenario (right) - separate new GVFKs
+    # Expanded scenario (right)
     shared_expanded = expanded_gdf[~expanded_gdf['is_new']]
     new_expanded = expanded_gdf[expanded_gdf['is_new']]
 
-    # Plot shared GVFKs first - same Oranges colormap for comparison
-    shared_expanded.plot(column='site_count', ax=ax2, legend=True,
-                         cmap='Oranges', edgecolor='black', linewidth=0.3,
-                         vmin=vmin, vmax=vmax,
-                         legend_kwds={'label': 'Sites per GVFK', 'shrink': 0.6, 'pad': 0.02})
+    # Plot shared GVFKs first
+    shared_expanded.plot(column='site_count', ax=ax2, legend=False,
+                        cmap='Oranges', edgecolor='black', linewidth=0.3,
+                        vmin=vmin, vmax=vmax)
 
     # Overlay new GVFKs with special styling
     if len(new_expanded) > 0:
         new_expanded.plot(ax=ax2, facecolor='none', edgecolor='red',
                          linewidth=2.5, hatch='///', alpha=0.7)
 
-    ax2.set_title(f'Expanded Scenario: {len(expanded_gdf)} GVFKs (217 core + 92 new)\n(5,454 sites total)\nRed hatched = New GVFKs from branch-only sites',
-                  fontsize=14, fontweight='bold', pad=15)
+    ax2.set_title(f'Udvidet Scenarie: {len(expanded_gdf)} GVFKs (217 kerne + 92 nye)\n(5,454 lokaliteter total)\nRød skraveret = Nye GVFKs fra branche-kun lokaliteter',
+                  fontsize=24, fontweight='bold', pad=15)
     ax2.set_aspect('equal')
     ax2.axis('off')
+
+    # Add single shared colorbar on the right with proper spacing
+    sm = plt.cm.ScalarMappable(cmap='Oranges', norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=[ax1, ax2], shrink=0.8, aspect=30, pad=0.03, fraction=0.046)
+    cbar.set_label('Lokaliteter per GVFK', fontsize=18, fontweight='bold')
+    cbar.ax.tick_params(labelsize=16)
 
     plt.tight_layout()
     output_path = os.path.join(output_dir, 'gvfk_choropleth_comparison.png')
@@ -1531,7 +1739,7 @@ def create_new_gvfk_characteristics_table(new_gvfk_sites, gvfk_area_volume,
 
         # Get area/volume
         area = gvfk_area_volume.get(gvfk, {}).get('area_km2', 0)
-        volume = gvfk_area_volume.get(gvfk, {}).get('volume_m3', 0)
+        volume = gvfk_area_volume.get(gvfk, {}).get('volume_m³', 0)
 
         # Get top branch and activity
         branches = count_occurrences(sites_in_gvfk, 'Lokalitetensbranche')
@@ -1543,8 +1751,8 @@ def create_new_gvfk_characteristics_table(new_gvfk_sites, gvfk_area_volume,
         table_data.append({
             'GVFK': gvfk,
             'Sites': len(sites_in_gvfk),
-            'Area (kmÂ²)': f"{area:.2f}",
-            'Volume (mÂ³)': f"{volume:.0f}",
+            'Area (km²)': f"{area:.2f}",
+            'Volume (m³)': f"{volume:.0f}",
             'Top Branch': top_branch,
             'Top Activity': top_activity
         })
@@ -1605,9 +1813,346 @@ def run_phase4(data, output_dir):
     }
 
 
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
+
+def compare_core_vs_new_gvfks(gvfk_categories, gvfk_area_volume, output_dir):
+    """
+    Compare characteristics of Core 218 GVFKs vs New 92 GVFKs.
+
+    Args:
+        gvfk_categories: GVFK categorization dict
+        gvfk_area_volume: Area/volume lookup dict
+        output_dir: Output directory path
+    """
+    print("\n" + "=" * 60)
+    print("PHASE 5: CORE vs NEW GVFK COMPARISON")
+    print("=" * 60)
+
+    core_gvfks = list(gvfk_categories['core_gvfks'])
+    new_gvfks = list(gvfk_categories['new_gvfks'])
+
+    # Collect area and volume data
+    core_areas = []
+    core_volumes = []
+    new_areas = []
+    new_volumes = []
+
+    for gvfk in core_gvfks:
+        if gvfk in gvfk_area_volume:
+            core_areas.append(gvfk_area_volume[gvfk]['area_km2'])
+            core_volumes.append(gvfk_area_volume[gvfk]['volume_m³'])
+
+    for gvfk in new_gvfks:
+        if gvfk in gvfk_area_volume:
+            new_areas.append(gvfk_area_volume[gvfk]['area_km2'])
+            new_volumes.append(gvfk_area_volume[gvfk]['volume_m³'])
+
+    # Load V1/V2 site counts from Step 3
+    print("\n[PHASE 5] Loading V1/V2 site data from Step 3...")
+    step3_path = get_output_path('step3_v1v2_sites')
+    core_v1v2_counts = {}
+    new_v1v2_counts = {}
+
+    if os.path.exists(step3_path):
+        import geopandas as gpd
+        step3_gdf = gpd.read_file(step3_path)
+
+        # Check what column contains the GVFK name and site ID
+        gvfk_col = None
+        site_id_col = None
+
+        for col in ['Closest_GVFK', 'Navn', 'GVFK', 'gvfk_navn']:
+            if col in step3_gdf.columns:
+                gvfk_col = col
+                break
+
+        for col in ['Lokalitet_', 'Lokalitetsnr', 'Lokalitet_ID', 'site_id']:
+            if col in step3_gdf.columns:
+                site_id_col = col
+                break
+
+        if gvfk_col and site_id_col:
+            # Count UNIQUE sites per GVFK (not total rows which include duplicates)
+            v1v2_per_gvfk = step3_gdf.groupby(gvfk_col)[site_id_col].nunique()
+
+            for gvfk in core_gvfks:
+                core_v1v2_counts[gvfk] = v1v2_per_gvfk.get(gvfk, 0)
+
+            for gvfk in new_gvfks:
+                new_v1v2_counts[gvfk] = v1v2_per_gvfk.get(gvfk, 0)
+
+            total_unique_sites = step3_gdf[site_id_col].nunique()
+            print(f"  Loaded V1/V2 site data: {total_unique_sites:,} unique sites ({len(step3_gdf):,} total rows with duplicates)")
+
+            # Store total unique sites in each category (for summary table later)
+            core_v1v2_counts['_total_unique'] = step3_gdf[step3_gdf[gvfk_col].isin(core_gvfks)][site_id_col].nunique()
+            new_v1v2_counts['_total_unique'] = step3_gdf[step3_gdf[gvfk_col].isin(new_gvfks)][site_id_col].nunique()
+        else:
+            print(f"  Warning: Could not find GVFK column in Step 3 data. Available columns: {list(step3_gdf.columns)[:10]}")
+    else:
+        print(f"  Warning: Step 3 data not found at {step3_path}, V1/V2 counts unavailable")
+
+    # Extract total unique counts (stored with special key)
+    core_total_v1v2 = core_v1v2_counts.pop('_total_unique', 0)
+    new_total_v1v2 = new_v1v2_counts.pop('_total_unique', 0)
+
+    # Convert to lists (excluding the special _total_unique key which we already popped)
+    core_v1v2 = list(core_v1v2_counts.values())
+    new_v1v2 = list(new_v1v2_counts.values())
+
+    # Create summary statistics
+    summary_data = {
+        'Metric': ['Count', 'Mean Area (km²)', 'Median Area (km²)', 'Min Area (km²)',
+                   'Max Area (km²)', 'Mean Volume (m³)', 'Median Volume (m³)',
+                   'Mean V1/V2 Sites', 'Median V1/V2 Sites', 'Total V1/V2 Sites (unique)'],
+        'Core 218 GVFKs': [
+            len(core_gvfks),
+            np.mean(core_areas) if core_areas else 0,
+            np.median(core_areas) if core_areas else 0,
+            np.min(core_areas) if core_areas else 0,
+            np.max(core_areas) if core_areas else 0,
+            np.mean(core_volumes) if core_volumes else 0,
+            np.median(core_volumes) if core_volumes else 0,
+            np.mean(core_v1v2) if core_v1v2 else 0,
+            np.median(core_v1v2) if core_v1v2 else 0,
+            core_total_v1v2
+        ],
+        'New 92 GVFKs': [
+            len(new_gvfks),
+            np.mean(new_areas) if new_areas else 0,
+            np.median(new_areas) if new_areas else 0,
+            np.min(new_areas) if new_areas else 0,
+            np.max(new_areas) if new_areas else 0,
+            np.mean(new_volumes) if new_volumes else 0,
+            np.median(new_volumes) if new_volumes else 0,
+            np.mean(new_v1v2) if new_v1v2 else 0,
+            np.median(new_v1v2) if new_v1v2 else 0,
+            new_total_v1v2
+        ]
+    }
+
+    summary_df = pd.DataFrame(summary_data)
+    summary_path = os.path.join(output_dir, 'core_vs_new_gvfk_comparison.csv')
+    summary_df.to_csv(summary_path, index=False)
+
+    print(f"\n  Saved: core_vs_new_gvfk_comparison.csv")
+    print("\n  Summary Statistics:")
+    print(summary_df.to_string(index=False))
+
+    # Create box plot comparison
+    print("\n[PHASE 5] Creating comparison visualizations...")
+
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+    # Area box plot
+    ax1 = axes[0, 0]
+    bp1 = ax1.boxplot([core_areas, new_areas], labels=['Kerne 218 GVFKs', 'Nye 92 GVFKs'],
+                       patch_artist=True, showmeans=True)
+    bp1['boxes'][0].set_facecolor('#4CAF50')
+    bp1['boxes'][1].set_facecolor('#FFC107')
+    ax1.set_ylabel('Areal (km²)', fontsize=16, fontweight='bold')
+    ax1.set_title('GVFK Areal Fordeling', fontsize=20, fontweight='bold')
+    ax1.grid(axis='y', alpha=0.3)
+
+    # Volume box plot
+    ax2 = axes[0, 1]
+    bp2 = ax2.boxplot([core_volumes, new_volumes], labels=['Kerne 218 GVFKs', 'Nye 92 GVFKs'],
+                       patch_artist=True, showmeans=True)
+    bp2['boxes'][0].set_facecolor('#4CAF50')
+    bp2['boxes'][1].set_facecolor('#FFC107')
+    ax2.set_ylabel('Volumen (m³)', fontsize=16, fontweight='bold')
+    ax2.set_title('GVFK Volumen Fordeling', fontsize=20, fontweight='bold')
+    ax2.grid(axis='y', alpha=0.3)
+    ax2.ticklabel_format(style='scientific', axis='y', scilimits=(0,0))
+
+    # Risk assessment site counts per GVFK
+    ax3 = axes[1, 0]
+
+    # Load actual risk assessment site data
+    core_sites_path = get_output_path('step5_compound_specific_sites')
+    branch_sites_path = get_output_path('step5_unknown_substance_sites')
+
+    core_site_counts = []
+    new_site_counts = []
+
+    if os.path.exists(core_sites_path):
+        core_sites_df = pd.read_csv(core_sites_path)
+        if 'Closest_GVFK' in core_sites_df.columns:
+            # Count sites per GVFK for core 218
+            core_sites_per_gvfk = core_sites_df.groupby('Closest_GVFK').size()
+            for gvfk in core_gvfks:
+                core_site_counts.append(core_sites_per_gvfk.get(gvfk, 0))
+
+    if os.path.exists(branch_sites_path):
+        branch_df = pd.read_csv(branch_sites_path)
+        # Filter to <=500m and exclude losseplads
+        if 'Final_Distance_m' in branch_df.columns:
+            branch_df = branch_df[branch_df['Final_Distance_m'] <= 500]
+        if 'Losseplads_Flag' in branch_df.columns:
+            branch_df = branch_df[branch_df['Losseplads_Flag'] == False]
+
+        if 'Closest_GVFK' in branch_df.columns:
+            # Count sites per GVFK for new 92
+            branch_sites_per_gvfk = branch_df.groupby('Closest_GVFK').size()
+            for gvfk in new_gvfks:
+                new_site_counts.append(branch_sites_per_gvfk.get(gvfk, 0))
+
+    if core_site_counts and new_site_counts:
+        bp3 = ax3.boxplot([core_site_counts, new_site_counts],
+                           labels=['Kerne 218 GVFKs\n(1,743 total lokaliteter)', 'Nye 92 GVFKs\n(~241 total lokaliteter)'],
+                           patch_artist=True, showmeans=True)
+        bp3['boxes'][0].set_facecolor('#4CAF50')
+        bp3['boxes'][1].set_facecolor('#FFC107')
+        ax3.set_ylabel('Risikovurderingslokalteter per GVFK', fontsize=16, fontweight='bold')
+        ax3.set_title('Lokalitetsantal Fordeling', fontsize=20, fontweight='bold')
+        ax3.grid(axis='y', alpha=0.3)
+    else:
+        ax3.text(0.5, 0.5, 'Lokalitetsdata ikke tilgængelig', ha='center', va='center',
+                 fontsize=16, transform=ax3.transAxes)
+        ax3.set_title('Lokalitetsantal Fordeling', fontsize=20, fontweight='bold')
+
+    # Volume histogram overlay
+    ax4 = axes[1, 1]
+    ax4.hist(core_volumes, bins=30, alpha=0.6, label='Kerne 218 GVFKs', color='#4CAF50', edgecolor='black')
+    ax4.hist(new_volumes, bins=30, alpha=0.6, label='Nye 92 GVFKs', color='#FFC107', edgecolor='black')
+    ax4.set_xlabel('Volumen (m³)', fontsize=16, fontweight='bold')
+    ax4.set_ylabel('Frekvens', fontsize=16, fontweight='bold')
+    ax4.set_title('Volumen Fordelings Histogram', fontsize=20, fontweight='bold')
+    ax4.legend(fontsize=14)
+    ax4.grid(axis='y', alpha=0.3)
+    ax4.ticklabel_format(style='scientific', axis='x', scilimits=(0,0))
+
+    plt.tight_layout()
+    comparison_path = os.path.join(output_dir, 'core_vs_new_gvfk_distributions.png')
+    plt.savefig(comparison_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"  Saved: core_vs_new_gvfk_distributions.png")
+
+    print("\n" + "=" * 60)
+    print("[OK] PHASE 5 COMPLETE")
+    print("=" * 60)
+
+    return summary_df
+
+
+def export_tables_to_excel(output_dir):
+    """
+    Convert all CSV tables to nicely formatted Excel files.
+
+    Args:
+        output_dir: Directory containing CSV files
+    """
+    print("\n" + "=" * 60)
+    print("PHASE 6: EXPORTING FORMATTED EXCEL TABLES")
+    print("=" * 60)
+
+    import glob
+    from openpyxl import load_workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    # Find all CSV files
+    csv_files = glob.glob(os.path.join(output_dir, '*.csv'))
+
+    if not csv_files:
+        print("  No CSV files found to export")
+        return
+
+    print(f"\n  Found {len(csv_files)} CSV files to convert")
+
+    for csv_path in csv_files:
+        # Read CSV
+        df = pd.read_csv(csv_path)
+
+        # Create Excel filename
+        excel_path = csv_path.replace('.csv', '_formatted.xlsx')
+
+        # Write to Excel
+        df.to_excel(excel_path, index=False, sheet_name='Data')
+
+        # Load workbook for formatting
+        wb = load_workbook(excel_path)
+        ws = wb.active
+
+        # Define styles
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        cell_alignment = Alignment(horizontal="left", vertical="center")
+        number_alignment = Alignment(horizontal="right", vertical="center")
+
+        border = Border(
+            left=Side(style='thin', color='000000'),
+            right=Side(style='thin', color='000000'),
+            top=Side(style='thin', color='000000'),
+            bottom=Side(style='thin', color='000000')
+        )
+
+        # Format header row
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = border
+
+        # Format data cells
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
+            for cell in row:
+                cell.border = border
+
+                # Align numbers to the right, text to the left
+                if isinstance(cell.value, (int, float)):
+                    cell.alignment = number_alignment
+                    # Format large numbers with commas
+                    if isinstance(cell.value, int) and cell.value > 999:
+                        cell.number_format = '#,##0'
+                    elif isinstance(cell.value, float):
+                        # Scientific notation for very large numbers
+                        if abs(cell.value) > 1e6:
+                            cell.number_format = '0.00E+00'
+                        else:
+                            cell.number_format = '#,##0.0'
+                else:
+                    cell.alignment = cell_alignment
+
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = get_column_letter(column[0].column)
+
+            for cell in column:
+                try:
+                    cell_length = len(str(cell.value))
+                    if cell_length > max_length:
+                        max_length = cell_length
+                except:
+                    pass
+
+            # Set width with some padding, max 50 characters
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+
+        # Freeze header row
+        ws.freeze_panes = 'A2'
+
+        # Set row height for header
+        ws.row_dimensions[1].height = 30
+
+        # Save formatted workbook
+        wb.save(excel_path)
+
+        print(f"  Exported: {os.path.basename(excel_path)}")
+
+    print("\n" + "=" * 60)
+    print("[OK] PHASE 6 COMPLETE")
+    print("=" * 60)
+    print(f"\n  All tables exported to Excel with formatting")
+
 
 def run_step6_analysis():
     """
@@ -1638,15 +2183,26 @@ def run_step6_analysis():
     # Phase 4: Geographic visualizations
     geographic_results = run_phase4(data, output_dir)
 
+    # Phase 5: Core vs New GVFK comparison
+    gvfk_comparison = compare_core_vs_new_gvfks(
+        data['gvfk_categories'],
+        data['gvfk_area_volume'],
+        output_dir
+    )
+
+    # Phase 6: Export formatted Excel tables
+    export_tables_to_excel(output_dir)
+
     print("\n" + "=" * 80)
     print("[OK] STEP 6 ANALYSIS COMPLETE (ALL PHASES)")
     print("=" * 80)
     print(f"\nResults saved to: {output_dir}")
     print(f"\nGenerated outputs:")
     print(f"  - 4 progression visualizations")
-    print(f"  - 3 comparison charts")
+    print(f"  - 4 comparison charts")
     print(f"  - 2 geographic maps")
-    print(f"  - 5 comparison tables")
+    print(f"  - 7 CSV tables + 7 formatted Excel tables")
+    print(f"  - 1 GVFK distribution comparison")
 
 
 if __name__ == "__main__":
