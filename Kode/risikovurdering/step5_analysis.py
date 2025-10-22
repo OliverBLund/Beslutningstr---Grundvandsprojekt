@@ -182,6 +182,107 @@ def print_summary(
         )
 
 
+def print_comprehensive_summary(
+    all_distance_results,
+    general_sites,
+    compound_combinations,
+    parked_sites,
+):
+    """
+    Print comprehensive workflow summary showing complete Step 5 flow.
+
+    Args:
+        all_distance_results: All site-GVFK combinations from Step 4
+        general_sites: Results from general assessment (500m)
+        compound_combinations: All site-GVFK-substance combinations from compound assessment
+        parked_sites: Sites without substance or landfill data
+    """
+    print("\n" + "=" * 70)
+    print("STEP 5: COMPREHENSIVE WORKFLOW SUMMARY")
+    print("=" * 70)
+
+    # INPUT FROM STEP 4
+    total_combinations = len(all_distance_results)
+    total_unique_sites = all_distance_results["Lokalitet_ID"].nunique()
+    total_unique_gvfks = all_distance_results["GVFK"].nunique()
+
+    print("\nINPUT FROM STEP 4:")
+    print(f"  {total_combinations:,} site-GVFK combinations")
+    print(f"  → {total_unique_sites:,} unique sites")
+    print(f"  → {total_unique_gvfks:,} unique GVFKs")
+
+    # DATA SEPARATION
+    qualifying_combinations = (
+        len(all_distance_results) - len(parked_sites)
+        if not parked_sites.empty
+        else len(all_distance_results)
+    )
+    qualifying_unique_sites = (
+        all_distance_results[
+            ~all_distance_results["Lokalitet_ID"].isin(parked_sites["Lokalitet_ID"])
+        ]["Lokalitet_ID"].nunique()
+        if not parked_sites.empty
+        else total_unique_sites
+    )
+    qualifying_unique_gvfks = (
+        all_distance_results[
+            ~all_distance_results["Lokalitet_ID"].isin(parked_sites["Lokalitet_ID"])
+        ]["GVFK"].nunique()
+        if not parked_sites.empty
+        else total_unique_gvfks
+    )
+
+    parked_combinations = len(parked_sites) if not parked_sites.empty else 0
+    parked_unique_sites = (
+        parked_sites["Lokalitet_ID"].nunique() if not parked_sites.empty else 0
+    )
+
+    print("\nDATA SEPARATION:")
+    print(
+        f"  Qualifying (with substance/landfill data): {qualifying_combinations:,} combinations"
+    )
+    print(f"    → {qualifying_unique_sites:,} unique sites")
+    print(f"    → {qualifying_unique_gvfks:,} unique GVFKs")
+    print(f"  Parked (no qualifying data): {parked_combinations:,} combinations")
+    print(f"    → {parked_unique_sites:,} unique sites")
+
+    # STEP 5a - GENERAL ASSESSMENT
+    general_combinations = len(general_sites)
+    general_unique_sites = (
+        general_sites["Lokalitet_ID"].nunique() if not general_sites.empty else 0
+    )
+    general_unique_gvfks = (
+        general_sites["GVFK"].nunique() if not general_sites.empty else 0
+    )
+
+    print("\nSTEP 5a - GENERAL ASSESSMENT (Universal 500m Threshold):")
+    print(f"  Applied to: {qualifying_combinations:,} qualifying combinations")
+    print(f"  Result: {general_combinations:,} combinations within 500m")
+    print(f"    → {general_unique_sites:,} unique sites")
+    print(f"    → {general_unique_gvfks:,} unique GVFKs")
+
+    # STEP 5b - COMPOUND-SPECIFIC ASSESSMENT
+    compound_total = len(compound_combinations)
+    compound_unique_sites = (
+        compound_combinations["Lokalitet_ID"].nunique()
+        if not compound_combinations.empty
+        else 0
+    )
+    compound_unique_gvfks = (
+        compound_combinations["GVFK"].nunique()
+        if not compound_combinations.empty
+        else 0
+    )
+
+    print("\nSTEP 5b - COMPOUND-SPECIFIC ASSESSMENT (Variable Thresholds):")
+    print(f"  Applied to: {qualifying_combinations:,} qualifying combinations")
+    print(f"  Result: {compound_total:,} site-GVFK-substance combinations")
+    print(f"    → {compound_unique_sites:,} unique sites")
+    print(f"    → {compound_unique_gvfks:,} unique GVFKs")
+
+    print("=" * 70)
+
+
 def generate_gvfk_risk_summary():
     """
     Generate a summary table of GVFKs at risk based on Step 5a general assessment (500m threshold).
@@ -263,7 +364,6 @@ def generate_gvfk_risk_summary():
         return gvfk_df
 
     return None
-
 
 def handle_unknown_substance_sites(sites_without_substances):
     """

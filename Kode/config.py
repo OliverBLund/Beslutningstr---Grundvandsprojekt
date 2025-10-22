@@ -70,7 +70,6 @@ OUTPUT_FILES = {
 
     # Step 5 core outputs
     "step5_high_risk_sites": RESULTS_DIR / f"step5_high_risk_sites_{WORKFLOW_SETTINGS['risk_threshold_m']}m.csv",
-    "step5_compound_specific_sites": RESULTS_DIR / "step5_compound_specific_sites.csv",
     "step5_compound_detailed_combinations": RESULTS_DIR / "step5_compound_detailed_combinations.csv",
     "step5_unknown_substance_sites": RESULTS_DIR / "step5_unknown_substance_sites.csv",
     "step5_compound_gvfk_high_risk": RESULTS_DIR / "step5_compound_gvfk_high_risk.shp",

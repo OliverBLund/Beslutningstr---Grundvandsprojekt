@@ -9,19 +9,29 @@ Core functionality for two-fold risk assessment:
 Clean, focused implementation with supporting functions moved to separate modules.
 """
 
+################################################################################
+# SECTION 1: IMPORTS & CONFIGURATION
+################################################################################
 import pandas as pd
 import os
 
-from config import get_output_path, ensure_results_directory, WORKFLOW_SETTINGS
+from config import (
+    get_output_path,
+    ensure_results_directory,
+    WORKFLOW_SETTINGS,
+    GRUNDVAND_PATH,
+)
 from .step5_utils import (
     categorize_contamination_substance,
     categorize_by_branch_activity,
     create_gvfk_shapefile,
     separate_sites_by_substance_data,
+    _extract_unique_gvfk_names,
 )
 from .step5_analysis import (
     print_keyword_summary,
     print_summary,
+    print_comprehensive_summary,
     generate_gvfk_risk_summary,
     handle_unknown_substance_sites,
 )
@@ -38,6 +48,10 @@ LANDFILL_THRESHOLDS = {
     # will NOT be overridden to LOSSEPLADS - add entries here to enable override
 }
 
+################################################################################
+# SECTION 2: MAIN ORCHESTRATOR - Entry Point
+################################################################################
+
 
 def run_step5():
     """Execute Step 5 risk assessment."""
@@ -46,32 +60,65 @@ def run_step5():
 
     ensure_results_directory()
 
-    # Load Step 4 results
+    # Load Step 4 results - ALL site-GVFK combinations
     step4_file = get_output_path("step4_final_distances_for_risk_assessment")
     if not os.path.exists(step4_file):
         raise FileNotFoundError("Step 4 results not found. Please run Step 4 first.")
 
     distance_results = pd.read_csv(step4_file)
-    print(f"Loaded {len(distance_results)} localities from Step 4")
+    total_combinations = len(distance_results)
+    unique_sites = distance_results["Lokalitet_ID"].nunique()
+    unique_gvfks = distance_results["GVFK"].nunique()
 
-    # Separate sites with and without substance data
+    print(f"Loaded {total_combinations:,} site-GVFK combinations from Step 4")
+    print(f"  → {unique_sites:,} unique sites")
+    print(f"  → {unique_gvfks:,} unique GVFKs")
+
+    # Separate sites with and without qualifying data (substance/landfill keywords)
+    print("\nSeparating combinations by data availability...")
     sites_with_substances, sites_without_substances = separate_sites_by_substance_data(
         distance_results
     )
 
-    # Run both assessments on sites with substance data
-    general_sites = run_general_assessment(sites_with_substances)
-    compound_combinations, compound_sites = run_compound_assessment(
-        sites_with_substances
+    qualifying_combinations = len(sites_with_substances)
+    qualifying_sites = sites_with_substances["Lokalitet_ID"].nunique()
+    parked_combinations = len(sites_without_substances)
+    parked_sites = sites_without_substances["Lokalitet_ID"].nunique()
+
+    print(
+        f"  Qualifying (with substance/landfill data): {qualifying_combinations:,} combinations ({qualifying_sites:,} sites)"
+    )
+    print(
+        f"  Parked (no qualifying data): {parked_combinations:,} combinations ({parked_sites:,} sites)"
     )
 
-    # Handle sites without substance data separately
+    # STEP 5a: GENERAL ASSESSMENT - Apply 500m threshold to qualifying combinations
+    print("\n" + "=" * 70)
+    print("STEP 5a: GENERAL ASSESSMENT (Universal 500m Threshold)")
+    print("=" * 70)
+    print("Analyzing qualifying combinations only (with substance or landfill data)")
+    general_sites = run_general_assessment(sites_with_substances)
+
+    # STEP 5b: COMPOUND-SPECIFIC ASSESSMENT - Variable thresholds on qualifying data
+    print("\n" + "=" * 70)
+    print("STEP 5b: COMPOUND-SPECIFIC ASSESSMENT (Variable Thresholds)")
+    print("=" * 70)
+    print("Applying compound-specific thresholds to qualifying combinations")
+    compound_combinations = run_compound_assessment(sites_with_substances)
+
+    # Handle sites without qualifying data separately
+    print("\n" + "=" * 70)
+    print("PARKED SITES (No Substance or Landfill Data)")
+    print("=" * 70)
     unknown_substance_sites = handle_unknown_substance_sites(sites_without_substances)
 
     # Print analysis summaries
     print_keyword_summary()
-    print_summary(
-        distance_results, general_sites, compound_combinations, compound_sites
+    print_comprehensive_summary(
+        distance_results,
+        general_sites,
+        compound_combinations,
+        sites_without_substances,
     )
 
     # Generate Step 5 visualizations
@@ -92,9 +139,9 @@ def run_step5():
     return {
         "general_results": (general_sites, {"total_sites": len(general_sites)}),
         "compound_results": (
-            compound_sites,
+            compound_combinations,
             {
-                "unique_sites": len(compound_sites),
+                "unique_sites": compound_combinations["Lokalitet_ID"].nunique() if not compound_combinations.empty else 0,
                 "total_combinations": len(compound_combinations),
             },
         ),
@@ -108,219 +155,9 @@ def run_step5():
     }
 
 
-def _analyze_multi_gvfk_impact(high_risk_combinations, all_combinations, threshold_m):
-    """
-    Analyze which sites contribute to multiple GVFKs and show the impact
-    of the combination-level approach vs. the old minimum-distance approach.
-
-    Args:
-        high_risk_combinations: DataFrame of lokalitet-GVFK combinations within threshold
-        all_combinations: DataFrame of all lokalitet-GVFK combinations (for comparison)
-        threshold_m: Distance threshold used (e.g., 500)
-    """
-    if high_risk_combinations.empty:
-        return
-
-    print("\n" + "=" * 70)
-    print("MULTI-GVFK SITE ANALYSIS")
-    print("=" * 70)
-
-    # 1. Multi-GVFK Site Distribution
-    threshold_text = (
-        f"{threshold_m}m" if not isinstance(threshold_m, str) else threshold_m
-    )
-    print(
-        f"\n1. Sites by number of GVFKs affected (within {threshold_text} threshold):"
-    )
-    print("-" * 70)
-
-    # Count GVFKs per site
-    gvfks_per_site = high_risk_combinations.groupby("Lokalitet_ID")["GVFK"].nunique()
-    total_sites = len(gvfks_per_site)
-
-    # Distribution
-    distribution = {
-        "1 GVFK": (gvfks_per_site == 1).sum(),
-        "2 GVFKs": (gvfks_per_site == 2).sum(),
-        "3 GVFKs": (gvfks_per_site == 3).sum(),
-        "4 GVFKs": (gvfks_per_site == 4).sum(),
-        "5+ GVFKs": (gvfks_per_site >= 5).sum(),
-    }
-
-    for category, count in distribution.items():
-        pct = (count / total_sites * 100) if total_sites > 0 else 0
-        print(f"  {category:<10} {count:>6,} sites ({pct:>5.1f}%)")
-
-    # Multi-GVFK sites (2+)
-    multi_gvfk_sites = gvfks_per_site[gvfks_per_site > 1]
-    multi_count = len(multi_gvfk_sites)
-    multi_pct = (multi_count / total_sites * 100) if total_sites > 0 else 0
-
-    print(
-        f"\n  → Multi-GVFK sites (2+ GVFKs): {multi_count:,} ({multi_pct:.1f}% of sites)"
-    )
-    print(f"  → These sites contribute to {multi_gvfk_sites.sum():,} GVFK associations")
-
-    # Top multi-GVFK sites
-    if multi_count > 0:
-        print(f"\n  Top 10 multi-GVFK threat sites:")
-        top_sites = gvfks_per_site.nlargest(10)
-
-        for rank, (site_id, gvfk_count) in enumerate(top_sites.items(), 1):
-            # Get GVFKs for this site
-            site_combos = high_risk_combinations[
-                high_risk_combinations["Lokalitet_ID"] == site_id
-            ].sort_values((
-                "Distance_to_River_m"))
-            
-
-            gvfk_list = []
-            for _, row in site_combos.head(
-                5
-            ).iterrows():  # Show first 5
-                gvfk_list.append(f"{row['GVFK']} ({row['Distance_to_River_m']:.0f}m)")
-
-            more_text = f" + {gvfk_count - 5} more" if gvfk_count > 5 else ""
-            print(f"    {rank:2d}. Site {site_id}: {gvfk_count} GVFKs")
-            print(f"        [{', '.join(gvfk_list)}{more_text}]")
-
-    # 2. GVFK Contribution Analysis
-    print("\n\n2. GVFK Contribution Breakdown:")
-    print("-" * 70)
-
-    sites_per_gvfk = high_risk_combinations.groupby("GVFK")["Lokalitet_ID"].nunique()
-
-    gvfk_distribution = {
-        "1 site": (sites_per_gvfk == 1).sum(),
-        "2-5 sites": ((sites_per_gvfk >= 2) & (sites_per_gvfk <= 5)).sum(),
-        "6-10 sites": ((sites_per_gvfk >= 6) & (sites_per_gvfk <= 10)).sum(),
-        "11-20 sites": ((sites_per_gvfk >= 11) & (sites_per_gvfk <= 20)).sum(),
-        "21+ sites": (sites_per_gvfk >= 21).sum(),
-    }
-
-    print("  GVFKs by number of contributing sites:")
-    for category, count in gvfk_distribution.items():
-        if count > 0:
-            print(f"    {category:<15} {count:>4} GVFKs")
-
-    # Most threatened GVFKs
-    print(f"\n  Most threatened GVFKs (by site count):")
-    top_gvfks = sites_per_gvfk.nlargest(5)
-    for rank, (gvfk, site_count) in enumerate(top_gvfks.items(), 1):
-        print(f"    {rank}. {gvfk}: {site_count} sites within {threshold_m}m")
-
-    # 3. Approach Comparison: Old (min-distance) vs New (all combinations)
-    # Only applicable for numeric thresholds (general assessment), not compound-specific
-    print("\n\n3. APPROACH COMPARISON:")
-    print("-" * 70)
-
-    if isinstance(threshold_m, str):
-        # For compound-specific, we can't do meaningful comparison since each has different threshold
-        print(
-            "  (Skipped for compound-specific assessment - variable thresholds per substance)"
-        )
-        all_with_threshold = pd.DataFrame()  # Empty to skip rest of comparison
-    else:
-        # Simulate old approach: keep only minimum distance per site
-        all_with_threshold = all_combinations[
-            all_combinations["Distance_to_River_m"] <= threshold_m
-        ].copy()
-
-    if not all_with_threshold.empty:
-        # Get minimum distance per site
-        min_distances = all_with_threshold.groupby("Lokalitet_ID")[
-            "Distance_to_River_m"
-        ].min()
-
-        # Keep only the combinations matching minimum distances
-        old_approach_combos = []
-        for site_id, min_dist in min_distances.items():
-            site_combos = all_with_threshold[
-                all_with_threshold["Lokalitet_ID"] == site_id
-            ]
-            # If multiple GVFKs have same min distance, take first (alphabetically by GVFK)
-            min_combo = (
-                site_combos[site_combos["Distance_to_River_m"] == min_dist]
-                .sort_values("GVFK")
-                .iloc[0]
-            )
-            old_approach_combos.append(min_combo)
-
-        old_approach_df = pd.DataFrame(old_approach_combos)
-        old_gvfk_count = old_approach_df["GVFK"].nunique()
-        old_combo_count = len(old_approach_df)
-    else:
-        old_gvfk_count = 0
-        old_combo_count = 0
-
-    # New approach stats
-    new_gvfk_count = high_risk_combinations["GVFK"].nunique()
-    new_combo_count = len(high_risk_combinations)
-    new_site_count = high_risk_combinations["Lokalitet_ID"].nunique()
-
-    print(f"  Old approach (minimum distance per site):")
-    print(f"    Would keep:     {old_combo_count:>6,} combinations (1 per site)")
-    print(f"    Would identify: {old_gvfk_count:>6,} GVFKs")
-
-    print(f"\n  New approach (all qualifying combinations):")
-    print(f"    Actually kept:       {new_combo_count:>6,} combinations")
-    print(f"    Actually identified: {new_gvfk_count:>6,} GVFKs")
-    print(f"    Unique sites:        {new_site_count:>6,}")
-
-    # Calculate gain
-    gvfk_gain = new_gvfk_count - old_gvfk_count
-    combo_gain = new_combo_count - old_combo_count
-
-    if old_gvfk_count > 0:
-        gain_pct = (gvfk_gain / old_gvfk_count) * 100
-        print(f"\n  GAIN: +{gvfk_gain} GVFKs (+{gain_pct:.1f}%)")
-        print(f"        +{combo_gain} combinations retained")
-
-    # Identify "new" GVFKs only found via multi-GVFK analysis
-    if not all_with_threshold.empty and gvfk_gain > 0:
-        old_gvfks = set(old_approach_df["GVFK"].unique())
-        new_gvfks = set(high_risk_combinations["GVFK"].unique())
-        exclusive_new_gvfks = new_gvfks - old_gvfks
-
-        if exclusive_new_gvfks:
-            print(
-                f"\n  NEW GVFKs found ONLY via multi-GVFK analysis: {len(exclusive_new_gvfks)}"
-            )
-            print(f"  (These GVFKs have sites that were closer to other GVFKs)")
-
-            # Show examples
-            examples = list(exclusive_new_gvfks)[:5]
-            for gvfk in examples:
-                # Find sites contributing to this GVFK
-                gvfk_sites = high_risk_combinations[
-                    high_risk_combinations["GVFK"] == gvfk
-                ]["Lokalitet_ID"].unique()
-
-                # For first site, show why it wasn't selected in old approach
-                if len(gvfk_sites) > 0:
-                    example_site = gvfk_sites[0]
-
-                    # Get this site's distance to this GVFK
-                    dist_here = high_risk_combinations[
-                        (high_risk_combinations["GVFK"] == gvfk)
-                        & (high_risk_combinations["Lokalitet_ID"] == example_site)
-                    ]["Distance_to_River_m"].iloc[0]
-
-                    # Get this site's minimum distance (to any GVFK)
-                    all_site_combos = all_with_threshold[
-                        all_with_threshold["Lokalitet_ID"] == example_site
-                    ]
-                    min_dist = all_site_combos["Distance_to_River_m"].min()
-                    min_gvfk = all_site_combos[
-                        all_site_combos["Distance_to_River_m"] == min_dist
-                    ]["GVFK"].iloc[0]
-
-                    print(f"    • {gvfk}: Example Site {example_site}")
-                    print(
-                        f"        {dist_here:.0f}m to this GVFK, but min={min_dist:.0f}m to {min_gvfk}"
-                    )
-
-    print("=" * 70)
+################################################################################
+# SECTION 3: ASSESSMENT FUNCTIONS - Step 5a & 5b
+################################################################################
 
 
 def run_general_assessment(distance_results):
@@ -331,34 +168,51 @@ def run_general_assessment(distance_results):
         DataFrame: Lokalitet-GVFK combinations within 500m threshold
     """
     risk_threshold_m = WORKFLOW_SETTINGS["risk_threshold_m"]
-    total_input = len(distance_results)
 
+    # Calculate input statistics
+    total_combinations = len(distance_results)
+    total_unique_sites = distance_results["Lokalitet_ID"].nunique()
+    total_unique_gvfks = distance_results["GVFK"].nunique()
+
+    # Apply threshold
     high_risk_combinations = distance_results[
         distance_results["Distance_to_River_m"] <= risk_threshold_m
     ].copy()
 
-    within_threshold = len(high_risk_combinations)
-    outside_threshold = total_input - within_threshold
+    within_combinations = len(high_risk_combinations)
+    outside_combinations = total_combinations - within_combinations
 
-    print("GENERAL ASSESSMENT SUMMARY")
-    print("=" * 30)
-    print(f"Input lokalitet-GVFK combinations: {total_input:,}")
-    print(f"  Within {risk_threshold_m} m: {within_threshold:,}")
-    print(f"  Beyond {risk_threshold_m} m: {outside_threshold:,}")
+    # Calculate result statistics
+    unique_sites = high_risk_combinations["Lokalitet_ID"].nunique()
+    unique_gvfks = high_risk_combinations["GVFK"].nunique()
+
+    # Print results
+    print("\nGENERAL ASSESSMENT RESULTS")
+    print("-" * 70)
+    print(f"Input: {total_combinations:,} site-GVFK combinations")
+    print(f"  → {total_unique_sites:,} unique sites")
+    print(f"  → {total_unique_gvfks:,} unique GVFKs")
+    print(f"\nWithin {risk_threshold_m}m threshold:")
+    print(
+        f"  {within_combinations:,} combinations ({within_combinations / total_combinations * 100:.1f}%)"
+    )
+    print(f"  → {unique_sites:,} unique sites")
+    print(f"  → {unique_gvfks:,} unique GVFKs")
+    print(f"\nBeyond {risk_threshold_m}m threshold:")
+    print(
+        f"  {outside_combinations:,} combinations ({outside_combinations / total_combinations * 100:.1f}%)"
+    )
 
     # Save results
     if not high_risk_combinations.empty:
         sites_path = get_output_path("step5_high_risk_sites")
         high_risk_combinations.to_csv(sites_path, index=False)
+        print(f"\nSaved: {sites_path}")
 
-        # Create GVFK shapefile
-        create_gvfk_shapefile(high_risk_combinations, "step5_gvfk_high_risk")
-
-        # Count unique GVFKs and sites
-        unique_gvfks = high_risk_combinations["GVFK"].dropna().nunique()
-        unique_sites = high_risk_combinations["Lokalitet_ID"].dropna().nunique()
-        print(f"  Unique sites affected: {unique_sites:,}")
-        print(f"  Unique GVFKs affected: {unique_gvfks:,}")
+        # Create GVFK shapefile with validation
+        shapefile_gvfk_count = create_gvfk_shapefile_with_validation(
+            high_risk_combinations, "step5_gvfk_high_risk", unique_gvfks
+        )
 
         # Multi-GVFK impact analysis
         _analyze_multi_gvfk_impact(
@@ -375,50 +229,55 @@ def run_compound_assessment(distance_results):
     Compound-specific risk assessment using literature-based thresholds.
 
     Returns:
-        tuple: (compound_combinations DataFrame, unique_sites DataFrame)
+        DataFrame: All site-GVFK-substance combinations meeting compound thresholds
     """
+    # Calculate input statistics
     total_input_combinations = len(distance_results)
+    input_unique_sites = distance_results["Lokalitet_ID"].nunique()
+    input_unique_gvfks = distance_results["GVFK"].nunique()
+
+    # Apply compound filtering
     compound_combinations = apply_compound_filtering(distance_results)
 
     if compound_combinations.empty:
-        print("COMPOUND-SPECIFIC ASSESSMENT SUMMARY")
-        print("=" * 36)
-        print(f"Input lokalitet-GVFK combinations: {total_input_combinations:,}")
-        print("  No combinations met the compound thresholds.")
-        return compound_combinations, pd.DataFrame()
-
-    # Get unique sites for summary
-    unique_sites = compound_combinations.drop_duplicates(subset=["Lokalitet_ID"]).copy()
+        print("\nCOMPOUND-SPECIFIC ASSESSMENT RESULTS")
+        print("-" * 70)
+        print(
+            f"Input: {total_input_combinations:,} site-GVFK combinations with substance/landfill data"
+        )
+        print(f"  → {input_unique_sites:,} unique sites")
+        print(f"  → {input_unique_gvfks:,} unique GVFKs")
+        print("\nNo combinations met the compound-specific thresholds.")
+        return compound_combinations
 
     # Save results
-    save_compound_results(compound_combinations, unique_sites)
+    save_compound_results(compound_combinations)
 
-    qualifying_sites = len(unique_sites)
+    # Calculate result statistics
     total_combinations = len(compound_combinations)
-    unique_gvfks = compound_combinations["GVFK"].dropna().nunique()
+    qualifying_unique_sites = compound_combinations["Lokalitet_ID"].nunique()
+    qualifying_unique_gvfks = compound_combinations["GVFK"].dropna().nunique()
 
-    print("COMPOUND-SPECIFIC ASSESSMENT SUMMARY")
-    print("=" * 36)
-    print(f"Input lokalitet-GVFK combinations: {total_input_combinations:,}")
-    qualifying_pct = (
-        (total_combinations / total_input_combinations * 100)
-        if total_input_combinations > 0
-        else 0
-    )
+    # Print results
+    print("\nCOMPOUND-SPECIFIC ASSESSMENT RESULTS")
+    print("-" * 70)
     print(
-        f"  Combinations meeting compound thresholds: {total_combinations:,} ({qualifying_pct:.1f}%)"
+        f"Input: {total_input_combinations:,} site-GVFK combinations with substance/landfill data"
     )
-    print(f"  Unique sites in qualifying combinations: {qualifying_sites:,}")
-    print(f"  Unique GVFKs affected: {unique_gvfks:,}")
+    print(f"  → {input_unique_sites:,} unique sites")
+    print(f"  → {input_unique_gvfks:,} unique GVFKs")
+    print(f"\nMeeting compound-specific thresholds:")
+    print(f"  {total_combinations:,} site-GVFK-substance combinations")
+    print(f"  → {qualifying_unique_sites:,} unique sites")
+    print(f"  → {qualifying_unique_gvfks:,} unique GVFKs")
 
     # Multi-GVFK impact analysis for compound-specific assessment
-    # Note: We use a synthetic "compound threshold" since each combination may have different thresholds
     print("\n[Compound-Specific Multi-GVFK Analysis]")
     _analyze_multi_gvfk_impact(
         compound_combinations, distance_results, "compound-specific"
     )
 
-    return compound_combinations, unique_sites
+    return compound_combinations
 
 
 def apply_compound_filtering(distance_results):
@@ -646,16 +505,338 @@ def apply_compound_filtering(distance_results):
     return combinations_df
 
 
-def save_compound_results(compound_combinations, unique_sites):
+################################################################################
+# SECTION 4: ANALYSIS HELPERS - Multi-GVFK Impact Analysis
+################################################################################
+
+
+def _analyze_multi_gvfk_impact(high_risk_combinations, all_combinations, threshold_m):
+    """
+    Analyze which sites contribute to multiple GVFKs and show the impact
+    of the combination-level approach vs. the old minimum-distance approach.
+
+    Args:
+        high_risk_combinations: DataFrame of lokalitet-GVFK combinations within threshold
+        all_combinations: DataFrame of all lokalitet-GVFK combinations (for comparison)
+        threshold_m: Distance threshold used (e.g., 500)
+    """
+    if high_risk_combinations.empty:
+        return
+
+    print("\n" + "=" * 70)
+    print("MULTI-GVFK SITE ANALYSIS")
+    print("=" * 70)
+
+    # 1. Multi-GVFK Site Distribution
+    threshold_text = (
+        f"{threshold_m}m" if not isinstance(threshold_m, str) else threshold_m
+    )
+    print(
+        f"\n1. Sites by number of GVFKs affected (within {threshold_text} threshold):"
+    )
+    print("-" * 70)
+
+    # Count GVFKs per site
+    gvfks_per_site = high_risk_combinations.groupby("Lokalitet_ID")["GVFK"].nunique()
+    total_sites = len(gvfks_per_site)
+
+    # Distribution
+    distribution = {
+        "1 GVFK": (gvfks_per_site == 1).sum(),
+        "2 GVFKs": (gvfks_per_site == 2).sum(),
+        "3 GVFKs": (gvfks_per_site == 3).sum(),
+        "4 GVFKs": (gvfks_per_site == 4).sum(),
+        "5+ GVFKs": (gvfks_per_site >= 5).sum(),
+    }
+
+    for category, count in distribution.items():
+        pct = (count / total_sites * 100) if total_sites > 0 else 0
+        print(f"  {category:<10} {count:>6,} sites ({pct:>5.1f}%)")
+
+    # Multi-GVFK sites (2+)
+    multi_gvfk_sites = gvfks_per_site[gvfks_per_site > 1]
+    multi_count = len(multi_gvfk_sites)
+    multi_pct = (multi_count / total_sites * 100) if total_sites > 0 else 0
+
+    print(
+        f"\n  → Multi-GVFK sites (2+ GVFKs): {multi_count:,} ({multi_pct:.1f}% of sites)"
+    )
+    print(f"  → These sites contribute to {multi_gvfk_sites.sum():,} GVFK associations")
+
+    # Top multi-GVFK sites
+    if multi_count > 0:
+        print(f"\n  Top 10 multi-GVFK threat sites:")
+        top_sites = gvfks_per_site.nlargest(10)
+
+        for rank, (site_id, gvfk_count) in enumerate(top_sites.items(), 1):
+            # Get GVFKs for this site
+            site_combos = high_risk_combinations[
+                high_risk_combinations["Lokalitet_ID"] == site_id
+            ].sort_values(("Distance_to_River_m"))
+
+            # For compound-specific, we need to handle substance counts per GVFK
+            is_compound_specific = (
+                isinstance(threshold_m, str) and threshold_m == "compound-specific"
+            )
+
+            if is_compound_specific and "Qualifying_Substance" in site_combos.columns:
+                # Group by GVFK and count substances
+                gvfk_substance_counts = (
+                    site_combos.groupby("GVFK")
+                    .agg(
+                        {
+                            "Qualifying_Substance": "count",
+                            "Distance_to_River_m": "first",
+                        }
+                    )
+                    .reset_index()
+                )
+                gvfk_substance_counts = gvfk_substance_counts.sort_values(
+                    "Distance_to_River_m"
+                )
+
+                gvfk_list = []
+                for _, row in gvfk_substance_counts.head(5).iterrows():
+                    substance_count = row["Qualifying_Substance"]
+                    if substance_count > 1:
+                        gvfk_list.append(
+                            f"{row['GVFK']} ({row['Distance_to_River_m']:.0f}m, {substance_count} substances)"
+                        )
+                    else:
+                        gvfk_list.append(
+                            f"{row['GVFK']} ({row['Distance_to_River_m']:.0f}m)"
+                        )
+
+                more_text = f" + {gvfk_count - 5} more" if gvfk_count > 5 else ""
+            else:
+                # General assessment - show unique GVFKs
+                gvfk_list = []
+                for _, row in site_combos.head(5).iterrows():
+                    gvfk_list.append(
+                        f"{row['GVFK']} ({row['Distance_to_River_m']:.0f}m)"
+                    )
+
+                more_text = f" + {gvfk_count - 5} more" if gvfk_count > 5 else ""
+
+            print(f"    {rank:2d}. Site {site_id}: {gvfk_count} GVFKs")
+            print(f"        [{', '.join(gvfk_list)}{more_text}]")
+
+    # 2. GVFK Contribution Analysis
+    print("\n\n2. GVFK Contribution Breakdown:")
+    print("-" * 70)
+
+    sites_per_gvfk = high_risk_combinations.groupby("GVFK")["Lokalitet_ID"].nunique()
+
+    gvfk_distribution = {
+        "1 site": (sites_per_gvfk == 1).sum(),
+        "2-5 sites": ((sites_per_gvfk >= 2) & (sites_per_gvfk <= 5)).sum(),
+        "6-10 sites": ((sites_per_gvfk >= 6) & (sites_per_gvfk <= 10)).sum(),
+        "11-20 sites": ((sites_per_gvfk >= 11) & (sites_per_gvfk <= 20)).sum(),
+        "21+ sites": (sites_per_gvfk >= 21).sum(),
+    }
+
+    print("  GVFKs by number of contributing sites:")
+    for category, count in gvfk_distribution.items():
+        if count > 0:
+            print(f"    {category:<15} {count:>4} GVFKs")
+
+    # Most threatened GVFKs
+    print(f"\n  Most threatened GVFKs (by site count):")
+    top_gvfks = sites_per_gvfk.nlargest(5)
+
+    # Format threshold display
+    if isinstance(threshold_m, str):
+        threshold_display = "compound-specific thresholds"
+    else:
+        threshold_display = f"{threshold_m}m"
+
+    for rank, (gvfk, site_count) in enumerate(top_gvfks.items(), 1):
+        print(f"    {rank}. {gvfk}: {site_count} sites within {threshold_display}")
+
+    # 3. Approach Comparison: Old (min-distance) vs New (all combinations)
+    # Only applicable for numeric thresholds (general assessment), not compound-specific
+    print("\n\n3. APPROACH COMPARISON:")
+    print("-" * 70)
+
+    if isinstance(threshold_m, str):
+        # For compound-specific, we can't do meaningful comparison since each has different threshold
+        print(
+            "  (Skipped for compound-specific assessment - variable thresholds per substance)"
+        )
+        all_with_threshold = pd.DataFrame()  # Empty to skip rest of comparison
+    else:
+        # Simulate old approach: keep only minimum distance per site
+        all_with_threshold = all_combinations[
+            all_combinations["Distance_to_River_m"] <= threshold_m
+        ].copy()
+
+    if not all_with_threshold.empty:
+        # Get minimum distance per site
+        min_distances = all_with_threshold.groupby("Lokalitet_ID")[
+            "Distance_to_River_m"
+        ].min()
+
+        # Keep only the combinations matching minimum distances
+        old_approach_combos = []
+        for site_id, min_dist in min_distances.items():
+            site_combos = all_with_threshold[
+                all_with_threshold["Lokalitet_ID"] == site_id
+            ]
+            # If multiple GVFKs have same min distance, take first (alphabetically by GVFK)
+            min_combo = (
+                site_combos[site_combos["Distance_to_River_m"] == min_dist]
+                .sort_values("GVFK")
+                .iloc[0]
+            )
+            old_approach_combos.append(min_combo)
+
+        old_approach_df = pd.DataFrame(old_approach_combos)
+        old_gvfk_count = old_approach_df["GVFK"].nunique()
+        old_combo_count = len(old_approach_df)
+    else:
+        old_gvfk_count = 0
+        old_combo_count = 0
+
+    # New approach stats
+    new_gvfk_count = high_risk_combinations["GVFK"].nunique()
+    new_combo_count = len(high_risk_combinations)
+    new_site_count = high_risk_combinations["Lokalitet_ID"].nunique()
+
+    print(f"  Old approach (minimum distance per site):")
+    print(f"    Would keep:     {old_combo_count:>6,} combinations (1 per site)")
+    print(f"    Would identify: {old_gvfk_count:>6,} GVFKs")
+
+    print(f"\n  New approach (all qualifying combinations):")
+    print(f"    Actually kept:       {new_combo_count:>6,} combinations")
+    print(f"    Actually identified: {new_gvfk_count:>6,} GVFKs")
+    print(f"    Unique sites:        {new_site_count:>6,}")
+
+    # Calculate gain
+    gvfk_gain = new_gvfk_count - old_gvfk_count
+    combo_gain = new_combo_count - old_combo_count
+
+    if old_gvfk_count > 0:
+        gain_pct = (gvfk_gain / old_gvfk_count) * 100
+        print(f"\n  GAIN: +{gvfk_gain} GVFKs (+{gain_pct:.1f}%)")
+        print(f"        +{combo_gain} combinations retained")
+
+    # Identify "new" GVFKs only found via multi-GVFK analysis
+    if not all_with_threshold.empty and gvfk_gain > 0:
+        old_gvfks = set(old_approach_df["GVFK"].unique())
+        new_gvfks = set(high_risk_combinations["GVFK"].unique())
+        exclusive_new_gvfks = new_gvfks - old_gvfks
+
+        if exclusive_new_gvfks:
+            print(
+                f"\n  NEW GVFKs found ONLY via multi-GVFK analysis: {len(exclusive_new_gvfks)}"
+            )
+            print(f"  (These GVFKs have sites that were closer to other GVFKs)")
+
+            # Show examples
+            examples = list(exclusive_new_gvfks)[:5]
+            for gvfk in examples:
+                # Find sites contributing to this GVFK
+                gvfk_sites = high_risk_combinations[
+                    high_risk_combinations["GVFK"] == gvfk
+                ]["Lokalitet_ID"].unique()
+
+                # For first site, show why it wasn't selected in old approach
+                if len(gvfk_sites) > 0:
+                    example_site = gvfk_sites[0]
+
+                    # Get this site's distance to this GVFK
+                    dist_here = high_risk_combinations[
+                        (high_risk_combinations["GVFK"] == gvfk)
+                        & (high_risk_combinations["Lokalitet_ID"] == example_site)
+                    ]["Distance_to_River_m"].iloc[0]
+
+                    # Get this site's minimum distance (to any GVFK)
+                    all_site_combos = all_with_threshold[
+                        all_with_threshold["Lokalitet_ID"] == example_site
+                    ]
+                    min_dist = all_site_combos["Distance_to_River_m"].min()
+                    min_gvfk = all_site_combos[
+                        all_site_combos["Distance_to_River_m"] == min_dist
+                    ]["GVFK"].iloc[0]
+
+                    print(f"    • {gvfk}: Example Site {example_site}")
+                    print(
+                        f"        {dist_here:.0f}m to this GVFK, but min={min_dist:.0f}m to {min_gvfk}"
+                    )
+
+    print("=" * 70)
+
+
+################################################################################
+# SECTION 5: SAVE/OUTPUT HELPERS - File & Shapefile Creation
+################################################################################
+def create_gvfk_shapefile_with_validation(
+    high_risk_combinations, output_key, expected_gvfk_count
+):
+    """
+    Create GVFK shapefile and validate that the shapefile contains the expected number of GVFKs.
+
+    Args:
+        high_risk_combinations (DataFrame): Lokalitet-GVFK combinations
+        output_key (str): Output file key
+        expected_gvfk_count (int): Expected number of unique GVFKs
+
+    Returns:
+        int: Actual number of GVFKs in created shapefile
+    """
+    import geopandas as gpd
+
+    try:
+        grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
+
+        # Get GVFK names from combinations
+        high_risk_gvfk_names = _extract_unique_gvfk_names(high_risk_combinations)
+
+        # Filter GVFK polygons
+        id_col = "Navn" if "Navn" in grundvand_gdf.columns else grundvand_gdf.columns[0]
+        high_risk_gvfk_polygons = grundvand_gdf[
+            grundvand_gdf[id_col].isin(high_risk_gvfk_names)
+        ].copy()
+
+        if not high_risk_gvfk_polygons.empty:
+            output_path = get_output_path(output_key)
+            high_risk_gvfk_polygons.to_file(output_path)
+
+            shapefile_gvfk_count = len(high_risk_gvfk_polygons)
+            print(f"  Shapefile created: {output_key}")
+            print(f"  Shapefile contains: {shapefile_gvfk_count} GVFK polygons")
+
+            # Validation check
+            if shapefile_gvfk_count != expected_gvfk_count:
+                print(
+                    f"  WARNING: Shapefile GVFK count ({shapefile_gvfk_count}) differs from DataFrame count ({expected_gvfk_count})"
+                )
+                print(
+                    f"           This may indicate missing geometries or duplicate names in source data"
+                )
+            else:
+                print(
+                    f"  Validation passed: Shapefile GVFK count matches DataFrame count"
+                )
+
+            return shapefile_gvfk_count
+        else:
+            print(
+                f"  Warning: No matching GVFK polygons found for shapefile {output_key}"
+            )
+            return 0
+
+    except Exception as e:
+        print(f"  Warning: Could not create shapefile {output_key}: {e}")
+        return 0
+
+
+def save_compound_results(compound_combinations):
     """Save compound-specific assessment results."""
-    # Save detailed combinations (all qualifying substance-site pairs)
+    # Save detailed combinations (all site-GVFK-substance combinations)
     detailed_path = get_output_path("step5_compound_detailed_combinations")
     compound_combinations.to_csv(detailed_path, index=False)
-
-    # Save unique sites for compatibility
-    if not unique_sites.empty:
-        sites_path = get_output_path("step5_compound_specific_sites")
-        unique_sites.to_csv(sites_path, index=False)
+    print(f"  Saved detailed combinations: {len(compound_combinations):,} rows")
 
     # Create GVFK shapefile
     create_gvfk_shapefile(compound_combinations, "step5_compound_gvfk_high_risk")

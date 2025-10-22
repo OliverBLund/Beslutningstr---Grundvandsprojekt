@@ -7,22 +7,23 @@ This analysis compares against Step 5b (compound-specific) NOT Step 5a (general 
 
 Core Scenario (Step 5b):
 - Sites WITH substance data using compound-specific distance thresholds
-- Source: step5_compound_specific_sites.csv (see step5_risk_assessment.py lines 137-176)
-- Result: ~1,740 sites spanning 217 GVFKs
+- Source: step5_compound_detailed_combinations.csv (all site-GVFK-substance combinations)
+- Result: ~1,740 unique sites spanning 240 GVFKs
 - These sites qualified under literature-based variable thresholds per compound category
+- Note: 240 GVFKs because multi-GVFK approach preserves all site-GVFK associations
 
 Expanded Scenario (Step 5b⁺):
 - Core + branch-only sites (<=500m, no losseplads keywords)
 - Branch-only source: step5_unknown_substance_sites.csv (sites WITHOUT substance data)
 - Filtering: Final_Distance_m <= 500 AND excludes losseplads keywords (see lines 129-139)
-- Result: Core (217 GVFKs) + New (92 GVFKs) = 309 total GVFKs
-- The 92 "new" GVFKs have ONLY branch-only sites, no substance sites
+- Result: Core (240 GVFKs) + New GVFKs = total expanded GVFKs
+- The "new" GVFKs have ONLY branch-only sites, no substance sites
 
 KEY DISTINCTION vs step5_branch_analysis.py:
 - step5_branch_analysis.py compares branch-only sites against Step 5a (general 500m assessment)
-  which includes ALL substance sites within 500m (~300+ GVFKs), resulting in ~44 additional GVFKs
-- THIS analysis (step6) compares against Step 5b (compound-specific, 217 GVFKs),
-  resulting in 92 additional GVFKs - this is CORRECT for decision-support
+  which includes ALL substance sites within 500m (~300+ GVFKs), resulting in additional GVFKs
+- THIS analysis (step6) compares against Step 5b (compound-specific, 240 GVFKs)
+- GVFK counts are calculated dynamically from detailed combinations to preserve multi-GVFK associations
 - See step5_branch_analysis.py lines 453-541 (_analyze_generel_risiko_impact) for comparison
 
 Analysis outputs:
@@ -45,7 +46,7 @@ from collections import Counter
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from config import get_output_path, get_visualization_path, GRUNDVAND_PATH, WORKFLOW_SETTINGS, GVFK_AREA_VOLUME_PATH
+from config import get_output_path, get_visualization_path, GRUNDVAND_PATH, WORKFLOW_SETTINGS, GVFK_AREA_VOLUME_PATH, DATA_DIR
 
 # Professional styling with larger fonts for Word documents (50% increase)
 plt.rcParams.update({
@@ -72,6 +73,38 @@ COLORS = {
 
 
 # ============================================================================
+# FILE CONFIGURATION - ALL INPUT/OUTPUT FILES IN ONE PLACE
+# ============================================================================
+"""
+Centralized file paths configuration. All files used in Step 6 are defined here.
+This makes it easy to see what files are needed and change paths if necessary.
+"""
+
+# INPUT FILES - All upstream outputs and data files
+INPUT_FILES = {
+    # Step 5 outputs
+    'step5_compound_detailed': get_output_path('step5_compound_detailed_combinations'),  # Core scenario
+    'step5_parked_sites': get_output_path('step5_unknown_substance_sites'),  # Parked sites
+
+    # Step 4 output (for site geometries)
+    'step4_sites_with_geometry': get_output_path('unique_lokalitet_distances_shp'),
+
+    # Reference data
+    'gvfk_area_volume': GVFK_AREA_VOLUME_PATH,
+
+    # Shapefiles for visualization
+    'grundvand_shapefile': GRUNDVAND_PATH,
+    'step2_gvfk_shapefile': get_output_path('step2_river_gvfk'),
+    'step3_gvfk_shapefile': get_output_path('step3_gvfk_polygons'),
+    'step3_sites_shapefile': get_output_path('step3_v1v2_sites'),
+    'denmark_regions_shapefile': DATA_DIR / 'regionsinddeling',  # Optional backdrop for maps
+}
+
+# OUTPUT DIRECTORY - All visualizations and tables go here
+OUTPUT_DIR = get_visualization_path('step6')
+
+
+# ============================================================================
 # PHASE 1: DATA LOADING AND PREPARATION
 # ============================================================================
 
@@ -84,11 +117,12 @@ def load_gvfk_area_volume():
     """
     print("[PHASE 1] Loading GVFK area/volume data...")
 
-    if not GVFK_AREA_VOLUME_PATH.exists():
-        print(f"Warning: Area/volume file not found at {GVFK_AREA_VOLUME_PATH}")
+    file_path = INPUT_FILES['gvfk_area_volume']
+    if not file_path.exists():
+        print(f"Warning: Area/volume file not found at {file_path}")
         return {}
 
-    df = pd.read_csv(GVFK_AREA_VOLUME_PATH, sep=';', decimal=',', encoding='utf-8')
+    df = pd.read_csv(file_path, sep=';', decimal=',', encoding='utf-8')
 
     gvfk_data = {}
     for _, row in df.iterrows():
@@ -108,25 +142,44 @@ def load_gvfk_area_volume():
 
 def load_substance_sites():
     """
-    Load Step 5b compound-specific sites (Core scenario).
+    Load Step 5b compound-specific detailed combinations (Core scenario).
+
+    Loads all site-GVFK-substance combinations to preserve GVFK associations,
+    then deduplicates by site for site-level analyses.
 
     Returns:
-        pd.DataFrame: Sites with substance data
+        tuple: (detailed_combinations DataFrame, deduplicated_sites DataFrame)
+            - detailed_combinations: All site-GVFK-substance combinations (for GVFK counting)
+            - deduplicated_sites: One row per site (for site-level analyses)
     """
     print("\n[PHASE 1] Loading substance sites (Core scenario)...")
 
-    sites_path = get_output_path('step5_compound_specific_sites')
-    if not os.path.exists(sites_path):
-        raise FileNotFoundError(f"Compound-specific sites not found: {sites_path}")
+    # Load detailed combinations to preserve all GVFK associations
+    detailed_path = INPUT_FILES['step5_compound_detailed']
+    if not os.path.exists(detailed_path):
+        raise FileNotFoundError(f"Compound-specific detailed combinations not found: {detailed_path}")
 
-    substance_sites = pd.read_csv(sites_path)
+    detailed_combinations = pd.read_csv(detailed_path)
 
-    n_sites = len(substance_sites)
-    n_gvfks = substance_sites['Closest_GVFK'].dropna().nunique()
+    # Standardize column names for compatibility with step6
+    if 'GVFK' in detailed_combinations.columns and 'Closest_GVFK' not in detailed_combinations.columns:
+        detailed_combinations = detailed_combinations.rename(columns={'GVFK': 'Closest_GVFK'})
 
-    print(f"  Loaded {n_sites:,} substance sites across {n_gvfks} GVFKs")
+    if 'Distance_to_River_m' in detailed_combinations.columns and 'Final_Distance_m' not in detailed_combinations.columns:
+        detailed_combinations = detailed_combinations.rename(columns={'Distance_to_River_m': 'Final_Distance_m'})
 
-    return substance_sites
+    # Calculate statistics from detailed combinations (correct GVFK count)
+    total_combinations = len(detailed_combinations)
+    n_unique_sites = detailed_combinations['Lokalitet_ID'].nunique()
+    n_gvfks = detailed_combinations['Closest_GVFK'].dropna().nunique()
+
+    print(f"  Loaded {total_combinations:,} site-GVFK-substance combinations")
+    print(f"  → {n_unique_sites:,} unique sites across {n_gvfks} GVFKs")
+
+    # Deduplicate by site (keep first occurrence) for site-level analyses
+    substance_sites = detailed_combinations.drop_duplicates(subset=['Lokalitet_ID'], keep='first').copy()
+
+    return detailed_combinations, substance_sites
 
 
 def load_and_filter_branch_sites():
@@ -138,11 +191,18 @@ def load_and_filter_branch_sites():
     """
     print("\n[PHASE 1] Loading and filtering branch-only sites...")
 
-    unknown_path = get_output_path('step5_unknown_substance_sites')
-    if not os.path.exists(unknown_path):
-        raise FileNotFoundError(f"Unknown substance sites not found: {unknown_path}")
+    parked_path = INPUT_FILES['step5_parked_sites']
+    if not os.path.exists(parked_path):
+        raise FileNotFoundError(f"Parked sites not found: {parked_path}")
 
-    unknown_sites = pd.read_csv(unknown_path)
+    unknown_sites = pd.read_csv(parked_path)
+
+    # Standardize column names for compatibility with step6
+    if 'GVFK' in unknown_sites.columns and 'Closest_GVFK' not in unknown_sites.columns:
+        unknown_sites = unknown_sites.rename(columns={'GVFK': 'Closest_GVFK'})
+
+    if 'Distance_to_River_m' in unknown_sites.columns and 'Final_Distance_m' not in unknown_sites.columns:
+        unknown_sites = unknown_sites.rename(columns={'Distance_to_River_m': 'Final_Distance_m'})
 
     print(f"  Total unknown substance sites: {len(unknown_sites):,}")
 
@@ -172,12 +232,12 @@ def load_and_filter_branch_sites():
     return branch_sites
 
 
-def categorize_gvfks(substance_sites, branch_sites):
+def categorize_gvfks(substance_detailed, branch_sites):
     """
     Categorize GVFKs into shared, new, and substance-only groups.
 
     Args:
-        substance_sites: Core scenario sites
+        substance_detailed: Core scenario detailed combinations (ALL site-GVFK-substance combinations)
         branch_sites: Branch-only sites
 
     Returns:
@@ -192,7 +252,8 @@ def categorize_gvfks(substance_sites, branch_sites):
     """
     print("\n[PHASE 1] Categorizing GVFKs...")
 
-    core_gvfks = set(substance_sites['Closest_GVFK'].dropna().unique())
+    # Use detailed combinations to get ALL GVFKs (preserves multi-GVFK associations)
+    core_gvfks = set(substance_detailed['Closest_GVFK'].dropna().unique())
     branch_gvfks = set(branch_sites['Closest_GVFK'].dropna().unique())
 
     shared_gvfks = core_gvfks & branch_gvfks
@@ -255,18 +316,19 @@ def load_gvfk_shapefiles():
     shapefiles = {}
 
     # All Denmark
-    if os.path.exists(GRUNDVAND_PATH):
-        shapefiles['all_dk'] = gpd.read_file(GRUNDVAND_PATH)
+    all_dk_path = INPUT_FILES['grundvand_shapefile']
+    if os.path.exists(all_dk_path):
+        shapefiles['all_dk'] = gpd.read_file(all_dk_path)
         print(f"  All Denmark: {len(shapefiles['all_dk'])} GVFKs")
 
     # Step 2
-    step2_path = get_output_path('step2_river_gvfk')
+    step2_path = INPUT_FILES['step2_gvfk_shapefile']
     if os.path.exists(step2_path):
         shapefiles['step2'] = gpd.read_file(step2_path)
         print(f"  Step 2 (river contact): {len(shapefiles['step2'])} GVFKs")
 
     # Step 3
-    step3_path = get_output_path('step3_gvfk_polygons')
+    step3_path = INPUT_FILES['step3_gvfk_shapefile']
     if os.path.exists(step3_path):
         shapefiles['step3'] = gpd.read_file(step3_path)
         print(f"  Step 3 (V1/V2 sites): {len(shapefiles['step3'])} GVFKs")
@@ -287,11 +349,11 @@ def run_phase1():
 
     # Load data
     gvfk_area_volume = load_gvfk_area_volume()
-    substance_sites = load_substance_sites()
+    substance_detailed, substance_sites = load_substance_sites()
     branch_sites = load_and_filter_branch_sites()
 
-    # Categorize GVFKs
-    gvfk_categories = categorize_gvfks(substance_sites, branch_sites)
+    # Categorize GVFKs (use detailed combinations to preserve all GVFK associations)
+    gvfk_categories = categorize_gvfks(substance_detailed, branch_sites)
 
     # Filter sites in new GVFKs
     sites_in_new_gvfks = filter_sites_by_gvfk_category(
@@ -308,6 +370,7 @@ def run_phase1():
 
     return {
         'gvfk_area_volume': gvfk_area_volume,
+        'substance_detailed': substance_detailed,  # For accurate GVFK counting
         'substance_sites': substance_sites,
         'branch_sites': branch_sites,
         'sites_in_new_gvfks': sites_in_new_gvfks,
@@ -1425,19 +1488,30 @@ def create_hexagonal_heatmap(sites_gdf, title, output_path, hex_size_km=10):
     print(f"  Saved: {os.path.basename(output_path)}")
 
 
-def create_side_by_side_heatmaps(substance_sites, expanded_sites, output_dir):
+def create_side_by_side_heatmaps(substance_detailed, substance_sites, expanded_sites, branch_sites, output_dir):
     """
     Create side-by-side hexagonal heatmaps for Core vs Expanded.
 
     Args:
-        substance_sites: DataFrame with substance site IDs
+        substance_detailed: DataFrame with all site-GVFK-substance combinations (for GVFK counting)
+        substance_sites: DataFrame with substance site IDs (deduplicated for spatial plotting)
         expanded_sites: DataFrame with all site IDs (substance + branch)
+        branch_sites: DataFrame with branch site IDs
         output_dir: Output directory path
     """
     print("\n[PHASE 4] Creating side-by-side hexagonal heatmaps...")
 
+    # Calculate correct GVFK counts from detailed combinations
+    core_gvfk_count = substance_detailed['Closest_GVFK'].dropna().nunique()
+
+    # For expanded scenario, need to combine substance and branch GVFKs
+    expanded_gvfks = set(substance_detailed['Closest_GVFK'].dropna().unique())
+    if 'Closest_GVFK' in branch_sites.columns:
+        expanded_gvfks.update(branch_sites['Closest_GVFK'].dropna().unique())
+    expanded_gvfk_count = len(expanded_gvfks)
+
     # Load Denmark regions as backdrop
-    regions_path = os.path.join(os.path.dirname(GRUNDVAND_PATH), "..", "regionsinddeling")
+    regions_path = INPUT_FILES['denmark_regions_shapefile']
     denmark_gdf = None
     if os.path.exists(regions_path):
         try:
@@ -1448,7 +1522,7 @@ def create_side_by_side_heatmaps(substance_sites, expanded_sites, output_dir):
 
     # Load site geometries from Step 4 (unique lokalitet distances shapefile)
     # This has ONE geometry per Lokalitet_ID (not duplicates like Step 3)
-    step4_sites_path = get_output_path('unique_lokalitet_distances_shp')
+    step4_sites_path = INPUT_FILES['step4_sites_with_geometry']
     if not os.path.exists(step4_sites_path):
         print(f"  Warning: Step 4 unique lokalitet shapefile not found, skipping heatmaps")
         return
@@ -1524,12 +1598,12 @@ def create_side_by_side_heatmaps(substance_sites, expanded_sites, output_dir):
     hexbin1.set_clim(vmin=1, vmax=vmax)
     hexbin2.set_clim(vmin=1, vmax=vmax)
 
-    ax1.set_title(f'Kerne Scenarie: Kun Substanslokalteter\n({len(substance_gdf):,} lokaliteter, 217 GVFKs)',
+    ax1.set_title(f'Kerne Scenarie: Kun Substanslokalteter\n({len(substance_gdf):,} lokaliteter, {core_gvfk_count} GVFKs)',
                   fontsize=24, fontweight='bold', pad=15)
     ax1.set_aspect('equal')
     ax1.axis('off')
 
-    ax2.set_title(f'Udvidet Scenarie: Substanslokalteter + Branche-kun\n({len(expanded_gdf):,} lokaliteter, 309 GVFKs)',
+    ax2.set_title(f'Udvidet Scenarie: Substanslokalteter + Branche-kun\n({len(expanded_gdf):,} lokaliteter, {expanded_gvfk_count} GVFKs)',
                   fontsize=24, fontweight='bold', pad=15)
     ax2.set_aspect('equal')
     ax2.axis('off')
@@ -1567,15 +1641,17 @@ def create_side_by_side_heatmaps(substance_sites, expanded_sites, output_dir):
     print(f"  Saved: hexagonal_heatmap_comparison.png")
 
 
-def create_gvfk_choropleth_maps(shapefiles, substance_sites, all_sites,
+def create_gvfk_choropleth_maps(shapefiles, substance_detailed, substance_sites, all_sites, branch_sites,
                                  gvfk_categories, output_dir):
     """
     Create side-by-side GVFK choropleth maps.
 
     Args:
         shapefiles: Dict with GVFK shapefiles
-        substance_sites: Core scenario sites
-        all_sites: Expanded scenario sites (substance + branch)
+        substance_detailed: Core scenario detailed combinations (for accurate GVFK-site counting)
+        substance_sites: Core scenario sites (deduplicated, for unique site counts)
+        all_sites: Expanded scenario sites (substance + branch, deduplicated)
+        branch_sites: Branch scenario sites
         gvfk_categories: GVFK categorization dict
         output_dir: Output directory path
     """
@@ -1587,9 +1663,16 @@ def create_gvfk_choropleth_maps(shapefiles, substance_sites, all_sites,
 
     all_dk_gdf = shapefiles['all_dk']
 
-    # Count sites per GVFK for each scenario
-    core_counts = substance_sites.groupby('Closest_GVFK').size()
-    expanded_counts = all_sites.groupby('Closest_GVFK').size()
+    # Count sites per GVFK - use detailed combinations to preserve multi-GVFK relationships
+    # For Core: use substance_detailed which has all site-GVFK pairs
+    core_counts = substance_detailed.groupby('Closest_GVFK')['Lokalitet_ID'].nunique()
+
+    # For Expanded: combine substance and branch site-GVFK pairs
+    expanded_detailed = pd.concat([
+        substance_detailed[['Closest_GVFK', 'Lokalitet_ID']],
+        branch_sites[['Closest_GVFK', 'Lokalitet_ID']] if 'Closest_GVFK' in branch_sites.columns else pd.DataFrame()
+    ], ignore_index=True)
+    expanded_counts = expanded_detailed.groupby('Closest_GVFK')['Lokalitet_ID'].nunique()
 
     # Merge with GeoDataFrame
     core_gdf = all_dk_gdf.copy()
@@ -1610,11 +1693,18 @@ def create_gvfk_choropleth_maps(shapefiles, substance_sites, all_sites,
     vmin = 1
     vmax = max(core_gdf['site_count'].max(), expanded_gdf['site_count'].max())
 
+    # Calculate dynamic counts for titles
+    core_unique_sites = substance_sites['Lokalitet_ID'].nunique()
+    expanded_unique_sites = all_sites['Lokalitet_ID'].nunique()
+    core_gvfk_count = len(core_gdf)
+    expanded_gvfk_count = len(expanded_gdf)
+    new_gvfk_count = len(gvfk_categories['new_gvfks'])
+
     # Core scenario (left)
     core_gdf.plot(column='site_count', ax=ax1, legend=False,
                   cmap='Oranges', edgecolor='black', linewidth=0.3,
                   vmin=vmin, vmax=vmax)
-    ax1.set_title(f'Kerne Scenarie: {len(core_gdf)} GVFKs med Substanslokalteter\n(1,740 lokaliteter total)',
+    ax1.set_title(f'Kerne Scenarie: {core_gvfk_count} GVFKs med Substanslokalteter\n({core_unique_sites:,} lokaliteter total)',
                   fontsize=24, fontweight='bold', pad=15)
     ax1.set_aspect('equal')
     ax1.axis('off')
@@ -1633,7 +1723,7 @@ def create_gvfk_choropleth_maps(shapefiles, substance_sites, all_sites,
         new_expanded.plot(ax=ax2, facecolor='none', edgecolor='red',
                          linewidth=2.5, hatch='///', alpha=0.7)
 
-    ax2.set_title(f'Udvidet Scenarie: {len(expanded_gdf)} GVFKs (217 kerne + 92 nye)\n(5,454 lokaliteter total)\nRød skraveret = Nye GVFKs fra branche-kun lokaliteter',
+    ax2.set_title(f'Udvidet Scenarie: {expanded_gvfk_count} GVFKs ({core_gvfk_count} kerne + {new_gvfk_count} nye)\n({expanded_unique_sites:,} lokaliteter total)\nRød skraveret = Nye GVFKs fra branche-kun lokaliteter',
                   fontsize=24, fontweight='bold', pad=15)
     ax2.set_aspect('equal')
     ax2.axis('off')
@@ -1779,6 +1869,7 @@ def run_phase4(data, output_dir):
     print("PHASE 4: GEOGRAPHIC VISUALIZATIONS")
     print("=" * 60)
 
+    substance_detailed = data['substance_detailed']
     substance_sites = data['substance_sites']
     branch_sites = data['branch_sites']
     new_gvfk_sites = data['sites_in_new_gvfks']
@@ -1790,10 +1881,10 @@ def run_phase4(data, output_dir):
     all_sites = pd.concat([substance_sites, branch_sites], ignore_index=True)
 
     # Create hexagonal heatmaps
-    create_side_by_side_heatmaps(substance_sites, all_sites, output_dir)
+    create_side_by_side_heatmaps(substance_detailed, substance_sites, all_sites, branch_sites, output_dir)
 
     # Create choropleth maps
-    create_gvfk_choropleth_maps(shapefiles, substance_sites, all_sites,
+    create_gvfk_choropleth_maps(shapefiles, substance_detailed, substance_sites, all_sites, branch_sites,
                                 gvfk_categories, output_dir)
 
     # Create tables
@@ -1852,7 +1943,7 @@ def compare_core_vs_new_gvfks(gvfk_categories, gvfk_area_volume, output_dir):
 
     # Load V1/V2 site counts from Step 3
     print("\n[PHASE 5] Loading V1/V2 site data from Step 3...")
-    step3_path = get_output_path('step3_v1v2_sites')
+    step3_path = INPUT_FILES['step3_sites_shapefile']
     core_v1v2_counts = {}
     new_v1v2_counts = {}
 
@@ -1972,22 +2063,34 @@ def compare_core_vs_new_gvfks(gvfk_categories, gvfk_area_volume, output_dir):
     ax3 = axes[1, 0]
 
     # Load actual risk assessment site data
-    core_sites_path = get_output_path('step5_compound_specific_sites')
-    branch_sites_path = get_output_path('step5_unknown_substance_sites')
+    core_detailed_path = INPUT_FILES['step5_compound_detailed']
+    branch_sites_path = INPUT_FILES['step5_parked_sites']
 
     core_site_counts = []
     new_site_counts = []
 
-    if os.path.exists(core_sites_path):
-        core_sites_df = pd.read_csv(core_sites_path)
-        if 'Closest_GVFK' in core_sites_df.columns:
-            # Count sites per GVFK for core 218
-            core_sites_per_gvfk = core_sites_df.groupby('Closest_GVFK').size()
+    if os.path.exists(core_detailed_path):
+        core_detailed_df = pd.read_csv(core_detailed_path)
+
+        # Standardize column names
+        if 'GVFK' in core_detailed_df.columns and 'Closest_GVFK' not in core_detailed_df.columns:
+            core_detailed_df = core_detailed_df.rename(columns={'GVFK': 'Closest_GVFK'})
+
+        if 'Closest_GVFK' in core_detailed_df.columns:
+            # Count unique sites per GVFK (deduplicate site-GVFK combinations by site within each GVFK)
+            core_sites_per_gvfk = core_detailed_df.groupby('Closest_GVFK')['Lokalitet_ID'].nunique()
             for gvfk in core_gvfks:
                 core_site_counts.append(core_sites_per_gvfk.get(gvfk, 0))
 
     if os.path.exists(branch_sites_path):
         branch_df = pd.read_csv(branch_sites_path)
+
+        # Standardize column names
+        if 'GVFK' in branch_df.columns and 'Closest_GVFK' not in branch_df.columns:
+            branch_df = branch_df.rename(columns={'GVFK': 'Closest_GVFK'})
+        if 'Distance_to_River_m' in branch_df.columns and 'Final_Distance_m' not in branch_df.columns:
+            branch_df = branch_df.rename(columns={'Distance_to_River_m': 'Final_Distance_m'})
+
         # Filter to <=500m and exclude losseplads
         if 'Final_Distance_m' in branch_df.columns:
             branch_df = branch_df[branch_df['Final_Distance_m'] <= 500]
