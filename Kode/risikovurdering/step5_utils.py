@@ -1,4 +1,4 @@
-﻿"""
+"""
 Step 5 Risk Assessment - Utility Functions
 ==========================================
 
@@ -25,19 +25,20 @@ from risikovurdering.compound_matching import (
 )
 
 # Global variable to track keyword statistics
-_KEYWORD_STATS = {'branch': {}, 'activity': {}, 'total_checks': 0}
+_KEYWORD_STATS = {"branch": {}, "activity": {}, "total_checks": 0}
 
 
 def categorize_contamination_substance(substance_text: str):
     """Categorise a contamination substance using keyword matching."""
     if pd.isna(substance_text) or not isinstance(substance_text, str):
-        return 'ANDRE', DEFAULT_DISTANCE
+        return "ANDRE", DEFAULT_DISTANCE
 
     category, distance = categorize_substance(substance_text)
     if pd.isna(distance) or distance is None:
         distance = get_default_distance(category)
 
     return category, float(distance)
+
 
 def categorize_by_branch_activity(branch_text, activity_text):
     """
@@ -52,13 +53,19 @@ def categorize_by_branch_activity(branch_text, activity_text):
         tuple: (category_name, distance_m) or ('ANDRE', default_distance)
     """
     global _KEYWORD_STATS
-    _KEYWORD_STATS['total_checks'] += 1
+    _KEYWORD_STATS["total_checks"] += 1
 
     def contains_landfill_terms(text):
         if pd.isna(text):
             return False, None
         text_lower = str(text).lower()
-        landfill_keywords = ['losseplads', 'affald', 'depon', 'fyldplads', 'skraldeplads']
+        landfill_keywords = [
+            "losseplads",
+            "affald",
+            "depon",
+            "fyldplads",
+            "skraldeplads",
+        ]
 
         # Check each keyword and return which one matched
         for keyword in landfill_keywords:
@@ -72,15 +79,19 @@ def categorize_by_branch_activity(branch_text, activity_text):
 
     # Track statistics
     if branch_match:
-        _KEYWORD_STATS['branch'][branch_keyword] = _KEYWORD_STATS['branch'].get(branch_keyword, 0) + 1
+        _KEYWORD_STATS["branch"][branch_keyword] = (
+            _KEYWORD_STATS["branch"].get(branch_keyword, 0) + 1
+        )
     if activity_match:
-        _KEYWORD_STATS['activity'][activity_keyword] = _KEYWORD_STATS['activity'].get(activity_keyword, 0) + 1
+        _KEYWORD_STATS["activity"][activity_keyword] = (
+            _KEYWORD_STATS["activity"].get(activity_keyword, 0) + 1
+        )
 
     if branch_match or activity_match:
-        return 'LOSSEPLADS', get_default_distance('LOSSEPLADS')
+        return "LOSSEPLADS", get_default_distance("LOSSEPLADS")
 
     # Default to ANDRE category for non-landfill branch-only sites
-    return 'ANDRE', DEFAULT_DISTANCE
+    return "ANDRE", DEFAULT_DISTANCE
 
 
 def get_keyword_stats():
@@ -91,48 +102,32 @@ def get_keyword_stats():
 def _extract_unique_gvfk_names(df):
     """
     Extract all unique GVFK names from a dataframe.
-    Handles both 'All_Affected_GVFKs' (semicolon-separated) and 'Closest_GVFK' columns.
+    Works with 'GVFK' column from lokalitet-GVFK combinations.
 
     Returns:
         set: Unique GVFK names
     """
     gvfk_names = set()
 
-    # First try All_Affected_GVFKs (semicolon-separated list)
-    if 'All_Affected_GVFKs' in df.columns:
-        for gvfk_list in df['All_Affected_GVFKs'].dropna():
-            if str(gvfk_list) != 'nan' and gvfk_list:
-                gvfks = [g.strip() for g in str(gvfk_list).split(';') if g.strip()]
-                gvfk_names.update(gvfks)
-
-    # If no GVFKs found, fall back to Closest_GVFK
-    if not gvfk_names and 'Closest_GVFK' in df.columns:
-        for gvfk in df['Closest_GVFK'].dropna():
-            if str(gvfk) != 'nan' and gvfk:
+    # Extract from GVFK column (each row is a lokalitet-GVFK combination)
+    if "GVFK" in df.columns:
+        for gvfk in df["GVFK"].dropna():
+            if str(gvfk) != "nan" and gvfk:
                 gvfk_names.add(str(gvfk).strip())
 
     return gvfk_names
 
 
-def create_gvfk_shapefile(high_risk_sites, output_key):
-    """Create shapefile of high-risk GVFK polygons."""
+def create_gvfk_shapefile(high_risk_combinations, output_key):
+    """Create shapefile of high-risk GVFK polygons from lokalitet-GVFK combinations."""
     try:
         grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
 
-        # Get high-risk GVFK names
-        high_risk_gvfk_names = set()
-        for _, row in high_risk_sites.iterrows():
-            gvfk_list = str(row.get('All_Affected_GVFKs', ''))
-            if gvfk_list and gvfk_list != 'nan':
-                gvfks = [g.strip() for g in gvfk_list.split(';') if g.strip()]
-                high_risk_gvfk_names.update(gvfks)
-            elif 'Closest_GVFK' in row:
-                closest_gvfk = str(row['Closest_GVFK'])
-                if closest_gvfk and closest_gvfk != 'nan':
-                    high_risk_gvfk_names.add(closest_gvfk)
+        # Get high-risk GVFK names from combinations
+        high_risk_gvfk_names = _extract_unique_gvfk_names(high_risk_combinations)
 
         # Filter GVFK polygons
-        id_col = 'Navn' if 'Navn' in grundvand_gdf.columns else grundvand_gdf.columns[0]
+        id_col = "Navn" if "Navn" in grundvand_gdf.columns else grundvand_gdf.columns[0]
 
         high_risk_gvfk_polygons = grundvand_gdf[
             grundvand_gdf[id_col].isin(high_risk_gvfk_names)
@@ -141,7 +136,9 @@ def create_gvfk_shapefile(high_risk_sites, output_key):
         if not high_risk_gvfk_polygons.empty:
             output_path = get_output_path(output_key)
             high_risk_gvfk_polygons.to_file(output_path)
-            print(f"  Created shapefile: {output_key} ({len(high_risk_gvfk_polygons)} GVFKs)")
+            print(
+                f"  Created shapefile: {output_key} ({len(high_risk_gvfk_polygons)} GVFKs)"
+            )
 
     except Exception as e:
         print(f"  Warning: Could not create shapefile {output_key}: {e}")
@@ -161,20 +158,26 @@ def separate_sites_by_substance_data(distance_results):
         tuple: (sites_with_qualifying_data, sites_without_qualifying_data)
     """
     # Check which sites have substance data
-    has_substances = distance_results['Lokalitetensstoffer'].notna() & \
-                     (distance_results['Lokalitetensstoffer'].astype(str).str.strip() != '') & \
-                     (distance_results['Lokalitetensstoffer'].astype(str) != 'nan')
+    has_substances = (
+        distance_results["Lokalitetensstoffer"].notna()
+        & (distance_results["Lokalitetensstoffer"].astype(str).str.strip() != "")
+        & (distance_results["Lokalitetensstoffer"].astype(str) != "nan")
+    )
 
     # Check which sites have landfill-related branch/activity data
     def contains_landfill_terms(text):
         if pd.isna(text):
             return False
         text_lower = str(text).lower()
-        landfill_keywords = ['losseplads', 'affald', 'deponi', 'fyld', 'skraldeplads']
+        landfill_keywords = ["losseplads", "affald", "deponi", "fyld", "skraldeplads"]
         return any(keyword in text_lower for keyword in landfill_keywords)
 
-    has_landfill_branch = distance_results['Lokalitetensbranche'].apply(contains_landfill_terms)
-    has_landfill_activity = distance_results['Lokalitetensaktivitet'].apply(contains_landfill_terms)
+    has_landfill_branch = distance_results["Lokalitetensbranche"].apply(
+        contains_landfill_terms
+    )
+    has_landfill_activity = distance_results["Lokalitetensaktivitet"].apply(
+        contains_landfill_terms
+    )
     has_landfill_data = has_landfill_branch | has_landfill_activity
 
     # Sites qualify if they have substances OR landfill data
@@ -192,8 +195,13 @@ def separate_sites_by_substance_data(distance_results):
     both = (has_substances & has_landfill_data).sum()
 
     # Additional diagnostics for parked sites
-    has_branch_text = distance_results['Lokalitetensbranche'].fillna('').astype(str).str.strip() != ''
-    has_activity_text = distance_results['Lokalitetensaktivitet'].fillna('').astype(str).str.strip() != ''
+    has_branch_text = (
+        distance_results["Lokalitetensbranche"].fillna("").astype(str).str.strip() != ""
+    )
+    has_activity_text = (
+        distance_results["Lokalitetensaktivitet"].fillna("").astype(str).str.strip()
+        != ""
+    )
     has_any_text = has_branch_text | has_activity_text
     parked_with_text = ((~has_qualifying_data) & has_any_text).sum()
     parked_without_text = ((~has_qualifying_data) & ~has_any_text).sum()
@@ -202,17 +210,25 @@ def separate_sites_by_substance_data(distance_results):
     print("=" * 35)
     print(f"Total sites received from Step 4: {total_sites:,}")
     if total_sites > 0:
-        print(f"  -> Qualifying (substance data or landfill keywords): {qualifying_count:,} ({qualifying_count/total_sites*100:.1f}%)")
-        print(f"  -> Parked (no qualifying data): {non_qualifying_count:,} ({non_qualifying_count/total_sites*100:.1f}%)")
+        print(
+            f"  -> Qualifying (substance data or landfill keywords): {qualifying_count:,} ({qualifying_count / total_sites * 100:.1f}%)"
+        )
+        print(
+            f"  -> Parked (no qualifying data): {non_qualifying_count:,} ({non_qualifying_count / total_sites * 100:.1f}%)"
+        )
     else:
-        print(f"  -> Qualifying (substance data or landfill keywords): {qualifying_count}")
+        print(
+            f"  -> Qualifying (substance data or landfill keywords): {qualifying_count}"
+        )
         print(f"  -> Parked (no qualifying data): {non_qualifying_count}")
     print("Qualifying breakdown:")
     print(f"  Substance-only sites: {substance_only:,}")
     print(f"  Landfill-only sites: {landfill_only:,}")
     print(f"  Both substance+landfill: {both:,}")
     print("Parked (non-qualifying) breakdown:")
-    print(f"  With branch/activity text but no qualifying keywords: {parked_with_text:,}")
+    print(
+        f"  With branch/activity text but no qualifying keywords: {parked_with_text:,}"
+    )
     print(f"  Without any branch/activity text: {parked_without_text:,}")
 
     return sites_with_qualifying_data, sites_without_qualifying_data
