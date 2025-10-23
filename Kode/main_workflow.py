@@ -1,14 +1,44 @@
 ﻿"""
-Main workflow orchestrator for groundwater contamination analysis.
+Main workflow orchestrator for groundwater contamination risk assessment.
 
-This script runs the complete analysis workflow:
-1. Count all GVFK
-2. Identify GVFK with river contact  
-3. Find GVFK with V1/V2 sites
-4. Calculate distances to rivers
-5. Create visualizations
+STANDARDIZED WORKFLOW (Steps 1-5)
+==================================
 
-Each step is modularized for easier maintenance and debugging.
+This is the core standardized workflow for assessing groundwater contamination risk
+from contaminated sites to groundwater aquifers (GVFKs).
+
+WORKFLOW STEPS:
+---------------
+1. Load all groundwater aquifers (GVFKs) in Denmark
+2. Filter to GVFKs with contact to targeted rivers (Kontakt = 1)
+3. Identify contaminated sites (V1/V2) within these GVFKs
+4. Calculate distances from each site to nearest river segment
+5. Risk assessment:
+   a) General assessment: Universal 500m threshold
+   b) Compound-specific: Literature-based variable thresholds per contamination category
+
+CORE OUTPUTS:
+-------------
+- CSV files: Risk assessment results, site-GVFK combinations, parked sites
+- Shapefiles: High-risk GVFKs for GIS visualization
+- Plots: 3 essential verification plots (distance distribution, category breakdown, progression)
+
+OPTIONAL ANALYSIS:
+------------------
+Extended analysis tools available in risikovurdering/optional_analysis/
+See that folder's README for details on branch analysis, comprehensive visualizations, etc.
+
+CONFIGURATION:
+--------------
+- Settings: Edit SETTINGS.yaml to modify risk thresholds
+- Paths: config.py contains all data file locations
+- Requirements: Install dependencies with 'pip install -r requirements.txt'
+
+USAGE:
+------
+    python main_workflow.py
+
+Expected runtime: ~5-15 minutes depending on data size.
 """
 
 import pandas as pd
@@ -28,62 +58,96 @@ warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
 def main():
     """
-    Run the complete groundwater analysis workflow.
+    Run the complete standardized groundwater risk assessment workflow.
+
+    This function orchestrates all steps sequentially:
+    - Step 1: Count total GVFKs in Denmark
+    - Step 2: Filter to GVFKs with river contact (Kontakt = 1)
+    - Step 3: Identify V1/V2 contaminated sites in these GVFKs
+    - Step 4: Calculate site-to-river distances
+    - Step 5: Risk assessment (general 500m + compound-specific)
+    - Visualizations: Create 3 essential verification plots
+
+    Returns:
+        bool: True if workflow completed successfully, False if any step failed
+
+    Note:
+        Results are saved to Resultater/ directory.
+        See config.CORE_OUTPUTS for list of output files created.
     """
-    print("Groundwater Contamination Analysis Workflow")
-    print("=" * 50)
-    
+    print("=" * 80)
+    print("GROUNDWATER CONTAMINATION RISK ASSESSMENT - STANDARDIZED WORKFLOW")
+    print("=" * 80)
+
     # Validate input files before starting
+    print("\nValidating input data files...")
     if not validate_input_files():
-        print("ERROR: Some required input files are missing. Check file paths in config.py")
+        print("\nERROR: Missing required input files.")
+        print("Check config.py for expected file locations.")
         return False
+    print("✓ All required input files found")
     
     # Initialize results storage
     results = {}
-    
-    # Step 1: Count total GVFK
+
+    print("\n" + "=" * 80)
+    print("STEP 1: Load All Groundwater Aquifers (GVFKs)")
+    print("=" * 80)
     gvf, total_gvfk = run_step1()
     if gvf is None:
-        print("ERROR: Step 1 failed. Cannot proceed.")
+        print("✗ Step 1 failed. Cannot proceed.")
         return False
-    
+    print(f"✓ Step 1 complete: {total_gvfk:,} total GVFKs in Denmark")
     results['step1'] = {'gvf': gvf, 'total_gvfk': total_gvfk}
     
-    # Step 2: Count GVFK with river contact
+    print("\n" + "=" * 80)
+    print("STEP 2: Filter to GVFKs with River Contact")
+    print("=" * 80)
     rivers_gvfk, river_contact_count, gvf_with_rivers = run_step2()
     if not rivers_gvfk:
-        print("ERROR: Step 2 failed or found no GVFK with river contact. Cannot proceed.")
+        print("✗ Step 2 failed or found no GVFKs with river contact.")
         return False
-    
+    print(f"✓ Step 2 complete: {river_contact_count:,} GVFKs with river contact ({river_contact_count/total_gvfk*100:.1f}% of total)")
     results['step2'] = {
-        'rivers_gvfk': rivers_gvfk, 
+        'rivers_gvfk': rivers_gvfk,
         'river_contact_count': river_contact_count,
         'gvf_with_rivers': gvf_with_rivers
     }
-    
-    # Step 3: Count GVFK with river contact and V1/V2 sites
+
+    print("\n" + "=" * 80)
+    print("STEP 3: Identify V1/V2 Contaminated Sites in GVFKs")
+    print("=" * 80)
     gvfk_with_v1v2_names, v1v2_sites = run_step3(rivers_gvfk)
     if v1v2_sites.empty:
-        print("ERROR: Step 3 failed or found no V1/V2 sites. Cannot proceed to distance calculation.")
+        print("✗ Step 3 failed or found no V1/V2 sites.")
         return False
-    
+    unique_sites_count = v1v2_sites['Lokalitet_'].nunique() if 'Lokalitet_' in v1v2_sites.columns else len(v1v2_sites)
+    print(f"✓ Step 3 complete: {unique_sites_count:,} unique contaminated sites in {len(gvfk_with_v1v2_names):,} GVFKs")
     results['step3'] = {
         'gvfk_with_v1v2_names': gvfk_with_v1v2_names,
         'v1v2_sites': v1v2_sites
     }
-    
-    # Step 4: Calculate distances
+
+    print("\n" + "=" * 80)
+    print("STEP 4: Calculate Distances from Sites to Rivers")
+    print("=" * 80)
     from risikovurdering.step4_distances import run_step4
     distance_results = run_step4(v1v2_sites)
     if distance_results is None:
-        print("ERROR: Step 4 failed. Distance calculation unsuccessful.")
+        print("✗ Step 4 failed. Distance calculation unsuccessful.")
         return False
+    print(f"✓ Step 4 complete: Calculated distances for site-GVFK combinations")
     
     results['step4'] = {'distance_results': distance_results}
-    
-    # Step 5: Risk Assessment
+
+    print("\n" + "=" * 80)
+    print("STEP 5: Risk Assessment")
+    print("=" * 80)
+    print("Running dual risk assessment:")
+    print("  5a) General assessment: Universal 500m threshold")
+    print("  5b) Compound-specific: Literature-based variable thresholds")
     step5_results = run_step5()
-    
+
     if not step5_results['success']:
         print(f"ERROR: Step 5 failed")
         results['step5'] = {
@@ -131,17 +195,36 @@ def main():
         }
 
     # Create visualizations if available
+    print("\n" + "=" * 80)
+    print("Creating Verification Visualizations")
+    print("=" * 80)
     create_visualizations_if_available(results)
-    
-    print("\nWorkflow completed successfully!")
+
+    print("\n" + "=" * 80)
+    print("✓ WORKFLOW COMPLETED SUCCESSFULLY")
+    print("=" * 80)
+    print("\nResults saved to: Resultater/")
+    print("Visualizations saved to: Resultater/Figures/")
+    print("\nFor extended analysis, see: risikovurdering/optional_analysis/")
     return True
 
 def generate_workflow_summary(results):
     """
-    Generate and save a comprehensive workflow summary.
-    
+    Generate and save workflow summary statistics to CSV.
+
+    Creates a summary table showing the progression of GVFKs and sites through
+    each workflow step, with percentage calculations.
+
     Args:
-        results (dict): Dictionary containing results from all workflow steps
+        results (dict): Dictionary containing results from all workflow steps.
+                       Expected keys: 'step1', 'step2', 'step3', 'step4', 'step5'
+
+    Output:
+        Saves workflow_summary.csv to Resultater/ directory
+
+    Note:
+        This is a simple numerical summary. For visualizations, see
+        Resultater/Figures/workflow_gvfk_progression.png
     """
     print("Generating workflow summary...")
     
@@ -294,16 +377,18 @@ def generate_workflow_summary(results):
 
 def create_visualizations_if_available(results):
     """
-    Create visualizations if the selected_visualizations module is available.
-    
+    Create core workflow visualizations.
+
+    Note: Extended visualizations moved to risikovurdering/optional_analysis/
+
     Args:
         results (dict): Dictionary containing results from all workflow steps
     """
     print("Creating visualizations...")
-    
+
     try:
-        # Try to import and run selected visualizations
-        from risikovurdering.selected_visualizations import create_distance_histogram_with_thresholds, create_progression_plot
+        # Try to import and run selected visualizations (optional - moved to optional_analysis/)
+        from risikovurdering.optional_analysis.selected_visualizations import create_distance_histogram_with_thresholds, create_progression_plot
         
         results_path = "Resultater"
         
@@ -332,8 +417,8 @@ def create_visualizations_if_available(results):
             print(f"WARNING: Could not create progression plot - {e}")
         
     except ImportError:
-        print("WARNING: Selected visualizations module not found. Skipping visualization creation.")
-        print("To create visualizations, run 'python selected_visualizations.py' manually.")
+        print("WARNING: Extended visualizations module not found (moved to optional_analysis/). Skipping optional plots.")
+        print("To create extended visualizations, see risikovurdering/optional_analysis/README.md")
     
     # Create Step 5 visualizations if high-risk sites are available
     step5_has_results = False
