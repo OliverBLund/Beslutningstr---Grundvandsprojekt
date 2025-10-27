@@ -5,6 +5,12 @@ This module creates interactive folium maps showing GVFK polygons, V1/V2 sites,
 river segments, and distance connections with minimum distances highlighted.
 """
 
+import sys
+from pathlib import Path
+
+# Add the Kode directory to Python path for config import when running independently
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 import folium
 import geopandas as gpd
 import os

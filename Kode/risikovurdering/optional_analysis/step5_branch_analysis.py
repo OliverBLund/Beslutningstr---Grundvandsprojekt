@@ -34,13 +34,19 @@ The analysis focuses on:
 Output: Separate folder structure under Resultater/branch_analysis/
 """
 
+import sys
+from pathlib import Path
+
+# Add the Kode directory to Python path for config import when running independently
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from datetime import datetime
-from config import RESULTS_PATH
+from config import RESULTS_DIR as RESULTS_PATH
 
 # Set matplotlib to use Danish-friendly encoding
 plt.rcParams["font.family"] = "DejaVu Sans"
@@ -600,8 +606,6 @@ def _analyze_generel_risiko_impact(sites_without_substances, output_dir):
 
     # Load current Step 5a general assessment (500m sites) - this is the true "generel risiko" baseline
     try:
-        from config import RESULTS_PATH
-
         # Try GVFK risk summary first
         current_gvfk_file = os.path.join(RESULTS_PATH, "step5_gvfk_risk_summary.csv")
         if os.path.exists(current_gvfk_file):
@@ -2110,7 +2114,6 @@ def _create_distance_distribution_danish_chart(results, output_dir, colors):
 if __name__ == "__main__":
     import pandas as pd
     import os
-    from config import RESULTS_PATH
 
     print("Running Branch Analysis on Parked Sites")
     print("=" * 50)

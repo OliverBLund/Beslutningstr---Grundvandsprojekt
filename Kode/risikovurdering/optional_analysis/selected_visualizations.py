@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Add the Kode directory to Python path for config import when running independently
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import os
@@ -583,7 +589,7 @@ def create_progression_plot(figures_path, required_files):
             raise FileNotFoundError(f"Cannot find Step 5a file: {step5a_path}")
 
         # Step 5b: Compound-specific assessment
-        step5b_path = get_output_path("step5_compound_specific_sites")
+        step5b_path = get_output_path("step5_compound_detailed_combinations")
         if os.path.exists(step5b_path):
             step5b_df = pd.read_csv(step5b_path)
             step5b_gvfks = step5b_df["GVFK"].nunique()
@@ -727,7 +733,7 @@ def create_gvfk_cascade_table_from_data():
 
         try:
             # Load compound sites if available
-            compound_path = get_output_path("step5_compound_specific_sites")
+            compound_path = get_output_path("step5_compound_detailed_combinations")
             if os.path.exists(compound_path):
                 compound_sites = pd.read_csv(compound_path)
                 compound_gvfks = compound_sites["GVFK"].dropna().nunique()
@@ -1540,12 +1546,12 @@ if __name__ == "__main__":
     print(f"- gvfk_progression.png (Danish, both Step 5a and 5b)")
     print(f"- losseplads_override_impact.png")
     print(f"- Danish presentation tables printed above")
-    print(f"\nðŸŽ¯ POWERPOINT-READY TABLES EXPORTED:")
-    print(f"   ðŸ“ {os.path.join(results_path, 'Presentation_Tables')}")
-    print(f"   ðŸ“„ table1_category_analysis.html")
-    print(f"   ðŸ“„ table2_losseplads_impact.html")
-    print(f"   ðŸ“„ table3_threshold_decision.html")
-    print(f"\nðŸ’¡ HOW TO USE:")
+    print(f"=== POWERPOINT-READY TABLES EXPORTED:")
+    print(f"   Location: {os.path.join(results_path, 'Presentation_Tables')}")
+    print(f"   - table1_category_analysis.html")
+    print(f"   - table2_losseplads_impact.html")
+    print(f"   - table3_threshold_decision.html")
+    print(f"=== HOW TO USE:")
     print(f"   1. Open HTML files in your browser")
     print(f"   2. Select the table and copy (Ctrl+A, Ctrl+C)")
     print(f"   3. Paste directly into PowerPoint - formatting will be preserved!")
