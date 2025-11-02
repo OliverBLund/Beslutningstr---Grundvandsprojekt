@@ -233,11 +233,16 @@ def load_and_filter_branch_sites():
             columns={"Distance_to_River_m": "Final_Distance_m"}
         )
 
-    print(f"  Total unknown substance sites: {len(unknown_sites):,}")
+    print(f"  Total unknown substance combinations: {len(unknown_sites):,}")
+    print(f"  Unique sites: {unknown_sites['Lokalitet_ID'].nunique():,}")
 
     # Filter 1: Distance <=500m
-    branch_sites = unknown_sites[unknown_sites["Final_Distance_m"] <= 500].copy()
-    print(f"  After <=500m filter: {len(branch_sites):,} sites")
+    branch_combinations = unknown_sites[unknown_sites["Final_Distance_m"] <= 500].copy()
+    n_combos_after_distance = len(branch_combinations)
+    n_sites_after_distance = branch_combinations["Lokalitet_ID"].nunique()
+    print(
+        f"  After <=500m filter: {n_combos_after_distance:,} combinations ({n_sites_after_distance:,} unique sites)"
+    )
 
     # Filter 2: Exclude losseplads keywords
     def has_losseplads(text):
@@ -247,18 +252,29 @@ def load_and_filter_branch_sites():
         keywords = ["losseplads", "affald", "depon", "fyldplads", "skraldeplads"]
         return any(keyword in text_lower for keyword in keywords)
 
-    branch_sites = branch_sites[
+    branch_combinations = branch_combinations[
         ~(
-            branch_sites["Lokalitetensbranche"].apply(has_losseplads)
-            | branch_sites["Lokalitetensaktivitet"].apply(has_losseplads)
+            branch_combinations["Lokalitetensbranche"].apply(has_losseplads)
+            | branch_combinations["Lokalitetensaktivitet"].apply(has_losseplads)
         )
     ].copy()
 
-    n_sites = len(branch_sites)
-    n_gvfks = branch_sites["Closest_GVFK"].dropna().nunique()
+    n_combos_final = len(branch_combinations)
+    n_sites_final = branch_combinations["Lokalitet_ID"].nunique()
+    n_gvfks = branch_combinations["Closest_GVFK"].dropna().nunique()
 
-    print(f"  After losseplads exclusion: {n_sites:,} sites")
+    print(
+        f"  After losseplads exclusion: {n_combos_final:,} combinations ({n_sites_final:,} unique sites)"
+    )
     print(f"  Branch-only sites span {n_gvfks} GVFKs")
+
+    # Deduplicate to one row per site (keep first = closest GVFK)
+    # This ensures consistency with substance_sites throughout the analysis
+    branch_sites = branch_combinations.drop_duplicates(
+        subset=["Lokalitet_ID"], keep="first"
+    ).copy()
+
+    print(f"  Deduplicated to {len(branch_sites):,} unique sites for analysis")
 
     return branch_sites
 
@@ -2343,13 +2359,16 @@ def run_phase4(data, output_dir):
 
     substance_detailed = data["substance_detailed"]
     substance_sites = data["substance_sites"]
-    branch_sites = data["branch_sites"]
+    branch_sites = data[
+        "branch_sites"
+    ]  # Already deduplicated in load_and_filter_branch_sites()
     new_gvfk_sites = data["sites_in_new_gvfks"]
     gvfk_categories = data["gvfk_categories"]
     gvfk_area_volume = data["gvfk_area_volume"]
     shapefiles = data["shapefiles"]
 
     # Combine for expanded scenario
+    # Both substance_sites and branch_sites are already deduplicated (one row per unique site)
     all_sites = pd.concat([substance_sites, branch_sites], ignore_index=True)
 
     # Create hexagonal heatmaps
