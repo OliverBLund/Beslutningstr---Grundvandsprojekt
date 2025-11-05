@@ -114,7 +114,7 @@ print(secondary_gvfks.head(10).to_string(index=False))
 
 # Save analysis results
 analysis_path = RESULTS_DIR / 'step5b_gvfk_association_analysis.csv'
-gvfk_analysis_df.to_csv(analysis_path, index=False)
+gvfk_analysis_df.to_csv(analysis_path, index=False, encoding="utf-8")
 print(f"\n  Saved GVFK analysis to: {analysis_path}")
 
 # ============================================================================
@@ -143,7 +143,7 @@ multi_gvfk_summary = multi_gvfk_unique.groupby('Lokalitet_ID').agg({
 
 multi_gvfk_summary.columns = ['Lokalitet_ID', 'Associated_GVFKs', 'Min_Distance_m', 'Max_Distance_m', 'GVFK_Count', 'Min_Distance_GVFK_Count']
 sites_path = RESULTS_DIR / 'step5b_multi_gvfk_sites.csv'
-multi_gvfk_summary.to_csv(sites_path, index=False)
+multi_gvfk_summary.to_csv(sites_path, index=False, encoding="utf-8")
 print(f"  Saved multi-GVFK site summary to: {sites_path}")
 
 # ============================================================================

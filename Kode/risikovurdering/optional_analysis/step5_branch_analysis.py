@@ -1624,7 +1624,7 @@ FILES GENERATED:
 
     # Save detailed CSV
     sites_data.to_csv(
-        os.path.join(output_dir, "branch_only_sites_detailed.csv"), index=False
+        os.path.join(output_dir, "branch_only_sites_detailed.csv", encoding="utf-8"), index=False
     )
 
     print(f"  âœ“ Analysis summary and detailed data saved")

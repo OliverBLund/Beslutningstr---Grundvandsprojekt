@@ -353,7 +353,7 @@ def generate_gvfk_risk_summary():
 
         # Save to CSV
         output_path = get_output_path("step5_gvfk_risk_summary")
-        gvfk_df.to_csv(output_path, index=False)
+        gvfk_df.to_csv(output_path, index=False, encoding="utf-8")
 
         print(f"\nâœ“ GVFK risk summary saved: {output_path}")
         print(f"  Total GVFKs at risk: {len(gvfk_df)}")
@@ -386,7 +386,7 @@ def handle_unknown_substance_sites(sites_without_substances):
     # Save these sites separately
     if len(sites_without_substances) > 0:
         unknown_path = get_output_path("step5_unknown_substance_sites")
-        sites_without_substances.to_csv(unknown_path, index=False)
+        sites_without_substances.to_csv(unknown_path, index=False, encoding="utf-8")
         print(f"  Saved to: {unknown_path}")
 
         # Basic statistics

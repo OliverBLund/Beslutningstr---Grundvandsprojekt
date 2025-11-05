@@ -34,7 +34,7 @@ def run_step4(v1v2_combined):
         return None
 
     # Load rivers file
-    rivers = gpd.read_file(RIVERS_PATH)
+    rivers = gpd.read_file(RIVERS_PATH, encoding='utf-8')
     rivers_with_contact = rivers[rivers["Kontakt"] == 1]
 
     if rivers_with_contact.empty:
@@ -83,6 +83,17 @@ def run_step4(v1v2_combined):
             rivers_with_contact["GVForekom"] == gvfk_name
         ]
 
+        segment_indices = matching_rivers.index.tolist()
+        segment_ov_ids = []
+        if len(segment_indices) > 0 and "ov_id" in matching_rivers.columns:
+            segment_ov_ids = [
+                str(val) if pd.notna(val) else ""
+                for val in matching_rivers["ov_id"]
+            ]
+
+        segment_indices_str = ";".join(str(idx) for idx in segment_indices) if segment_indices else ""
+        segment_ov_ids_str = ";".join(segment_ov_ids) if segment_ov_ids else ""
+
         # Initialize result for this combination
         result = {
             "Lokalitet_ID": lokalitet_id,
@@ -91,6 +102,12 @@ def run_step4(v1v2_combined):
             "Has_Matching_Rivers": len(matching_rivers) > 0,
             "River_Count": len(matching_rivers),
             "Distance_to_River_m": None,
+            "River_Segment_Count": len(matching_rivers),
+            "River_Segment_FIDs": segment_indices_str,
+            "River_Segment_ov_ids": segment_ov_ids_str,
+            "Nearest_River_FID": None,
+            "Nearest_River_ov_id": None,
+            "Nearest_River_ov_navn": None,
         }
 
         # Preserve Step 5 columns if available
@@ -113,15 +130,27 @@ def run_step4(v1v2_combined):
         else:
             # Calculate minimum distance to all matching river segments
             min_distance = float("inf")
+            nearest_river_idx = None
+            nearest_river_row = None
 
-            for _, river in matching_rivers.iterrows():
+            for river_idx, river in matching_rivers.iterrows():
                 distance = site_geom.distance(river.geometry)
-                min_distance = min(min_distance, distance)
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_river_idx = river_idx
+                    nearest_river_row = river
 
             if min_distance == float("inf"):
                 result["Distance_to_River_m"] = None
             else:
                 result["Distance_to_River_m"] = min_distance
+                if nearest_river_idx is not None:
+                    result["Nearest_River_FID"] = int(nearest_river_idx)
+                if nearest_river_row is not None:
+                    if "ov_id" in nearest_river_row:
+                        result["Nearest_River_ov_id"] = nearest_river_row.get("ov_id")
+                    if "ov_navn" in nearest_river_row:
+                        result["Nearest_River_ov_navn"] = nearest_river_row.get("ov_navn")
 
         results_data.append(result)
 
@@ -187,10 +216,21 @@ def _save_distance_results(results_df, valid_results, v1v2_combined):
         return
 
     # Save valid distances (used by visualizations)
-    valid_results.to_csv(get_output_path("step4_valid_distances"), index=False)
+    valid_results.to_csv(get_output_path("step4_valid_distances"), index=False, encoding="utf-8")
 
     # Prepare ALL lokalitet-GVFK combinations for risk assessment (no aggregation)
-    base_columns = ["Lokalitet_ID", "GVFK", "Site_Type", "Distance_to_River_m"]
+    base_columns = [
+        "Lokalitet_ID",
+        "GVFK",
+        "Site_Type",
+        "Distance_to_River_m",
+        "Nearest_River_FID",
+        "Nearest_River_ov_id",
+        "Nearest_River_ov_navn",
+        "River_Segment_Count",
+        "River_Segment_FIDs",
+        "River_Segment_ov_ids",
+    ]
     step5_columns = [
         "Lokalitetensbranche",
         "Lokalitetensaktivitet",
@@ -209,14 +249,12 @@ def _save_distance_results(results_df, valid_results, v1v2_combined):
 
     # Save ALL combinations for Step 5 (no minimum filtering, no aggregation)
     all_combinations.to_csv(
-        get_output_path("step4_final_distances_for_risk_assessment"), index=False
+        get_output_path("step4_final_distances_for_risk_assessment"), index=False, encoding="utf-8"
     )
 
     # Create unique distances file (used by visualizations - one row per site)
     # This takes the minimum distance per site for backward compatibility with visualizations
-    min_distance_entries = valid_results[
-        valid_results["Is_Min_Distance"] == True
-    ].copy()
+    min_distance_entries = valid_results[valid_results["Is_Min_Distance"] == True].copy()
     unique_distances = (
         min_distance_entries.sort_values(["Lokalitet_ID", "GVFK"])
         .groupby("Lokalitet_ID")
@@ -227,7 +265,7 @@ def _save_distance_results(results_df, valid_results, v1v2_combined):
     # Prepare unique distances with renamed columns for visualization compatibility
     unique_distances = unique_distances[output_columns].copy()
     unique_distances = unique_distances.rename(columns={"Lokalitet_ID": "Lokalitetsnr"})
-    unique_distances.to_csv(get_output_path("unique_lokalitet_distances"), index=False)
+    unique_distances.to_csv(get_output_path("unique_lokalitet_distances"), index=False, encoding="utf-8")
 
     # Create shapefile version with geometry (for visualizations that need geometries)
     if not v1v2_combined.empty:
@@ -244,7 +282,7 @@ def _save_distance_results(results_df, valid_results, v1v2_combined):
 
         # Create GeoDataFrame and save shapefile
         unique_gdf = gpd.GeoDataFrame(unique_distances_with_geom, crs=v1v2_combined.crs)
-        unique_gdf.to_file(get_output_path("unique_lokalitet_distances_shp"))
+        unique_gdf.to_file(get_output_path("unique_lokalitet_distances_shp"), encoding="utf-8")
 
     unique_sites = valid_results["Lokalitet_ID"].nunique()
     total_combinations = len(all_combinations)

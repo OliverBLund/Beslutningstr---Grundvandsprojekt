@@ -424,7 +424,7 @@ def _load_or_dissolve_geometries(shp_data, cache_path, source_path, locality_col
     
     # Save to cache
     try:
-        dissolved_geom.to_file(cache_path)
+        dissolved_geom.to_file(cache_path, encoding="utf-8")
         print(f"✓ {dataset_name}: Dissolved {len(shp_data):,} → {len(dissolved_geom):,} geometries and saved to cache")
     except Exception as e:
         print(f"Warning: Could not save {dataset_name} cache ({e}), continuing without caching")
@@ -619,14 +619,14 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names):
     
     # Save V1/V2 site-GVFK combinations
     v1v2_sites_path = get_output_path('step3_v1v2_sites')
-    v1v2_combined.to_file(v1v2_sites_path)
+    v1v2_combined.to_file(v1v2_sites_path, encoding="utf-8")
     
     # Save GVFK polygons that contain V1/V2 sites
     gvf = gpd.read_file(GRUNDVAND_PATH)
     gvfk_with_v1v2_polygons = gvf[gvf['Navn'].isin(gvfk_with_v1v2_names)]
     
     gvfk_polygons_path = get_output_path('step3_gvfk_polygons')
-    gvfk_with_v1v2_polygons.to_file(gvfk_polygons_path)
+    gvfk_with_v1v2_polygons.to_file(gvfk_polygons_path, encoding="utf-8")
     print(f"Saved GVFK polygons: {len(gvfk_with_v1v2_polygons)} records")
     
     # Note: Detailed relationships CSV removed - data is passed directly to Step 4

@@ -135,7 +135,7 @@ def create_gvfk_shapefile(high_risk_combinations, output_key):
 
         if not high_risk_gvfk_polygons.empty:
             output_path = get_output_path(output_key)
-            high_risk_gvfk_polygons.to_file(output_path)
+            high_risk_gvfk_polygons.to_file(output_path, encoding="utf-8")
             print(
                 f"  Created shapefile: {output_key} ({len(high_risk_gvfk_polygons)} GVFKs)"
             )

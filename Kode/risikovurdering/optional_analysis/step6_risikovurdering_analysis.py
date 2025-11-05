@@ -867,7 +867,7 @@ def create_progression_table(shapefiles, gvfk_categories, gvfk_area_volume, outp
 
     # Save to CSV
     table_path = os.path.join(output_dir, "gvfk_progression_table.csv")
-    df.to_csv(table_path, index=False)
+    df.to_csv(table_path, index=False, encoding="utf-8")
 
     print(f"  Saved: gvfk_progression_table.csv")
     print("\n  Progression Summary:")
@@ -1067,7 +1067,7 @@ def create_core_branch_area_summary(
     ).round(1)
 
     out_path = os.path.join(output_dir, "core_branch_area_summary.csv")
-    summary_df.to_csv(out_path, index=False)
+    summary_df.to_csv(out_path, index=False, encoding="utf-8")
     print("  Saved: core_branch_area_summary.csv")
     print(summary_df.to_string(index=False, na_rep="-"))
 
@@ -1674,7 +1674,7 @@ def create_comparison_tables(
 
     summary_df = pd.DataFrame(summary_data)
     summary_path = os.path.join(output_dir, "three_group_characteristics.csv")
-    summary_df.to_csv(summary_path, index=False)
+    summary_df.to_csv(summary_path, index=False, encoding="utf-8")
     print(f"  Saved: three_group_characteristics.csv")
 
     # Table 2: Top 15 branches comparison
@@ -1735,7 +1735,7 @@ def create_top_15_comparison_table(series_A, series_B, series_C, data_type, outp
     df.insert(0, "Rank", range(1, len(df) + 1))
 
     table_path = os.path.join(output_dir, f"top_15_{data_type}_comparison.csv")
-    df.to_csv(table_path, index=False)
+    df.to_csv(table_path, index=False, encoding="utf-8")
     print(f"  Saved: top_15_{data_type}_comparison.csv")
 
     return df
@@ -2278,7 +2278,7 @@ def create_regional_distribution_table(
 
     df = pd.DataFrame(table_data)
     table_path = os.path.join(output_dir, "regional_distribution.csv")
-    df.to_csv(table_path, index=False)
+    df.to_csv(table_path, index=False, encoding="utf-8")
 
     print(f"  Saved: regional_distribution.csv")
     print("\n  Regional Distribution:")
@@ -2337,7 +2337,7 @@ def create_new_gvfk_characteristics_table(
 
     df = pd.DataFrame(table_data)
     table_path = os.path.join(output_dir, "new_gvfk_characteristics.csv")
-    df.to_csv(table_path, index=False)
+    df.to_csv(table_path, index=False, encoding="utf-8")
 
     print(f"  Saved: new_gvfk_characteristics.csv")
     print(f"  Characterized {len(new_gvfks)} new GVFKs")
@@ -2549,7 +2549,7 @@ def compare_core_vs_new_gvfks(gvfk_categories, gvfk_area_volume, output_dir):
 
     summary_df = pd.DataFrame(summary_data)
     summary_path = os.path.join(output_dir, "core_vs_new_gvfk_comparison.csv")
-    summary_df.to_csv(summary_path, index=False)
+    summary_df.to_csv(summary_path, index=False, encoding="utf-8")
 
     print(f"\n  Saved: core_vs_new_gvfk_comparison.csv")
     print("\n  Summary Statistics:")

@@ -117,7 +117,7 @@ examples_df = pd.DataFrame([
 ])
 
 examples_path = RESULTS_DIR / 'multi_gvfk_examples.csv'
-examples_df.to_csv(examples_path, index=False)
+examples_df.to_csv(examples_path, index=False, encoding="utf-8")
 print(f"\n\nSaved detailed examples to: {examples_path}")
 
 # Calculate total theoretical GVFK increase from multi-GVFK sites

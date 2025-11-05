@@ -206,7 +206,7 @@ def run_general_assessment(distance_results):
     # Save results
     if not high_risk_combinations.empty:
         sites_path = get_output_path("step5_high_risk_sites")
-        high_risk_combinations.to_csv(sites_path, index=False)
+        high_risk_combinations.to_csv(sites_path, index=False, encoding="utf-8")
         print(f"\nSaved: {sites_path}")
 
         # Create GVFK shapefile with validation
@@ -800,7 +800,7 @@ def create_gvfk_shapefile_with_validation(
 
         if not high_risk_gvfk_polygons.empty:
             output_path = get_output_path(output_key)
-            high_risk_gvfk_polygons.to_file(output_path)
+            high_risk_gvfk_polygons.to_file(output_path, encoding="utf-8")
 
             shapefile_gvfk_count = len(high_risk_gvfk_polygons)
             print(f"  Shapefile created: {output_key}")
@@ -835,7 +835,7 @@ def save_compound_results(compound_combinations):
     """Save compound-specific assessment results."""
     # Save detailed combinations (all site-GVFK-substance combinations)
     detailed_path = get_output_path("step5_compound_detailed_combinations")
-    compound_combinations.to_csv(detailed_path, index=False)
+    compound_combinations.to_csv(detailed_path, index=False, encoding="utf-8")
     print(f"  Saved detailed combinations: {len(compound_combinations):,} rows")
 
     # Create GVFK shapefile

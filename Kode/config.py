@@ -1,4 +1,4 @@
-"""Core configuration for groundwater analysis workflows.
+﻿"""Core configuration for groundwater analysis workflows.
 
 Centralized configuration for file locations, workflow settings, and paths.
 All paths use `pathlib.Path` objects for cross-platform compatibility.
@@ -58,6 +58,34 @@ def _load_workflow_settings():
 WORKFLOW_SETTINGS = _load_workflow_settings()
 
 # -------------------------------------------------------------------
+# Step 6 Map Generation Settings
+# -------------------------------------------------------------------
+STEP6_MAP_SETTINGS = {
+    "generate_category_maps": True,  # Generate maps for all categories
+    "generate_compound_maps": True,  # Generate specific compound maps
+
+    # Specific compounds to generate maps for (expandable list)
+    "compounds_to_map": [
+        "Benzen",
+        "Toluen",
+        "Ethylbenzen",
+        "Xylener",
+        "Naphthalen",
+        "Vinylchlorid",
+        "1,1,1-Trichlorethan",
+        "Tetrachlorethylen (PCE)",
+        "Trichlorethylen (TCE)",
+        "cis-1,2-Dichlorethylen",
+    ],
+
+    # Which river metrics to generate (all 4 for overall maps)
+    "river_metrics_overall": ["cmix_pct_mkk", "cmix_absolute", "exceedance_ratio", "total_flux"],
+
+    # Which river metric to use for category/compound maps (default: Cmix % of MKK)
+    "river_metric_filtered": "cmix_pct_mkk",
+}
+
+# -------------------------------------------------------------------
 # Input data paths
 # -------------------------------------------------------------------
 GRUNDVAND_PATH = SHAPE_DIR / "VP3Genbesøg_grundvand_geometri.shp"
@@ -71,6 +99,7 @@ V2_SHP_PATH = SHAPE_DIR / "V2FLADER.shp"
 GVFK_LAYER_MAPPING_PATH = DATA_DIR / "vp3_h1_grundvandsforekomster_VP3Genbesøg.csv"
 GVD_RASTER_DIR = DATA_DIR / "dkm2019_vp3_GVD"
 GVFK_AREA_VOLUME_PATH = DATA_DIR / "volumen areal_genbesøg.csv"
+RIVER_FLOW_POINTS_PATH = DATA_DIR / "dkm2019_vp3_qpunkter_inklq95" / "dkm_qpoints_gvf_rev20230825_kontakt_inklQ95.shp"
 
 # Cache files for repeated spatial operations
 V1_DISSOLVED_CACHE = CACHE_DIR / "v1_dissolved_geometries.shp"
@@ -128,6 +157,11 @@ OPTIONAL_OUTPUTS = {
     "interactive_distance_map": RESULTS_DIR / "interactive_distance_map.html",
 
     # Advanced analysis (Tilstandsvurdering)
+    "step6_flux_site_segment": RESULTS_DIR / "step6_flux_site_segment.csv",
+    "step6_flux_by_segment": RESULTS_DIR / "step6_flux_by_segment.csv",
+    "step6_cmix_results": RESULTS_DIR / "step6_cmix_results.csv",
+    "step6_segment_summary": RESULTS_DIR / "step6_segment_summary.csv",
+    # Legacy export retained until all consumers migrate
     "step6_flux_results": RESULTS_DIR / "step6_flux_results.csv",
 }
 
@@ -268,6 +302,7 @@ __all__ = [
     "GVFK_LAYER_MAPPING_PATH",
     "GVD_RASTER_DIR",
     "GVFK_AREA_VOLUME_PATH",
+    "RIVER_FLOW_POINTS_PATH",
 
     # Cache files
     "V1_DISSOLVED_CACHE",
@@ -275,6 +310,7 @@ __all__ = [
 
     # Settings
     "WORKFLOW_SETTINGS",
+    "STEP6_MAP_SETTINGS",
 
     # Output dictionaries
     "CORE_OUTPUTS",
