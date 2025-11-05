@@ -45,23 +45,81 @@ except ImportError:  # Script executed directly
 
 # Seconds per (mean) year – used to derive flux per second.
 SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
+STANDARD_CONCENTRATIONS = {
+    # MERGED Level 1/2: Branche/Aktivitet + Substance overrides
+    "activity_substance": {
+        # Servicestationer / benzintanke
+        "Servicestationer_Benzen": 8000.0,              # D3 Table 3 – Benzen, servicestationer (90% fraktil)
+        "Benzin og olie, salg af_Benzen": 8000.0,       # Same (duplicate synonym)
 
-# Standard concentrations (µg/L) by contamination category.
-STANDARD_CONCENTRATIONS: Dict[str, float] = {
-    "LOSSEPLADS": 1000.0,
-    "PAH_FORBINDELSER": 2000.0,
-    "BTXER": 1500.0,
-    "PHENOLER": 1200.0,
-    "UORGANISKE_FORBINDELSER": 1800.0,
-    "POLARE_FORBINDELSER": 1300.0,
-    "KLOREREDE_OPLA~SNINGSMIDLER": 2500.0,
-    "KLOREREDE_OPLØSNINGSMIDLER": 2500.0,  # Same as above, proper encoding
-    "PESTICIDER": 800.0,
-    "ANDRE": 1000.0,
-    "KLOREDE_KULBRINTER": 2200.0,
-    "KLOREREDE_PHENOLER": 1200.0,  # Similar to PHENOLER
-    "PFAS": 500.0,  # PFAS - using conservative concentration
+        # Villaolietanke
+        "Villaolietank_Olie C10-C25": 6000.0,           # D3 Table 4 – Olie, villaolietanke (90% fraktil)
+
+        # Renserier (TCE)
+        "Renserier_Trichlorethylen": 42000.0,           # D3 Table 6 – TCE generelt (renserier = "-")
+
+        # PCE not modelstof → retained from your baseline as placeholder
+        "Renserier_Tetrachlorethylen": 2500.0,          # Placeholder (not in Delprojekt modelstoffer)
+
+        # Non-modelstoff example kept
+        "Maskinindustri_Toluen": 1200.0,                # Placeholder
+    },
+
+    # Level 3: Losseplads + specific overrides
+    "losseplads": {
+        "Benzen": 17.0,                 # D3 Table 3 – Benzen, losseplads
+        "Olie C10-C25": 2500.0,         # D3 Table 4 – Olie, losseplads
+        "Trichlorethylen": 2.2,         # D3 Table 6 – TCE, losseplads
+        "Phenol": 6.4,                  # D3 Table 8 – Phenol, losseplads
+        "Arsen": 25.0,                  # D3 Table 16 – Arsen, losseplads
+        "COD": 380000.0,                # D3 Table 17 – COD (landfill context)
+
+        # Category fallbacks inside landfill context
+        "BTXER": 3000.0,
+        "PAH_FORBINDELSER": 2500.0,
+        "UORGANISKE_FORBINDELSER": 1800.0,
+        "PHENOLER": 1500.0,
+        "KLOREREDE_OPLØSNINGSMIDLER": 2800.0,
+        "PESTICIDER": 1000.0,
+    },
+
+    # Level 4: Specific compound defaults (worst-case)
+    "compound": {
+        "Olie C10-C25": 3000.0,               # D3 Table 4 – general
+        "Benzen": 400.0,                     # D3 Table 3 – general
+        "1,1,1-Trichlorethan": 100.0,        # D3 Table 5
+        "Trichlorethylen": 42000.0,          # D3 Table 6
+        "Chloroform": 100.0,                 # D3 Table 7 / text
+        "Chlorbenzen": 100.0,                # D3 Table 12
+        "Phenol": 1300.0,                    # D3 Table 8
+        "4-Nonylphenol": 9.0,                # D3 Table 9
+        "2,6-dichlorphenol": 10000.0,        # D3 Table 11
+        "MTBE": 50000.0,                     # D3 Table 10
+        "Fluoranthen": 30.0,                 # D3 Table 13
+        "Mechlorprop": 1000.0,               # D3 Table 14
+        "Atrazin": 12.0,                     # D3 Table 15
+        "Arsen": 100.0,                      # D3 Table 16 – general
+        "Cyanid": 3500.0,                    # D3 Table 18
+        "COD": 380000.0,                     # D3 Table 17
+    },
+
+    # Level 5: Category fallbacks
+    "category": {
+        "LOSSEPLADS": 1000.0,
+        "PAH_FORBINDELSER": 2000.0,
+        "BTXER": 1500.0,
+        "PHENOLER": 1200.0,
+        "UORGANISKE_FORBINDELSER": 1800.0,
+        "POLARE_FORBINDELSER": 1300.0,
+        "KLOREREDE_OPLØSNINGSMIDLER": 2500.0,
+        "PESTICIDER": 800.0,
+        "ANDRE": 1000.0,
+        "KLOREDE_KULBRINTER": 2200.0,
+        "KLOREREDE_PHENOLER": 1200.0,
+        "PFAS": 500.0,
+    },
 }
+
 
 # Flow statistics to import from the q-point shapefile.
 FLOW_SCENARIO_COLUMNS = {
@@ -70,19 +128,58 @@ FLOW_SCENARIO_COLUMNS = {
     "Q95": "Q95",
 }
 
-# Optional MKK reference values (µg/L).
+# MKK reference values (µg/L) - Environmental Quality Standards (EQS) for freshwater.
+# Alle værdier er AA-EQS (generelt kvalitetskrav) for ferskvand i µg/L.
+# Kilder: BEK nr. 1022 af 25/08/2010 – Bilag 3 (EU-EQS) og Bilag 2 (nationale EQS).
 # Keys may be either specific substances or broader contamination categories.
 # Substance-level entries take precedence over category-level entries.
 MKK_THRESHOLDS: Dict[str, float] = {
-    # Category defaults (placeholder values – replace with real numbers)
-    "BTXER": 10.0,
-    "PAH_FORBINDELSER": 5.0,
-    "PESTICIDER": 0.5,
-    "LOSSEPLADS": 15.0,
+    # Compound-specific values (most specific)
+    # Kulbrinter / BTEX m.m.
+    "Benzen": 10.0,                 # Bilag 3 (EQS vand), nr. 4 – Benzen: ferskvand 10
+    "Olie C10-C25": None,           # Ingen EQS som fraktion i BEK 1022 (ikke et enkeltstof)
 
-    # Example compound overrides (if actual thresholds differ from the category)
-    "Benzen": 5.0,      # Overrides BTXER category when substance == "Benzen"
-    "Naphtalen": 3.0,   # Overrides PAH_FORBINDELSER
+    # Klorerede opløsningsmidler m.v.
+    "1,1,1-Trichlorethan": 21.0,    # Bilag 2 – 1,1,1-trichlorethan: ferskvand 21
+    "Trichlorethylen": 10.0,        # Bilag 3 – Trichlorethylen: ferskvand 10
+    "Chloroform": 2.5,              # Bilag 3 – Trichlormethan (chloroform): ferskvand 2,5
+    "Chlorbenzen": None,            # Ikke tydeligt opført med værdi i BEK 1022
+
+    # Phenoler
+    "Phenol": 7.7,                  # Bilag 2 – Phenol: ferskvand 7,7
+    "4-Nonylphenol": 0.3,           # Bilag 3 – Nonylphenol (4-nonylphenol): ferskvand 0,3
+    "2,6-dichlorphenol": 3.4,       # Bilag 2 – 2,6-dichlorphenol: ferskvand 3,4
+
+    # Polare forbindelser
+    "MTBE": 10.0,                   # Bilag 2 – MTBE: ferskvand 10
+
+    # PAH
+    "Fluoranthen": 0.1,             # Bilag 3 – Fluoranthen: ferskvand 0,1
+
+    # Pesticider
+    "Mechlorprop": 18.0,            # Bilag 2 – mechlorprop-p: ferskvand 18 (modelstof repr.)
+    "Atrazin": 0.6,                 # Bilag 3 – Atrazin: ferskvand 0,6
+
+    # Uorganiske
+    "Arsen": 4.3,                   # Bilag 2 – Arsen (As): ferskvand 4,3
+    "Cyanid": None,                 # Ingen specifik cyanid-EQS i BEK 1022 vandtabeller
+    "COD": None,                    # Ikke relevant som EQS-stof (indikator/aggregat)
+
+    # Kategorier: afledt som det STRAMMESTE (laveste) EQS blandt kategoriens modelstoffer
+    "BTXER": 10.0,                       # Benzen (10) er strammest inden for BTEX-familien
+    "PAH_FORBINDELSER": 0.1,             # Fluoranthen (modelstof)
+    "PHENOLER": 0.3,                     # min(Phenol 7,7; 4-Nonylphenol 0,3) = 0,3
+    "UORGANISKE_FORBINDELSER": 4.3,      # Arsen 4,3
+    "POLARE_FORBINDELSER": 10.0,         # MTBE 10
+    "KLOREREDE_OPLØSNINGSMIDLER": 2.5,   # min(1,1,1-TCA 21; TCE 10; Chloroform 2,5)
+    "PESTICIDER": 0.6,                   # min(Mechlorprop-p 18; Atrazin 0,6) = 0,6
+    "KLOREREDE_PHENOLER": 3.4,           # 2,6-dichlorphenol 3,4
+    "KLOREDE_KULBRINTER": 2.5,           # Samme logik som KLOREREDE_OPLØSNINGSMIDLER
+
+    # Kategorier uden direkte modelstof-EQS i BEK 1022
+    "LOSSEPLADS": None,                  # EQS er ikke aktivitetsspecifik
+    "ANDRE": None,
+    "PFAS": None,                        # Ikke del af de 16 modelstoffer; nyere regler
 }
 
 def run_step6() -> Dict[str, pd.DataFrame]:
@@ -443,18 +540,85 @@ def _sample_infiltration(layer: str, centroid) -> float:
 # Flux calculation and aggregation
 # ---------------------------------------------------------------------------#
 
+def _lookup_standard_concentration(row: pd.Series, log_matches: bool = False) -> float:
+    """
+    Look up standard concentration with 4-level hierarchy.
+
+    Priority:
+    1. Industry/Activity + Substance (most specific, merged branche/aktivitet)
+    2. Losseplads + Substance/Category (if applicable)
+    3. Compound name
+    4. Category (fallback)
+
+    Logs when multiple industries/activities are tried (helps identify missing overrides).
+    """
+
+    substance = row['Qualifying_Substance']
+    category = row['Qualifying_Category']
+    branches = row.get('Lokalitetensbranche', '').split(';') if pd.notna(row.get('Lokalitetensbranche')) else []
+    activities = row.get('Lokalitetensaktivitet', '').split(';') if pd.notna(row.get('Lokalitetensaktivitet')) else []
+
+    # Clean up branches/activities (strip whitespace)
+    branches = [b.strip() for b in branches if b.strip()]
+    activities = [a.strip() for a in activities if a.strip()]
+
+    # Combine branches and activities into a single list for Level 1 lookup
+    all_industries = branches + activities
+    tried_multiple = len(all_industries) > 1
+
+    # Level 1: Try Industry/Activity + Substance (merged branche and aktivitet)
+    for i, industry in enumerate(all_industries):
+        key = f"{industry}_{substance}"
+        if key in STANDARD_CONCENTRATIONS['activity_substance']:
+            if log_matches or (tried_multiple and i == 0):
+                print(f"  [OK] Concentration match (Industry/Activity): '{industry}' + '{substance}' -> {STANDARD_CONCENTRATIONS['activity_substance'][key]} ug/L")
+                if tried_multiple:
+                    print(f"    Note: Site has multiple industries/activities: {all_industries}")
+            return STANDARD_CONCENTRATIONS['activity_substance'][key]
+
+    # Level 2: Losseplads override (if applicable)
+    is_losseplads = category == "LOSSEPLADS" or "Landfill Override:" in substance
+    if is_losseplads:
+        # Extract actual substance/category from "Landfill Override: BTXER" format
+        if "Landfill Override:" in substance:
+            actual_substance = substance.replace("Landfill Override:", "").strip()
+        else:
+            actual_substance = substance
+
+        if actual_substance in STANDARD_CONCENTRATIONS['losseplads']:
+            if log_matches:
+                print(f"  [OK] Concentration match (Losseplads): '{actual_substance}' -> {STANDARD_CONCENTRATIONS['losseplads'][actual_substance]} ug/L")
+            return STANDARD_CONCENTRATIONS['losseplads'][actual_substance]
+
+    # Level 3: Direct compound lookup
+    if substance in STANDARD_CONCENTRATIONS['compound']:
+        return STANDARD_CONCENTRATIONS['compound'][substance]
+
+    # Level 4: Category fallback
+    if category in STANDARD_CONCENTRATIONS['category']:
+        return STANDARD_CONCENTRATIONS['category'][category]
+
+    # No match found - raise error with helpful message
+    raise ValueError(
+        f"No concentration defined for:\n"
+        f"  Substance: '{substance}'\n"
+        f"  Category: '{category}'\n"
+        f"  Industries/Activities: {all_industries}"
+    )
+
+
 def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
     """Compute pollution flux (J = A · C · I) for each row."""
     df = enriched.copy()
 
-    df["Standard_Concentration_ug_L"] = df["Qualifying_Category"].map(STANDARD_CONCENTRATIONS)
-    if df["Standard_Concentration_ug_L"].isna().any():
-        missing_categories = df.loc[
-            df["Standard_Concentration_ug_L"].isna(), "Qualifying_Category"
-        ].unique()
-        raise ValueError(
-            "No concentration defined for categories: " + ", ".join(sorted(missing_categories))
-        )
+    # Use new hierarchical lookup instead of simple category mapping
+    print("Looking up standard concentrations with hierarchical rules...")
+    df["Standard_Concentration_ug_L"] = df.apply(_lookup_standard_concentration, axis=1)
+
+    # Print summary statistics
+    print(f"  Processed {len(df)} rows successfully")
+    print(f"  Concentration range: {df['Standard_Concentration_ug_L'].min():.1f} - {df['Standard_Concentration_ug_L'].max():.1f} ug/L")
+    print(f"  Mean concentration: {df['Standard_Concentration_ug_L'].mean():.1f} ug/L")
 
     infiltration_m_per_year = df["Infiltration_mm_per_year"] / 1000.0
     volume_m3_per_year = df["Area_m2"] * infiltration_m_per_year
@@ -560,6 +724,14 @@ def _apply_mkk_thresholds(cmix_results: pd.DataFrame) -> pd.DataFrame:
     def lookup_threshold(row: pd.Series) -> float:
         substance = row.get("Qualifying_Substance")
         category = row.get("Qualifying_Category")
+
+        # Strip "Landfill Override:" prefix if present (MKK is the same regardless of source)
+        if substance and "Landfill Override:" in substance:
+            substance = substance.replace("Landfill Override:", "").strip()
+
+        # Also strip "Branch/Activity:" prefix if present
+        if substance and "Branch/Activity:" in substance:
+            substance = substance.replace("Branch/Activity:", "").strip()
 
         if substance in MKK_THRESHOLDS:
             return MKK_THRESHOLDS[substance]
