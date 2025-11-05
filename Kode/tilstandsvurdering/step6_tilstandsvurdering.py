@@ -165,6 +165,11 @@ MKK_THRESHOLDS: Dict[str, float] = {
     "Cyanid": None,                 # Ingen specifik cyanid-EQS i BEK 1022 vandtabeller
     "COD": None,                    # Ikke relevant som EQS-stof (indikator/aggregat)
 
+    # PFAS (Per- and polyfluoroalkyl substances)
+    # Kilde: BEK 796/2023, Miljøstyrelsen nov 2024
+    "PFOS": 0.00065,                # BEK 796/2023 p.4 – PFOS: ferskvand 0.00065 (AA-EQS)
+    "TFA": 560.0,                   # BEK 796/2023 p.5 – TFA (trifluoroacetic acid): ferskvand 560
+
     # Kategorier: afledt som det STRAMMESTE (laveste) EQS blandt kategoriens modelstoffer
     "BTXER": 10.0,                       # Benzen (10) er strammest inden for BTEX-familien
     "PAH_FORBINDELSER": 0.1,             # Fluoranthen (modelstof)
@@ -179,7 +184,7 @@ MKK_THRESHOLDS: Dict[str, float] = {
     # Kategorier uden direkte modelstof-EQS i BEK 1022
     "LOSSEPLADS": None,                  # EQS er ikke aktivitetsspecifik
     "ANDRE": None,
-    "PFAS": None,                        # Ikke del af de 16 modelstoffer; nyere regler
+    "PFAS": 0.0044,                      # BEK 796/2023 p.5 – PFAS_24 (sum af 24 PFAS som PFOA-ækv.): ferskvand 0.0044
 }
 
 def run_step6() -> Dict[str, pd.DataFrame]:
