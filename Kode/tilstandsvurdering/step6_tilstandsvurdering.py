@@ -22,6 +22,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+from rasterio.mask import mask
+from shapely.geometry import mapping
 
 # Ensure the repository root is importable when the script is executed directly.
 import sys
@@ -103,21 +105,72 @@ STANDARD_CONCENTRATIONS = {
         "COD": 380000.0,                     # D3 Table 17
     },
 
-    # Level 5: Category fallbacks
+    # Level 5: Category scenarios based on modelstoffer
+    # Each category may have multiple scenarios (one per modelstof)
+    # All compounds in a group use these modelstof concentrations
     "category": {
+        # BTEX / Oil (2 scenarios)
+        "BTXER__via_Benzen": 400.0,                     # D3 Table 3 – Benzen general
+        "BTXER__via_Olie C10-C25": 3000.0,              # D3 Table 4 – Olie C10-C25 general
+
+        # Chlorinated solvents (4 scenarios)
+        "KLOREREDE_OPLØSNINGSMIDLER__via_1,1,1-Trichlorethan": 100.0,     # D3 Table 5
+        "KLOREREDE_OPLØSNINGSMIDLER__via_Trichlorethylen": 42000.0,       # D3 Table 6
+        "KLOREREDE_OPLØSNINGSMIDLER__via_Chloroform": 100.0,              # D3 Table 7
+        "KLOREREDE_OPLØSNINGSMIDLER__via_Chlorbenzen": 100.0,             # D3 Table 12
+
+        # Chlorinated hydrocarbons (synonym category - same scenarios as KLOREREDE_OPLØSNINGSMIDLER)
+        # NOTE: This category appears in Step 5 output due to categorization in refined_compound_analysis.py
+        # It should ideally be merged with KLOREREDE_OPLØSNINGSMIDLER (see MONDAY_TODO_CATEGORIZATION.md)
+        "KLOREDE_KULBRINTER__via_1,1,1-Trichlorethan": 100.0,     # D3 Table 5
+        "KLOREDE_KULBRINTER__via_Trichlorethylen": 42000.0,       # D3 Table 6
+        "KLOREDE_KULBRINTER__via_Chloroform": 100.0,              # D3 Table 7
+        "KLOREDE_KULBRINTER__via_Chlorbenzen": 100.0,             # D3 Table 12
+
+        # Polar compounds (2 scenarios)
+        "POLARE_FORBINDELSER__via_MTBE": 50000.0,       # D3 Table 10
+        "POLARE_FORBINDELSER__via_4-Nonylphenol": 9.0,  # D3 Table 9
+
+        # Phenols (1 scenario)
+        "PHENOLER__via_Phenol": 1300.0,                 # D3 Table 8
+
+        # Chlorinated phenols (1 scenario)
+        "KLOREREDE_PHENOLER__via_2,6-dichlorphenol": 10000.0,  # D3 Table 11
+
+        # Pesticides (2 scenarios)
+        "PESTICIDER__via_Mechlorprop": 1000.0,          # D3 Table 14
+        "PESTICIDER__via_Atrazin": 12.0,                # D3 Table 15
+
+        # PAH (1 scenario)
+        "PAH_FORBINDELSER__via_Fluoranthen": 30.0,      # D3 Table 13
+
+        # Inorganics (2 scenarios)
+        "UORGANISKE_FORBINDELSER__via_Arsen": 100.0,    # D3 Table 16
+        "UORGANISKE_FORBINDELSER__via_Cyanid": 3500.0,  # D3 Table 18
+
+        # Categories without modelstof basis (kept for backward compatibility)
         "LOSSEPLADS": 1000.0,
-        "PAH_FORBINDELSER": 2000.0,
-        "BTXER": 1500.0,
-        "PHENOLER": 1200.0,
-        "UORGANISKE_FORBINDELSER": 1800.0,
-        "POLARE_FORBINDELSER": 1300.0,
-        "KLOREREDE_OPLØSNINGSMIDLER": 2500.0,
-        "PESTICIDER": 800.0,
         "ANDRE": 1000.0,
-        "KLOREDE_KULBRINTER": 2200.0,
-        "KLOREREDE_PHENOLER": 1200.0,
-        "PFAS": 500.0,
+        "PFAS": 500.0,  # Not part of D3 modelstoffer
     },
+}
+
+# Map each category to its modelstof scenarios
+# This defines which scenarios to generate for each compound group
+CATEGORY_SCENARIOS = {
+    "BTXER": ["Benzen", "Olie C10-C25"],
+    "KLOREREDE_OPLØSNINGSMIDLER": ["1,1,1-Trichlorethan", "Trichlorethylen", "Chloroform", "Chlorbenzen"],
+    "KLOREDE_KULBRINTER": ["1,1,1-Trichlorethan", "Trichlorethylen", "Chloroform", "Chlorbenzen"],  # Synonym
+    "POLARE_FORBINDELSER": ["MTBE", "4-Nonylphenol"],
+    "PHENOLER": ["Phenol"],
+    "KLOREREDE_PHENOLER": ["2,6-dichlorphenol"],
+    "PESTICIDER": ["Mechlorprop", "Atrazin"],
+    "PAH_FORBINDELSER": ["Fluoranthen"],
+    "UORGANISKE_FORBINDELSER": ["Arsen", "Cyanid"],
+    # Categories without scenarios
+    "LOSSEPLADS": [],
+    "ANDRE": [],
+    "PFAS": [],
 }
 
 
@@ -131,55 +184,55 @@ FLOW_SCENARIO_COLUMNS = {
 # MKK reference values (µg/L) - Environmental Quality Standards (EQS) for freshwater.
 # Alle værdier er AA-EQS (generelt kvalitetskrav) for ferskvand i µg/L.
 # Kilder: BEK nr. 1022 af 25/08/2010 – Bilag 3 (EU-EQS) og Bilag 2 (nationale EQS).
-# Keys may be either specific substances or broader contamination categories.
+#
+# IMPORTANT: Per meeting decision - only use specific MKK for the 16 modelstoffer from Delprojekt 3.
+# For other substances (non-modelstoffer), use category MKK values only.
 # Substance-level entries take precedence over category-level entries.
+
+# The 16 modelstoffer from Delprojekt 3 with specific MKK values
+MODELSTOFFER = {
+    "Olie C10-C25", "Benzen", "1,1,1-Trichlorethan", "Trichlorethylen",
+    "Chloroform", "Chlorbenzen", "Phenol", "4-Nonylphenol", "2,6-dichlorphenol",
+    "MTBE", "Fluoranthen", "Mechlorprop", "Atrazin", "Arsen", "Cyanid", "COD"
+}
+
 MKK_THRESHOLDS: Dict[str, float] = {
-    # Compound-specific values (most specific)
-    # Kulbrinter / BTEX m.m.
-    "Benzen": 10.0,                 # Bilag 3 (EQS vand), nr. 4 – Benzen: ferskvand 10
-    "Olie C10-C25": None,           # Ingen EQS som fraktion i BEK 1022 (ikke et enkeltstof)
+    # ============================================================================
+    # MODELSTOFFER - The 16 modelstoffer from Delprojekt 3 (stof-specifikke MKK)
+    # ============================================================================
+    "Benzen": 10.0,                 # BEK 1022 Bilag 3 – Benzen: ferskvand 10
+    "Olie C10-C25": None,           # Ingen EQS som fraktion (ikke et enkeltstof)
+    "1,1,1-Trichlorethan": 21.0,    # BEK 1022 Bilag 2 – 1,1,1-trichlorethan: 21
+    "Trichlorethylen": 10.0,        # BEK 1022 Bilag 3 – Trichlorethylen: 10
+    "Chloroform": 2.5,              # BEK 1022 Bilag 3 – Trichlormethan (chloroform): 2.5
+    "Chlorbenzen": None,            # Ikke opført i BEK 1022
+    "Phenol": 7.7,                  # BEK 1022 Bilag 2 – Phenol: 7.7
+    "4-Nonylphenol": 0.3,           # BEK 1022 Bilag 3 – Nonylphenol: 0.3
+    "2,6-dichlorphenol": 3.4,       # BEK 1022 Bilag 2 – 2,6-dichlorphenol: 3.4
+    "MTBE": 10.0,                   # BEK 1022 Bilag 2 – MTBE: 10
+    "Fluoranthen": 0.1,             # BEK 1022 Bilag 3 – Fluoranthen: 0.1
+    "Mechlorprop": 18.0,            # BEK 1022 Bilag 2 – mechlorprop-p: 18
+    "Atrazin": 0.6,                 # BEK 1022 Bilag 3 – Atrazin: 0.6
+    "Arsen": 4.3,                   # BEK 1022 Bilag 2 – Arsen (As): 4.3
+    "Cyanid": 10.0,                 # Konservativ værdi (ikke i BEK 1022)
+    "COD": 1000.0,                  # Konservativ værdi (indikator, ikke EQS-stof)
 
-    # Klorerede opløsningsmidler m.v.
-    "1,1,1-Trichlorethan": 21.0,    # Bilag 2 – 1,1,1-trichlorethan: ferskvand 21
-    "Trichlorethylen": 10.0,        # Bilag 3 – Trichlorethylen: ferskvand 10
-    "Chloroform": 2.5,              # Bilag 3 – Trichlormethan (chloroform): ferskvand 2,5
-    "Chlorbenzen": None,            # Ikke tydeligt opført med værdi i BEK 1022
-
-    # Phenoler
-    "Phenol": 7.7,                  # Bilag 2 – Phenol: ferskvand 7,7
-    "4-Nonylphenol": 0.3,           # Bilag 3 – Nonylphenol (4-nonylphenol): ferskvand 0,3
-    "2,6-dichlorphenol": 3.4,       # Bilag 2 – 2,6-dichlorphenol: ferskvand 3,4
-
-    # Polare forbindelser
-    "MTBE": 10.0,                   # Bilag 2 – MTBE: ferskvand 10
-
-    # PAH
-    "Fluoranthen": 0.1,             # Bilag 3 – Fluoranthen: ferskvand 0,1
-
-    # Pesticider
-    "Mechlorprop": 18.0,            # Bilag 2 – mechlorprop-p: ferskvand 18 (modelstof repr.)
-    "Atrazin": 0.6,                 # Bilag 3 – Atrazin: ferskvand 0,6
-
-    # Uorganiske
-    "Arsen": 4.3,                   # Bilag 2 – Arsen (As): ferskvand 4,3
-    "Cyanid": None,                 # Ingen specifik cyanid-EQS i BEK 1022 vandtabeller
-    "COD": None,                    # Ikke relevant som EQS-stof (indikator/aggregat)
-
-    # Kategorier: afledt som det STRAMMESTE (laveste) EQS blandt kategoriens modelstoffer
-    "BTXER": 10.0,                       # Benzen (10) er strammest inden for BTEX-familien
-    "PAH_FORBINDELSER": 0.1,             # Fluoranthen (modelstof)
-    "PHENOLER": 0.3,                     # min(Phenol 7,7; 4-Nonylphenol 0,3) = 0,3
-    "UORGANISKE_FORBINDELSER": 4.3,      # Arsen 4,3
-    "POLARE_FORBINDELSER": 10.0,         # MTBE 10
-    "KLOREREDE_OPLØSNINGSMIDLER": 2.5,   # min(1,1,1-TCA 21; TCE 10; Chloroform 2,5)
-    "PESTICIDER": 0.6,                   # min(Mechlorprop-p 18; Atrazin 0,6) = 0,6
-    "KLOREREDE_PHENOLER": 3.4,           # 2,6-dichlorphenol 3,4
-    "KLOREDE_KULBRINTER": 2.5,           # Samme logik som KLOREREDE_OPLØSNINGSMIDLER
-
-    # Kategorier uden direkte modelstof-EQS i BEK 1022
-    "LOSSEPLADS": None,                  # EQS er ikke aktivitetsspecifik
-    "ANDRE": None,
-    "PFAS": None,                        # Ikke del af de 16 modelstoffer; nyere regler
+    # ============================================================================
+    # KATEGORI-MKK - Afledt fra modelstoffer (laveste EQS i kategorien)
+    # Alle ikke-modelstoffer bruger disse værdier
+    # ============================================================================
+    "BTXER": 10.0,                       # Fra Benzen (strammest i BTEX-gruppen)
+    "PAH_FORBINDELSER": 0.1,             # Fra Fluoranthen
+    "PHENOLER": 0.3,                     # Fra 4-Nonylphenol (strammest: 0.3 < 7.7)
+    "KLOREREDE_PHENOLER": 3.4,           # Fra 2,6-dichlorphenol
+    "POLARE_FORBINDELSER": 10.0,         # Fra MTBE
+    "KLOREREDE_OPLØSNINGSMIDLER": 2.5,   # Fra Chloroform (strammest: 2.5 < 10 < 21)
+    "KLOREDE_KULBRINTER": 2.5,           # Samme som KLOREREDE_OPLØSNINGSMIDLER
+    "PESTICIDER": 0.6,                   # Fra Atrazin (strammest: 0.6 < 18)
+    "UORGANISKE_FORBINDELSER": 4.3,      # Fra Arsen
+    "PFAS": 0.0044,                      # BEK 796/2023 - PFAS_24 group EQS
+    "LOSSEPLADS": 10.0,                  # Konservativ fallback
+    "ANDRE": 10.0,                       # Konservativ fallback for uspecificerede
 }
 
 def run_step6() -> Dict[str, pd.DataFrame]:
@@ -197,7 +250,9 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     layer_mapping = _load_layer_mapping()
     river_segments = _load_river_segments()
 
-    enriched_results = _prepare_flux_inputs(step5_results, site_geometries, layer_mapping, river_segments)
+    enriched_results, negative_infiltration = _prepare_flux_inputs(
+        step5_results, site_geometries, layer_mapping, river_segments
+    )
     flux_details = _calculate_flux(enriched_results)
     segment_flux = _aggregate_flux_by_segment(flux_details)
 
@@ -207,13 +262,21 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     segment_summary = _build_segment_summary(flux_details, segment_flux, cmix_results)
 
     _export_results(flux_details, segment_flux, cmix_results, segment_summary)
-    analyze_and_visualize_step6(flux_details, segment_flux, cmix_results, segment_summary)
+    analyze_and_visualize_step6(
+        flux_details,
+        segment_flux,
+        cmix_results,
+        segment_summary,
+        negative_infiltration=negative_infiltration,
+        site_geometries=site_geometries,
+    )
 
     return {
         "site_flux": flux_details,
         "segment_flux": segment_flux,
         "cmix_results": cmix_results,
         "segment_summary": segment_summary,
+        "negative_infiltration": negative_infiltration,
     }
 
 
@@ -256,7 +319,6 @@ def _load_site_geometries() -> gpd.GeoDataFrame:
     sites = gpd.read_file(get_output_path("step3_v1v2_sites"))
     if sites.empty:
         raise ValueError("Step 3 geometries are empty – cannot derive site areas.")
-
     dissolved = sites.dissolve(by="Lokalitet_", as_index=False)
     dissolved["Area_m2"] = dissolved.geometry.area
     dissolved["Centroid"] = dissolved.geometry.centroid
@@ -303,9 +365,10 @@ def _load_flow_scenarios() -> pd.DataFrame:
             f"Flow file is missing expected columns: {', '.join(sorted(missing_columns))}"
         )
 
+    # Use maximum flow per segment (downstream end, most conservative dilution)
     aggregated = (
         flow_points.groupby("ov_id")[list(FLOW_SCENARIO_COLUMNS.keys())]
-        .mean(numeric_only=True)
+        .max(numeric_only=True)
         .reset_index()
     )
 
@@ -330,13 +393,20 @@ def _prepare_flux_inputs(
     site_geometries: gpd.GeoDataFrame,
     layer_mapping: pd.DataFrame,
     river_segments: gpd.GeoDataFrame,
-) -> pd.DataFrame:
-    """Attach areas, modellag, infiltration, and river segment metadata."""
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Attach areas, modellag, infiltration, and river segment metadata.
+
+    Returns:
+        Tuple containing the filtered enrichment DataFrame and the rows that
+        were dropped due to negative infiltration (for diagnostics/visualization).
+    """
     enriched = step5_results.copy()
+    negative_rows = pd.DataFrame(columns=enriched.columns)
 
     # Attach areas and centroids
     area_lookup = dict(zip(site_geometries["Lokalitet_"], site_geometries["Area_m2"]))
     centroid_lookup = dict(zip(site_geometries["Lokalitet_"], site_geometries["Centroid"]))
+    geometry_lookup = dict(zip(site_geometries["Lokalitet_"], site_geometries["geometry"]))
     enriched["Area_m2"] = enriched["Lokalitet_ID"].map(area_lookup)
 
     if enriched["Area_m2"].isna().any():
@@ -367,10 +437,62 @@ def _prepare_flux_inputs(
 
     enriched = enriched.drop(columns=["GVForekom"])
 
-    # Compute infiltration values (mm/year) for each unique (site, modellag)
-    enriched["Infiltration_mm_per_year"] = _calculate_infiltration(
-        enriched, centroid_lookup
+    infiltration_stats = _calculate_infiltration(
+        enriched, centroid_lookup, geometry_lookup
     )
+
+    enriched["Infiltration_mm_per_year"] = infiltration_stats["Combined_Infiltration_mm_per_year"]
+    enriched["Centroid_Infiltration_mm_per_year"] = infiltration_stats["Centroid_Infiltration_mm_per_year"]
+    enriched["Polygon_Infiltration_mm_per_year"] = infiltration_stats["Polygon_Infiltration_mm_per_year"]
+    enriched["Polygon_Infiltration_Min_mm_per_year"] = infiltration_stats["Polygon_Infiltration_Min_mm_per_year"]
+    enriched["Polygon_Infiltration_Max_mm_per_year"] = infiltration_stats["Polygon_Infiltration_Max_mm_per_year"]
+    enriched["Polygon_Infiltration_Pixel_Count"] = infiltration_stats["Polygon_Infiltration_Pixel_Count"]
+
+    # Negative GVD means upward groundwater flow (discharge zones near gaining streams)
+    # Surface contamination won't infiltrate downward in these areas
+    negative_mask = enriched["Infiltration_mm_per_year"] < 0
+    negative_count = negative_mask.sum()
+    if negative_count > 0:
+        # Capture statistics BEFORE removal
+        initial_rows = len(enriched)
+        initial_sites = enriched["Lokalitet_ID"].nunique()
+        initial_gvfk = enriched["GVFK"].nunique()
+
+        negative_rows = enriched.loc[negative_mask].copy()
+        negative_rows["Sampled_Layers"] = negative_rows["DK-modellag"].apply(
+            lambda text: ", ".join(_parse_dk_modellag(text)) if pd.notna(text) else ""
+        )
+        removed_sites = sorted(enriched.loc[negative_mask, "Lokalitet_ID"].unique())
+        removed_gvfk = sorted(enriched.loc[negative_mask, "GVFK"].unique())
+
+        # Apply filter
+        enriched = enriched[~negative_mask].copy()
+
+        # Capture statistics AFTER removal
+        final_rows = len(enriched)
+        final_sites = enriched["Lokalitet_ID"].nunique()
+        final_gvfk = enriched["GVFK"].nunique()
+
+        # Calculate sites/GVFK that were completely removed vs partially removed
+        remaining_sites = set(enriched["Lokalitet_ID"].unique())
+        remaining_gvfk = set(enriched["GVFK"].unique())
+        completely_removed_sites = [s for s in removed_sites if s not in remaining_sites]
+        completely_removed_gvfk = [g for g in removed_gvfk if g not in remaining_gvfk]
+
+        print("\nINFO: Removing rows with negative infiltration (opstrømningszoner).")
+        print(f"   BEFORE: {initial_rows} rows, {initial_sites} sites, {initial_gvfk} GVFK")
+        print(f"   REMOVED: {negative_count} rows ({negative_count/initial_rows*100:.1f}%)")
+        print(f"   AFTER: {final_rows} rows, {final_sites} sites, {final_gvfk} GVFK")
+        print(f"\n   Sites with removed rows: {len(removed_sites)}")
+        print(f"   Sites completely removed: {len(completely_removed_sites)} (all rows had negative infiltration)")
+        print(f"   Sites partially affected: {len(removed_sites) - len(completely_removed_sites)} (some rows retained)")
+        print(f"\n   GVFK with removed rows: {len(removed_gvfk)}")
+        print(f"   GVFK completely removed: {len(completely_removed_gvfk)}")
+        print(f"   GVFK partially affected: {len(removed_gvfk) - len(completely_removed_gvfk)}")
+        print(f"\n   Example affected sites: {', '.join(removed_sites[:5])}"
+              f"{' ...' if len(removed_sites) > 5 else ''}")
+        print(f"   Example affected GVFK: {', '.join(removed_gvfk[:5])}"
+              f"{' ...' if len(removed_gvfk) > 5 else ''}\n")
 
     # Filter out rows where infiltration data is missing
     if enriched["Infiltration_mm_per_year"].isna().any():
@@ -379,7 +501,7 @@ def _prepare_flux_inputs(
         print(f"\nWARNING: Missing infiltration data for {len(missing_sites)} site(s):")
         print(f"   Sites: {', '.join(sorted(missing_sites)[:10])}{' ...' if len(missing_sites) > 10 else ''}")
         print(f"   Affected rows: {missing_infiltration}")
-        print(f"   Reason: Site centroids fall outside infiltration raster coverage.")
+        print(f"   Reason: Site polygon/centroid fall outside infiltration raster coverage.")
         print(f"   These rows will be excluded from the analysis.\n")
 
         enriched = enriched[enriched["Infiltration_mm_per_year"].notna()].copy()
@@ -425,20 +547,31 @@ def _prepare_flux_inputs(
 
     enriched = enriched.drop(columns=["River_FID", "River_Segment_ov_id"])
 
-    return enriched
+    if "Sampled_Layers" not in negative_rows.columns:
+        negative_rows["Sampled_Layers"] = pd.Series(dtype=str)
+
+    return enriched, negative_rows
 
 
 def _calculate_infiltration(
     enriched: pd.DataFrame,
     centroid_lookup: Dict[str, Any],
-) -> pd.Series:
+    geometry_lookup: Dict[str, Any],
+    source_crs = None,
+) -> pd.DataFrame:
     """
     Sample infiltration rasters for each (Lokalitet_ID, modellag) pair.
-    Returns a Series aligned with `enriched`.
-    """
-    cache: Dict[Tuple[str, str], float] = {}
+    Returns a DataFrame with combined, polygon, and centroid metrics aligned with `enriched`.
 
-    results: List[float] = []
+    Args:
+        source_crs: CRS of the input geometries (default: EPSG:25832 for Denmark)
+    """
+    if source_crs is None:
+        source_crs = "EPSG:25832"  # Standard for Denmark
+
+    cache: Dict[Tuple[str, str], Dict[str, float]] = {}
+
+    records: List[Dict[str, float]] = []
     for _, row in enriched.iterrows():
         site_id = row["Lokalitet_ID"]
         modellag = row["DK-modellag"]
@@ -448,32 +581,58 @@ def _calculate_infiltration(
             centroid = centroid_lookup.get(site_id)
             if centroid is None:
                 raise ValueError(f"No centroid found for site {site_id}")
+            geometry = geometry_lookup.get(site_id)
+            if geometry is None:
+                raise ValueError(f"No geometry found for site {site_id}")
 
             layers = _parse_dk_modellag(modellag)
             if not layers:
                 raise ValueError(f"Could not interpret modellag '{modellag}' for {site_id}")
 
-            # Sample infiltration for each layer, handling no-data cases
-            values = []
+            layer_results: List[Dict[str, float]] = []
             for layer in layers:
                 try:
-                    val = _sample_infiltration(layer, centroid)
-                    values.append(val)
-                except ValueError as e:
-                    # Raster returned no data at this location
-                    values.append(None)
+                    layer_stats = _sample_infiltration(layer, geometry, centroid, source_crs)
+                    layer_results.append(layer_stats)
+                except ValueError as exc:
+                    print(f"\nWARNING: {exc}")
+                    layer_results.append(
+                        {
+                            "combined": None,
+                            "polygon_mean": None,
+                            "polygon_min": None,
+                            "polygon_max": None,
+                            "polygon_pixel_count": 0,
+                            "centroid": None,
+                        }
+                    )
 
-            # If all values are None, store None to filter out later
-            if all(v is None for v in values):
-                cache[key] = None
-            else:
-                # Use mean of available values
-                valid_values = [v for v in values if v is not None]
-                cache[key] = float(np.mean(valid_values))
+            combined_values = [item["combined"] for item in layer_results if item["combined"] is not None]
+            polygon_values = [item["polygon_mean"] for item in layer_results if item["polygon_mean"] is not None]
+            centroid_values = [item["centroid"] for item in layer_results if item["centroid"] is not None]
+            polygon_mins = [item["polygon_min"] for item in layer_results if item["polygon_min"] is not None]
+            polygon_maxs = [item["polygon_max"] for item in layer_results if item["polygon_max"] is not None]
+            pixel_counts = [item["polygon_pixel_count"] for item in layer_results if item["polygon_pixel_count"]]
 
-        results.append(cache[key])
+            combined_mean = float(np.mean(combined_values)) if combined_values else None
+            polygon_mean = float(np.mean(polygon_values)) if polygon_values else np.nan
+            centroid_mean = float(np.mean(centroid_values)) if centroid_values else np.nan
+            polygon_min = float(np.min(polygon_mins)) if polygon_mins else np.nan
+            polygon_max = float(np.max(polygon_maxs)) if polygon_maxs else np.nan
+            polygon_pixel_count = int(np.sum(pixel_counts)) if pixel_counts else 0
 
-    return pd.Series(results, index=enriched.index, name="Infiltration_mm_per_year")
+            cache[key] = {
+                "Combined_Infiltration_mm_per_year": combined_mean,
+                "Centroid_Infiltration_mm_per_year": centroid_mean,
+                "Polygon_Infiltration_mm_per_year": polygon_mean,
+                "Polygon_Infiltration_Min_mm_per_year": polygon_min,
+                "Polygon_Infiltration_Max_mm_per_year": polygon_max,
+                "Polygon_Infiltration_Pixel_Count": polygon_pixel_count,
+            }
+
+        records.append(cache[key])
+
+    return pd.DataFrame(records, index=enriched.index)
 
 
 def _parse_dk_modellag(dk_modellag: str) -> List[str]:
@@ -510,13 +669,13 @@ def _parse_dk_modellag(dk_modellag: str) -> List[str]:
     return [text]
 
 
-def _sample_infiltration(layer: str, centroid) -> float:
+def _sample_infiltration(layer: str, geometry, centroid, source_crs: str = "EPSG:25832") -> Dict[str, float]:
     """
-    Sample the infiltration raster for a given layer at the site centroid.
-    Returns the sampled value in mm/year.
+    Sample the infiltration raster for a given layer using the full site polygon.
+    Returns both polygon-level statistics and centroid fallback value.
+
+    Note: Assumes rasters and geometries are in the same CRS (EPSG:25832 for Denmark).
     """
-    # Handle special case: "lag" references should use "lay12" raster
-    # (lag1, lag2, etc. all map to the combined lay12 raster)
     if layer.startswith("lag"):
         layer = "lay12"
 
@@ -524,16 +683,50 @@ def _sample_infiltration(layer: str, centroid) -> float:
     if not raster_path.exists():
         raise FileNotFoundError(f"Infiltration raster not found: {raster_path}")
 
-    with rasterio.open(raster_path) as src:
-        x, y = centroid.x, centroid.y
-        value = next(src.sample([(x, y)]), [np.nan])[0]
+    polygon_mean = None
+    polygon_min = None
+    polygon_max = None
+    pixel_count = 0
 
-        if value is None or np.isnan(value) or value == src.nodata:
-            # Return None for no-data, will be handled upstream
+    with rasterio.open(raster_path) as src:
+
+        try:
+            data, _ = mask(src, [mapping(geometry)], crop=True)
+            band = data[0]
+            valid = band[(band != src.nodata) & (~np.isnan(band))]
+            if valid.size > 0:
+                polygon_mean = float(valid.mean())
+                polygon_min = float(valid.min())
+                polygon_max = float(valid.max())
+                pixel_count = int(valid.size)
+        except ValueError:
+            pass
+
+        x, y = centroid.x, centroid.y
+        centroid_value = next(src.sample([(x, y)]), [np.nan])[0]
+        if centroid_value is None or np.isnan(centroid_value) or centroid_value == src.nodata:
+            # Enhanced error message with diagnostics
+            geom_bounds = geometry.bounds
             raise ValueError(
-                f"Infiltration raster {raster_path.name} returned no data at ({x}, {y})."
+                f"Infiltration raster {raster_path.name} returned no data for site.\n"
+                f"   Centroid: ({x:.1f}, {y:.1f})\n"
+                f"   Geometry bounds: ({geom_bounds[0]:.1f}, {geom_bounds[1]:.1f}, {geom_bounds[2]:.1f}, {geom_bounds[3]:.1f})\n"
+                f"   Raster bounds: {src.bounds}\n"
+                f"   Sampled value: {centroid_value} (nodata={src.nodata})\n"
+                f"   Possible causes: Site outside raster coverage, or at nodata location (coast/border)"
             )
-        return float(value)
+        centroid_value = float(centroid_value)
+
+    combined_value = polygon_mean if polygon_mean is not None else centroid_value
+
+    return {
+        "combined": combined_value,
+        "polygon_mean": polygon_mean,
+        "polygon_min": polygon_min,
+        "polygon_max": polygon_max,
+        "polygon_pixel_count": pixel_count,
+        "centroid": centroid_value,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -607,27 +800,192 @@ def _lookup_standard_concentration(row: pd.Series, log_matches: bool = False) ->
     )
 
 
+def _lookup_concentration_for_scenario(
+    scenario_modelstof: str | None,
+    category: str,
+    original_substance: str | None,
+    row: pd.Series
+) -> float:
+    """
+    Lookup concentration for a scenario using the hierarchy.
+
+    Args:
+        scenario_modelstof: The modelstof for this scenario (e.g., "Benzen", "Olie C10-C25")
+                           None for categories without scenarios
+        category: The compound category (e.g., "BTXER")
+        original_substance: Original substance name (only used if no scenario)
+        row: The data row with site information (for activity/losseplads context)
+
+    Returns:
+        Concentration in µg/L
+
+    Hierarchy:
+        1. Activity + Modelstof (e.g., "Servicestationer_Benzen")
+        2. Losseplads + Modelstof
+        3. Losseplads + Category
+        4. Compound (modelstof)
+        5. Category scenario
+    """
+    # Extract context from row
+    branche = row.get("Lokalitetensbranche") or row.get("Branche") or ""
+    aktivitet = row.get("Lokalitetensaktivitet") or row.get("Aktivitet") or ""
+    industries = str(branche).split(";") if pd.notna(branche) else []
+    activities = str(aktivitet).split(";") if pd.notna(aktivitet) else []
+    all_industries = [x.strip() for x in industries + activities if x.strip()]
+
+    is_losseplads = category == "LOSSEPLADS" or (
+        original_substance and "Landfill Override:" in original_substance
+    )
+
+    # Determine which substance to use for hierarchy lookup
+    lookup_substance = scenario_modelstof if scenario_modelstof else original_substance
+
+    # Level 1: Activity + Substance
+    for industry in all_industries:
+        key = f"{industry}_{lookup_substance}"
+        if key in STANDARD_CONCENTRATIONS['activity_substance']:
+            return STANDARD_CONCENTRATIONS['activity_substance'][key]
+
+    # Level 2: Losseplads context
+    if is_losseplads:
+        # Try exact substance match
+        if lookup_substance and lookup_substance in STANDARD_CONCENTRATIONS['losseplads']:
+            return STANDARD_CONCENTRATIONS['losseplads'][lookup_substance]
+        # Try category match
+        if category in STANDARD_CONCENTRATIONS['losseplads']:
+            return STANDARD_CONCENTRATIONS['losseplads'][category]
+
+    # Level 3: Direct compound lookup (for modelstoffer)
+    if lookup_substance and lookup_substance in STANDARD_CONCENTRATIONS['compound']:
+        return STANDARD_CONCENTRATIONS['compound'][lookup_substance]
+
+    # Level 4: Category scenario
+    if scenario_modelstof:
+        scenario_key = f"{category}__via_{scenario_modelstof}"
+        if scenario_key in STANDARD_CONCENTRATIONS['category']:
+            return STANDARD_CONCENTRATIONS['category'][scenario_key]
+
+    # Level 5: Category fallback (for categories without scenarios)
+    if category in STANDARD_CONCENTRATIONS['category']:
+        return STANDARD_CONCENTRATIONS['category'][category]
+
+    # No match - raise error
+    raise ValueError(
+        f"No concentration for scenario:\n"
+        f"  Category: {category}\n"
+        f"  Modelstof: {scenario_modelstof}\n"
+        f"  Original substance: {original_substance}"
+    )
+
+
+def _compute_flux_from_concentration(row: pd.Series) -> pd.Series:
+    """
+    Compute flux from concentration, area, and infiltration.
+
+    Formula: Flux = Area × Infiltration × Concentration
+
+    Units:
+        Area: m²
+        Infiltration: mm/year → converted to m/year
+        Concentration: µg/L → converted to µg/m³
+        Flux: µg/year → also converted to mg, g, kg
+    """
+    infiltration_m_yr = row["Infiltration_mm_per_year"] / 1000.0
+    volume_m3_yr = row["Area_m2"] * infiltration_m_yr
+    concentration_ug_m3 = row["Standard_Concentration_ug_L"] * 1000.0
+
+    flux_ug_yr = volume_m3_yr * concentration_ug_m3
+
+    row["Pollution_Flux_ug_per_year"] = flux_ug_yr
+    row["Pollution_Flux_mg_per_year"] = flux_ug_yr / 1000.0
+    row["Pollution_Flux_g_per_year"] = flux_ug_yr / 1_000_000.0
+    row["Pollution_Flux_kg_per_year"] = flux_ug_yr / 1_000_000_000.0
+
+    return row
+
+
 def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
-    """Compute pollution flux (J = A · C · I) for each row."""
-    df = enriched.copy()
+    """
+    Compute pollution flux (J = A · C · I) with scenario-based aggregation.
 
-    # Use new hierarchical lookup instead of simple category mapping
-    print("Looking up standard concentrations with hierarchical rules...")
-    df["Standard_Concentration_ug_L"] = df.apply(_lookup_standard_concentration, axis=1)
+    Key changes:
+    - All compounds in a category use modelstof concentrations (scenarios)
+    - One flux value per scenario per site (NOT per individual substance)
+    - Categories with multiple modelstoffer generate multiple scenarios
 
-    # Print summary statistics
-    print(f"  Processed {len(df)} rows successfully")
-    print(f"  Concentration range: {df['Standard_Concentration_ug_L'].min():.1f} - {df['Standard_Concentration_ug_L'].max():.1f} ug/L")
-    print(f"  Mean concentration: {df['Standard_Concentration_ug_L'].mean():.1f} ug/L")
+    Example: Site with 4 different BTXER compounds generates 2 flux rows:
+      - BTXER__via_Benzen (400 µg/L)
+      - BTXER__via_Olie C10-C25 (3000 µg/L)
+    """
+    print("\nCalculating flux using scenario-based approach...")
+    print("  (Aggregating substances by category + scenario at site level)")
 
-    infiltration_m_per_year = df["Infiltration_mm_per_year"] / 1000.0
-    volume_m3_per_year = df["Area_m2"] * infiltration_m_per_year
-    concentration_ug_per_m3 = df["Standard_Concentration_ug_L"] * 1000.0
+    # Group by site + GVFK + category to aggregate substances
+    # This is the key change: we calculate ONE flux per scenario, not per substance
+    grouping_cols = ["Lokalitet_ID", "GVFK", "Qualifying_Category",
+                     "Area_m2", "Infiltration_mm_per_year",
+                     "Nearest_River_FID", "Nearest_River_ov_id", "River_Segment_Name",
+                     "River_Segment_Length_m", "River_Segment_GVFK", "Distance_to_River_m",
+                     "River_Segment_Count"]
 
-    df["Pollution_Flux_ug_per_year"] = volume_m3_per_year * concentration_ug_per_m3
-    df["Pollution_Flux_mg_per_year"] = df["Pollution_Flux_ug_per_year"] / 1000.0
-    df["Pollution_Flux_g_per_year"] = df["Pollution_Flux_ug_per_year"] / 1_000_000.0
-    df["Pollution_Flux_kg_per_year"] = df["Pollution_Flux_ug_per_year"] / 1_000_000_000.0
+    # Get unique site-category combinations
+    site_categories = enriched.groupby(grouping_cols, dropna=False).first().reset_index()
+
+    flux_rows = []
+
+    for _, site_cat in site_categories.iterrows():
+        category = site_cat["Qualifying_Category"]
+
+        # Get scenarios for this category
+        scenarios = CATEGORY_SCENARIOS.get(category, [])
+
+        if not scenarios:
+            # Category has no scenarios (LOSSEPLADS, ANDRE, PFAS)
+            # Use old approach: pick first substance as representative
+            site_substances = enriched[
+                (enriched["Lokalitet_ID"] == site_cat["Lokalitet_ID"]) &
+                (enriched["GVFK"] == site_cat["GVFK"]) &
+                (enriched["Qualifying_Category"] == category)
+            ]
+            first_substance = site_substances.iloc[0]["Qualifying_Substance"]
+
+            # Lookup concentration using old method
+            conc = _lookup_concentration_for_scenario(
+                scenario_modelstof=None,
+                category=category,
+                original_substance=first_substance,
+                row=site_cat
+            )
+
+            # Create single flux row
+            flux_row = site_cat.copy()
+            flux_row["Qualifying_Substance"] = first_substance
+            flux_row["Standard_Concentration_ug_L"] = conc
+            flux_row = _compute_flux_from_concentration(flux_row)
+            flux_rows.append(flux_row)
+        else:
+            # Category has scenarios - generate one flux row per scenario
+            for modelstof in scenarios:
+                # Lookup concentration for this scenario
+                conc = _lookup_concentration_for_scenario(
+                    scenario_modelstof=modelstof,
+                    category=category,
+                    original_substance=None,  # Not used for scenarios
+                    row=site_cat
+                )
+
+                # Create flux row for this scenario
+                flux_row = site_cat.copy()
+                flux_row["Qualifying_Substance"] = f"{category}__via_{modelstof}"
+                flux_row["Standard_Concentration_ug_L"] = conc
+                flux_row = _compute_flux_from_concentration(flux_row)
+                flux_rows.append(flux_row)
+
+    df = pd.DataFrame(flux_rows)
+
+    print(f"  Input rows (substances): {len(enriched)}")
+    print(f"  Output rows (scenarios): {len(df)}")
+    print(f"  Concentration range: {df['Standard_Concentration_ug_L'].min():.1f} - {df['Standard_Concentration_ug_L'].max():.1f} µg/L")
 
     return df
 
@@ -697,9 +1055,10 @@ def _calculate_cmix(
     valid_flow = merged["Flow_m3_s"].notna() & (merged["Flow_m3_s"] > 0)
     merged["Has_Flow_Data"] = valid_flow
     merged["Flux_ug_per_second"] = merged["Total_Flux_ug_per_year"] / SECONDS_PER_YEAR
+    # Cmix in ug/L = Flux (ug/s) / Flow (m3/s) / 1000 (L/m3)
     merged["Cmix_ug_L"] = np.where(
         valid_flow,
-        merged["Flux_ug_per_second"] / merged["Flow_m3_s"],
+        merged["Flux_ug_per_second"] / (merged["Flow_m3_s"] * 1000),
         np.nan,
     )
 
@@ -733,8 +1092,12 @@ def _apply_mkk_thresholds(cmix_results: pd.DataFrame) -> pd.DataFrame:
         if substance and "Branch/Activity:" in substance:
             substance = substance.replace("Branch/Activity:", "").strip()
 
-        if substance in MKK_THRESHOLDS:
+        # Per meeting decision: Only use substance-specific MKK for the 16 modelstoffer
+        # For non-modelstoffer, skip to category MKK
+        if substance in MODELSTOFFER and substance in MKK_THRESHOLDS:
             return MKK_THRESHOLDS[substance]
+
+        # All other substances use category MKK
         if category in MKK_THRESHOLDS:
             return MKK_THRESHOLDS[category]
         return np.nan
