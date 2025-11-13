@@ -11,19 +11,20 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-import pandas as pd
-import geopandas as gpd
+
 import folium
-from folium.plugins import FloatImage
-import numpy as np
-import rasterio
-from rasterio.enums import Resampling
-from shapely.geometry import box
+import geopandas as gpd
 import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
-from PIL import Image
+import numpy as np
+import pandas as pd
+import rasterio
 from affine import Affine
 from branca.colormap import LinearColormap
+from folium.plugins import FloatImage
+from matplotlib.colors import TwoSlopeNorm
+from PIL import Image
+from rasterio.enums import Resampling
+from shapely.geometry import box
 
 # Ensure repository root is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -31,11 +32,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from Kode.config import (
-    RIVERS_PATH,
-    GVD_RASTER_DIR,
     GRUNDVAND_PATH,
-    get_visualization_path,
+    GVD_RASTER_DIR,
+    RIVERS_PATH,
     get_output_path,
+    get_visualization_path,
 )
 
 
@@ -47,6 +48,8 @@ def analyze_and_visualize_step6(
     *,
     negative_infiltration: pd.DataFrame | None = None,
     site_geometries: gpd.GeoDataFrame | None = None,
+    site_exceedances: pd.DataFrame | None = None,
+    gvfk_exceedances: pd.DataFrame | None = None,
 ) -> None:
     """Print compact diagnostics covering the main Step 6 deliverables."""
 
@@ -57,14 +60,11 @@ def analyze_and_visualize_step6(
     _print_segment_overview(segment_flux)
     _print_cmix_overview(cmix_results)
     _print_segment_summary(segment_summary)
+    _print_exceedance_focus(site_exceedances, gvfk_exceedances)
 
     print("=" * 60)
     print("End of Step 6 summary")
     print("=" * 60)
-
-    # Create interactive maps
-    print("\nGenerating interactive maps...")
-    _create_interactive_maps(site_flux, cmix_results, segment_summary)
 
     # Diagnostics for negative infiltration removals
     _create_negative_infiltration_map(negative_infiltration, site_geometries)
@@ -91,6 +91,7 @@ def analyze_and_visualize_step6(
 # ---------------------------------------------------------------------------
 # Section printing helpers
 # ---------------------------------------------------------------------------#
+
 
 def _print_site_level_overview(site_flux: pd.DataFrame) -> None:
     print("\n1. Site-level flux calculations")
@@ -131,18 +132,17 @@ def _print_segment_overview(segment_flux: pd.DataFrame) -> None:
         f"(categories: {segment_flux['Qualifying_Category'].nunique():,})"
     )
 
-    top_segments = (
-        segment_flux.sort_values("Total_Flux_kg_per_year", ascending=False)
-        .head(5)[
-            [
-                "Nearest_River_ov_id",
-                "River_Segment_Name",
-                "Qualifying_Substance",
-                "Total_Flux_kg_per_year",
-                "Contributing_Site_Count",
-            ]
+    top_segments = segment_flux.sort_values(
+        "Total_Flux_kg_per_year", ascending=False
+    ).head(5)[
+        [
+            "Nearest_River_ov_id",
+            "River_Segment_Name",
+            "Qualifying_Substance",
+            "Total_Flux_kg_per_year",
+            "Contributing_Site_Count",
         ]
-    )
+    ]
 
     if not top_segments.empty:
         print("\nTop 5 segment/substance fluxes (kg/year):")
@@ -166,7 +166,7 @@ def _print_cmix_overview(cmix_results: pd.DataFrame) -> None:
     with_flow = cmix_results["Has_Flow_Data"].sum()
 
     print(f"Scenario rows: {total_rows:,} (with discharge data: {with_flow:,})")
-    scenarios = [str(s) for s in cmix_results['Flow_Scenario'].dropna().unique()]
+    scenarios = [str(s) for s in cmix_results["Flow_Scenario"].dropna().unique()]
     print(f"Scenarios considered: {', '.join(sorted(scenarios))}")
 
     available = cmix_results[cmix_results["Has_Flow_Data"]]
@@ -174,18 +174,15 @@ def _print_cmix_overview(cmix_results: pd.DataFrame) -> None:
         print("All scenario rows are missing flow values – nothing further to report.")
         return
 
-    worst = (
-        available.sort_values("Cmix_ug_L", ascending=False)
-        .head(5)[
-            [
-                "Nearest_River_ov_id",
-                "River_Segment_Name",
-                "Qualifying_Substance",
-                "Flow_Scenario",
-                "Cmix_ug_L",
-            ]
+    worst = available.sort_values("Cmix_ug_L", ascending=False).head(5)[
+        [
+            "Nearest_River_ov_id",
+            "River_Segment_Name",
+            "Qualifying_Substance",
+            "Flow_Scenario",
+            "Cmix_ug_L",
         ]
-    )
+    ]
 
     print("\nTop 5 Cmix values (µg/L):")
     for _, row in worst.iterrows():
@@ -200,10 +197,14 @@ def _print_cmix_overview(cmix_results: pd.DataFrame) -> None:
         count = len(exceedances)
         print(f"\nExceedances flagged (where MKK data available): {count:,}")
         if count:
-            for _, row in exceedances.sort_values("Exceedance_Ratio", ascending=False).head(5).iterrows():
+            for _, row in (
+                exceedances.sort_values("Exceedance_Ratio", ascending=False)
+                .head(5)
+                .iterrows()
+            ):
                 print(
                     f"  {row['Nearest_River_ov_id']} - {row['Qualifying_Substance']} "
-                    f"({row['Flow_Scenario']}): {row['Exceedance_Ratio']:.2f}× MKK"
+                    f"({row['Flow_Scenario']}): {row['Exceedance_Ratio']:.2f}x MKK"
                 )
 
 
@@ -224,317 +225,54 @@ def _print_segment_summary(segment_summary: pd.DataFrame) -> None:
 
     print(f"Segments exceeding MKK in any scenario: {len(failing):,}")
     if not failing.empty:
-        for _, row in failing.sort_values("Max_Exceedance_Ratio", ascending=False).head(5).iterrows():
+        for _, row in (
+            failing.sort_values("Max_Exceedance_Ratio", ascending=False)
+            .head(5)
+            .iterrows()
+        ):
             print(
                 f"  {row['Nearest_River_ov_id']} ({row['River_Segment_Name']}): "
-                f"{row['Max_Exceedance_Ratio']:.2f}× MKK "
+                f"{row['Max_Exceedance_Ratio']:.2f}x MKK "
                 f"(scenarios: {row['Failing_Scenarios'] or 'n/a'})"
             )
 
 
-# ---------------------------------------------------------------------------
-# Interactive Map Creation
-# ---------------------------------------------------------------------------
-
-def _create_interactive_maps(
-    site_flux: pd.DataFrame,
-    cmix_results: pd.DataFrame,
-    segment_summary: pd.DataFrame
+def _print_exceedance_focus(
+    site_exceedances: pd.DataFrame | None, gvfk_exceedances: pd.DataFrame | None
 ) -> None:
-    """Generate interactive HTML maps for Step 6 results."""
+    print("\n5. Confirmed MKK exceedances (filtered views)")
+    print("-" * 60)
 
-    # Create output directory
-    map_dir = get_visualization_path("step6")
+    if site_exceedances is None or site_exceedances.empty:
+        print("No MKK exceedances were observed in the current run.")
+        return
 
-    # Map 1: Overall exceedance map (worst case across all substances)
-    _create_overall_exceedance_map(segment_summary, map_dir)
+    total_sites = site_exceedances["Lokalitet_ID"].nunique()
+    total_segments = site_exceedances["Nearest_River_ov_id"].nunique()
+    scenarios = site_exceedances["Flow_Scenario"].nunique()
 
-    # Map 2: Substance-specific exceedance map with dropdown
-    _create_substance_exceedance_map(cmix_results, map_dir)
+    print(f"Rows in site-level exceedance view: {len(site_exceedances):,}")
+    print(f"  -> {total_sites:,} unique sites across {total_segments:,} river segments")
+    print(f"  -> Flow scenarios represented: {scenarios}")
 
-    # Map 3: Contamination sites with flux
-    _create_site_flux_map(site_flux, map_dir)
+    if gvfk_exceedances is not None and not gvfk_exceedances.empty:
+        exceeding_gvfk = gvfk_exceedances["GVFK"].nunique()
+        print(f"GVFK with >=1 exceedance: {exceeding_gvfk:,}")
 
-
-def _create_overall_exceedance_map(segment_summary: pd.DataFrame, output_dir: Path) -> None:
-    """Create map showing worst-case MKK exceedance per river segment."""
-
-    print("  Creating overall exceedance map...")
-
-    # Load river shapefile
-    rivers = gpd.read_file(RIVERS_PATH, encoding='utf-8')
-
-    # Convert to WGS84 for web mapping
-    rivers_web = rivers.to_crs('EPSG:4326')
-
-    # Join with segment summary
-    rivers_enriched = rivers_web.merge(
-        segment_summary,
-        left_on="ov_id",
-        right_on="Nearest_River_ov_id",
-        how="left"
-    )
-
-    # Get map center
-    bounds = rivers_web.total_bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
-
-    # Create map
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=8,
-        tiles='OpenStreetMap'
-    )
-
-    # Add river segments
-    for idx, row in rivers_enriched.iterrows():
-        color, weight = _get_segment_style(row.get('Max_Exceedance_Ratio'), row.get('Total_Flux_kg_per_year'))
-        popup_html = _create_overall_popup(row)
-
-        folium.GeoJson(
-            row.geometry,
-            style_function=lambda x, c=color, w=weight: {
-                'color': c,
-                'weight': w,
-                'opacity': 0.8
-            },
-            popup=folium.Popup(popup_html, max_width=300)
-        ).add_to(m)
-
-    # Add legend
-    _add_exceedance_legend(m)
-
-    # Save
-    output_path = output_dir / "river_segments_overall_exceedance.html"
-    m.save(str(output_path))
-    print(f"    Saved: {output_path}")
-
-
-def _create_substance_exceedance_map(cmix_results: pd.DataFrame, output_dir: Path) -> None:
-    """Create map with dropdown to select specific substance/category."""
-
-    print("  Creating substance-specific exceedance map...")
-
-    # Load river shapefile
-    rivers = gpd.read_file(RIVERS_PATH, encoding='utf-8')
-    rivers_web = rivers.to_crs('EPSG:4326')
-
-    # Get unique substances/categories
-    substances = sorted(cmix_results['Qualifying_Substance'].dropna().unique())
-
-    # Use Q95 scenario (most conservative)
-    cmix_q95 = cmix_results[cmix_results['Flow_Scenario'] == 'Q95'].copy()
-
-    # Get map center
-    bounds = rivers_web.total_bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
-
-    # Create base map
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=8,
-        tiles='OpenStreetMap'
-    )
-
-    # Create layer for each substance
-    for substance in substances[:10]:  # Limit to top 10 to avoid too many layers
-        substance_data = cmix_q95[cmix_q95['Qualifying_Substance'] == substance]
-
-        rivers_enriched = rivers_web.merge(
-            substance_data,
-            left_on="ov_id",
-            right_on="Nearest_River_ov_id",
-            how="left"
+        preview = gvfk_exceedances.sort_values(
+            "Max_Exceedance_Ratio", ascending=False
+        ).head(5)
+        for _, row in preview.iterrows():
+            print(
+                f"  {row['GVFK']} -> {row['River_Segment_Name']} "
+                f"({row['Nearest_River_ov_id']}): {row['Max_Exceedance_Ratio']:.2f}x "
+                f"MKK (sites: {row['Site_IDs']})"
+            )
+    else:
+        print(
+            "No GVFK summaries available for exceedances (data filtered to zero rows)."
         )
 
-        feature_group = folium.FeatureGroup(name=substance, show=False)
-
-        for idx, row in rivers_enriched.iterrows():
-            if pd.notna(row.get('Exceedance_Ratio')):
-                color, weight = _get_segment_style(row.get('Exceedance_Ratio'), row.get('Total_Flux_kg_per_year'))
-                popup_html = _create_substance_popup(row, substance)
-
-                folium.GeoJson(
-                    row.geometry,
-                    style_function=lambda x, c=color, w=weight: {
-                        'color': c,
-                        'weight': w,
-                        'opacity': 0.8
-                    },
-                    popup=folium.Popup(popup_html, max_width=300)
-                ).add_to(feature_group)
-
-        feature_group.add_to(m)
-
-    # Add layer control
-    folium.LayerControl(collapsed=False).add_to(m)
-
-    # Add legend
-    _add_exceedance_legend(m)
-
-    # Save
-    output_path = output_dir / "river_segments_by_substance.html"
-    m.save(str(output_path))
-    print(f"    Saved: {output_path}")
-
-
-def _create_site_flux_map(site_flux: pd.DataFrame, output_dir: Path) -> None:
-    """Create map showing contamination sites as polygons colored by flux."""
-
-    print("  Creating site flux map...")
-
-    # Load site geometries
-    sites_gdf = gpd.read_file(get_output_path("step3_v1v2_sites"), encoding='utf-8')
-    sites_web = sites_gdf.to_crs('EPSG:4326')
-
-    # Aggregate flux by site (sum across all substances)
-    site_totals = site_flux.groupby('Lokalitet_ID').agg({
-        'Pollution_Flux_kg_per_year': 'sum',
-        'Qualifying_Category': lambda x: ', '.join(x.unique()[:3]),  # Top 3 categories
-        'Lokalitetsnavn': 'first',
-        'Nearest_River_ov_navn': 'first',
-        'Distance_to_River_m': 'first'
-    }).reset_index()
-
-    # Join with geometries (Step 3 shapefile uses 'Lokalitet_' not 'Lokalitet_ID')
-    sites_enriched = sites_web.merge(
-        site_totals,
-        left_on='Lokalitet_',
-        right_on='Lokalitet_ID',
-        how='inner'
-    )
-
-    # Get map center
-    bounds = sites_enriched.total_bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
-
-    # Create map
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=8,
-        tiles='OpenStreetMap'
-    )
-
-    # Add site polygons
-    for idx, row in sites_enriched.iterrows():
-        color = _get_flux_color(row['Pollution_Flux_kg_per_year'])
-        popup_html = _create_site_popup(row)
-
-        folium.GeoJson(
-            row.geometry,
-            style_function=lambda x, c=color: {
-                'fillColor': c,
-                'color': 'black',
-                'weight': 1,
-                'fillOpacity': 0.6
-            },
-            popup=folium.Popup(popup_html, max_width=300)
-        ).add_to(m)
-
-    # Add flux legend
-    _add_flux_legend(m)
-
-    # Save
-    output_path = output_dir / "contamination_sites_flux.html"
-    m.save(str(output_path))
-    print(f"    Saved: {output_path}")
-
-
-# ---------------------------------------------------------------------------
-# Helper functions for styling and popups
-# ---------------------------------------------------------------------------
-
-def _get_segment_style(exceedance_ratio, flux_kg_per_year):
-    """Determine color and line weight for river segment."""
-
-    # Determine color based on exceedance
-    if pd.isna(exceedance_ratio):
-        color = 'gray'
-    elif exceedance_ratio < 1:
-        color = 'green'
-    elif exceedance_ratio < 10:
-        color = 'yellow'
-    elif exceedance_ratio < 100:
-        color = 'orange'
-    else:
-        color = 'red'
-
-    # Determine line weight based on flux (log scale)
-    if pd.isna(flux_kg_per_year) or flux_kg_per_year <= 0:
-        weight = 2
-    else:
-        weight = min(10, 2 + np.log10(max(0.01, flux_kg_per_year)))
-
-    return color, weight
-
-
-def _get_flux_color(flux_kg_per_year):
-    """Determine color for site based on flux."""
-    if pd.isna(flux_kg_per_year) or flux_kg_per_year <= 0:
-        return 'lightgray'
-    elif flux_kg_per_year < 1:
-        return 'lightgreen'
-    elif flux_kg_per_year < 10:
-        return 'yellow'
-    elif flux_kg_per_year < 100:
-        return 'orange'
-    else:
-        return 'red'
-
-
-def _create_overall_popup(row):
-    """Create popup HTML for overall exceedance map."""
-    exceedance = row.get('Max_Exceedance_Ratio', 'N/A')
-    flux = row.get('Total_Flux_kg_per_year', 'N/A')
-
-    return f"""
-    <b>River Segment</b><br>
-    <b>Name:</b> {row.get('ov_navn', 'Unknown')}<br>
-    <b>ID:</b> {row.get('ov_id', 'Unknown')}<br>
-    <b>GVFK:</b> {row.get('River_Segment_GVFK', 'N/A')}<br>
-    <b>Max Exceedance:</b> {f'{exceedance:.1f}x MKK' if pd.notna(exceedance) else 'No data'}<br>
-    <b>Total Flux:</b> {f'{flux:.2f} kg/year' if pd.notna(flux) else 'N/A'}<br>
-    <b>Contributing Sites:</b> {row.get('Contributing_Site_Count', 'N/A')}<br>
-    <b>Failing Scenarios:</b> {row.get('Failing_Scenarios', 'None')}
-    """
-
-
-def _create_substance_popup(row, substance):
-    """Create popup HTML for substance-specific map."""
-    exceedance = row.get('Exceedance_Ratio', 'N/A')
-    flux = row.get('Total_Flux_kg_per_year', 'N/A')
-    cmix = row.get('Cmix_ug_L', 'N/A')
-
-    return f"""
-    <b>River Segment - {substance}</b><br>
-    <b>Name:</b> {row.get('ov_navn', 'Unknown')}<br>
-    <b>ID:</b> {row.get('ov_id', 'Unknown')}<br>
-    <b>Exceedance:</b> {f'{exceedance:.1f}x MKK' if pd.notna(exceedance) else 'Below MKK'}<br>
-    <b>Cmix:</b> {f'{cmix:.2f} ug/L' if pd.notna(cmix) else 'N/A'}<br>
-    <b>Flux:</b> {f'{flux:.2f} kg/year' if pd.notna(flux) else 'N/A'}<br>
-    <b>Sites:</b> {row.get('Contributing_Site_Count', 'N/A')}
-    """
-
-
-def _create_site_popup(row):
-    """Create popup HTML for site flux map."""
-    return f"""
-    <b>Contamination Site</b><br>
-    <b>ID:</b> {row['Lokalitet_ID']}<br>
-    <b>Name:</b> {row.get('Lokalitetsnavn', 'Unknown')}<br>
-    <b>Total Flux:</b> {row['Pollution_Flux_kg_per_year']:.2f} kg/year<br>
-    <b>Categories:</b> {row['Qualifying_Category']}<br>
-    <b>Nearest River:</b> {row['Nearest_River_ov_navn']}<br>
-    <b>Distance:</b> {row['Distance_to_River_m']:.0f} m
-    """
-
-
-# ---------------------------------------------------------------------------
-# Negative infiltration diagnostics
-# ---------------------------------------------------------------------------
 
 def _create_negative_infiltration_map(
     negative_df: pd.DataFrame | None,
@@ -560,7 +298,9 @@ def _create_negative_infiltration_map(
         print("  Negative infiltration rows are missing site geometries; skipping map.")
         return
 
-    neg_gdf_proj = gpd.GeoDataFrame(joined, geometry="geometry", crs=site_geometries.crs)
+    neg_gdf_proj = gpd.GeoDataFrame(
+        joined, geometry="geometry", crs=site_geometries.crs
+    )
     if neg_gdf_proj.crs is None:
         print("  Site geometry CRS undefined; cannot create validation map.")
         return
@@ -609,6 +349,7 @@ def _create_negative_infiltration_map(
 
     def create_style_fn(is_multi_layer=False):
         """Create style function for single or multi-layer sites."""
+
         def style_fn(feature: dict) -> dict:
             if is_multi_layer:
                 return {
@@ -618,13 +359,17 @@ def _create_negative_infiltration_map(
                     "fillOpacity": 0.7,
                 }
             else:
-                value = feature["properties"].get("Display_Infiltration_mm_per_year", 0) or 0
+                value = (
+                    feature["properties"].get("Display_Infiltration_mm_per_year", 0)
+                    or 0
+                )
                 return {
                     "fillColor": color_scale(value),
                     "color": "#000000",
                     "weight": 0.5,
                     "fillOpacity": 0.7,
                 }
+
         return style_fn
 
     # Extract all unique layers from the data
@@ -662,7 +407,9 @@ def _create_negative_infiltration_map(
         feature_group = folium.FeatureGroup(name=f"GVD {layer}", show=False)
 
         # Add raster overlay for this layer
-        _add_raster_overlay_for_layer(layer, feature_group, output_dir, neg_gdf_proj.crs)
+        _add_raster_overlay_for_layer(
+            layer, feature_group, output_dir, neg_gdf_proj.crs
+        )
 
         # Add sites for this layer
         tooltip = folium.features.GeoJsonTooltip(
@@ -874,13 +621,13 @@ def _create_negative_infiltration_map(
       </p>
       <hr style="margin: 8px 0;">
       <p style="margin: 3px 0; font-size: 10px; font-weight: bold; color: #d73027;">
-        ⚠ VALIDATION CHECK:<br>
+        [WARNING] VALIDATION CHECK:<br>
         Removed sites should be on RED areas!
       </p>
       <hr style="margin: 8px 0;">
       <p style="margin: 3px 0; font-size: 9px; color: #666;">
         <em>Use layer control (top-right) to toggle modellags.<br>
-        If site polygons overlap BLUE areas → potential bug!</em>
+        If site polygons overlap BLUE areas -> potential bug!</em>
       </p>
     </div>
     """
@@ -907,9 +654,9 @@ def _create_negative_infiltration_map(
     _export_negative_infiltration_stats(neg_gdf_proj, output_dir)
 
     # PROGRAMMATIC VERIFICATION: Check if filtered sites actually have negative infiltration
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PROGRAMMATIC VERIFICATION OF NEGATIVE INFILTRATION")
-    print("="*60)
+    print("=" * 60)
     _verify_negative_infiltration_sites(neg_gdf_proj, output_dir)
 
     print("  Validation map saved to:", map_path)
@@ -1025,7 +772,9 @@ def _add_raster_overlay_for_layer(
                 resampling=Resampling.average,
             )
 
-            transform = src.transform * Affine.scale(width / out_width, height / out_height)
+            transform = src.transform * Affine.scale(
+                width / out_width, height / out_height
+            )
             bounds = (
                 transform.c,
                 transform.f + out_height * transform.e,
@@ -1048,20 +797,30 @@ def _add_raster_overlay_for_layer(
 
             # Print comprehensive diagnostics
             print(f"    Raster {layer} full stats:")
-            print(f"      All values: min={valid.min():.1f}, max={valid.max():.1f}, mean={valid.mean():.1f} mm/år")
+            print(
+                f"      All values: min={valid.min():.1f}, max={valid.max():.1f}, mean={valid.mean():.1f} mm/år"
+            )
 
             negative_count = (valid < 0).sum()
             positive_count = (valid >= 0).sum()
-            print(f"      Negative pixels: {negative_count:,} ({100*negative_count/len(valid):.1f}%)")
-            print(f"      Positive pixels: {positive_count:,} ({100*positive_count/len(valid):.1f}%)")
+            print(
+                f"      Negative pixels: {negative_count:,} ({100 * negative_count / len(valid):.1f}%)"
+            )
+            print(
+                f"      Positive pixels: {positive_count:,} ({100 * positive_count / len(valid):.1f}%)"
+            )
 
             if negative_count > 0:
                 negative_vals = valid[valid < 0]
-                print(f"      Negative range: {negative_vals.min():.1f} to {negative_vals.max():.1f} mm/år")
+                print(
+                    f"      Negative range: {negative_vals.min():.1f} to {negative_vals.max():.1f} mm/år"
+                )
 
             if positive_count > 0:
                 positive_vals = valid[valid >= 0]
-                print(f"      Positive range: {positive_vals.min():.1f} to {positive_vals.max():.1f} mm/år")
+                print(
+                    f"      Positive range: {positive_vals.min():.1f} to {positive_vals.max():.1f} mm/år"
+                )
 
             # Use diverging colormap centered at 0
             # Red = negative (discharge), Blue/Green = positive (recharge)
@@ -1074,7 +833,9 @@ def _add_raster_overlay_for_layer(
             vmax_p = np.percentile(valid, 99)  # 99th percentile
 
             print(f"      Percentile range (1-99%): {vmin_p:.1f} to {vmax_p:.1f} mm/år")
-            print(f"      Using this range for colormap to avoid extreme outlier washing")
+            print(
+                f"      Using this range for colormap to avoid extreme outlier washing"
+            )
 
             # Make symmetric around zero using percentiles
             abs_max_p = max(abs(vmin_p), abs(vmax_p))
@@ -1083,6 +844,7 @@ def _add_raster_overlay_for_layer(
 
             # Create normalized data using TwoSlopeNorm centered at 0
             from matplotlib.colors import TwoSlopeNorm
+
             norm = TwoSlopeNorm(vmin=vmin_sym, vcenter=0, vmax=vmax_sym)
 
             # Clip data to percentile range, then normalize
@@ -1091,7 +853,9 @@ def _add_raster_overlay_for_layer(
             normalized[nodata_mask] = np.nan
 
             # Apply diverging colormap: Red (negative) -> White (zero) -> Blue (positive)
-            cmap = plt.get_cmap("RdBu_r")  # Red-Blue reversed: Red=negative, Blue=positive
+            cmap = plt.get_cmap(
+                "RdBu_r"
+            )  # Red-Blue reversed: Red=negative, Blue=positive
             rgba = cmap(np.nan_to_num(normalized, nan=0.5))
             rgba[..., 3] = np.where(nodata_mask, 0, 0.85)  # High opacity for visibility
 
@@ -1102,9 +866,7 @@ def _add_raster_overlay_for_layer(
             print(f"      Bounds box before transformation: {bounds_geom.bounds}")
 
             bounds_wgs = (
-                gpd.GeoSeries([bounds_geom], crs=src.crs)
-                .to_crs(epsg=4326)
-                .total_bounds
+                gpd.GeoSeries([bounds_geom], crs=src.crs).to_crs(epsg=4326).total_bounds
             )
 
             print(f"      Bounds in WGS84: {bounds_wgs}")
@@ -1131,7 +893,7 @@ def _add_raster_overlay_for_layer(
             )
             overlay.add_to(feature_group)
 
-            print(f"    ✓ Added raster overlay for {layer}")
+            print(f"    [OK] Added raster overlay for {layer}")
             return True
 
     except Exception as e:
@@ -1139,23 +901,26 @@ def _add_raster_overlay_for_layer(
         return False
 
 
-
 def _verify_negative_infiltration_sites(
     neg_gdf_proj: gpd.GeoDataFrame, output_dir: Path
 ) -> None:
     """Programmatically verify that filtered sites actually have negative infiltration."""
 
-    required_cols = ["Infiltration_mm_per_year", "Polygon_Infiltration_mm_per_year", "Centroid_Infiltration_mm_per_year"]
+    required_cols = [
+        "Infiltration_mm_per_year",
+        "Polygon_Infiltration_mm_per_year",
+        "Centroid_Infiltration_mm_per_year",
+    ]
     missing = [col for col in required_cols if col not in neg_gdf_proj.columns]
     if missing:
-        print(f"  ⚠ Cannot verify: missing columns {missing}")
+        print(f"  [WARNING] Cannot verify: missing columns {missing}")
         return
 
     # Check the main infiltration value used
     infiltration_vals = neg_gdf_proj["Infiltration_mm_per_year"].dropna()
 
     if infiltration_vals.empty:
-        print("  ⚠ No infiltration values to verify!")
+        print("  [WARNING] No infiltration values to verify!")
         return
 
     total_sites = len(neg_gdf_proj)
@@ -1165,9 +930,15 @@ def _verify_negative_infiltration_sites(
 
     print(f"\nInfiltration Value Distribution:")
     print(f"  Total rows: {total_sites:,}")
-    print(f"  Negative (< 0): {negative_count:,} ({100*negative_count/len(infiltration_vals):.1f}%)")
-    print(f"  Zero (= 0): {zero_count:,} ({100*zero_count/len(infiltration_vals):.1f}%)")
-    print(f"  Positive (> 0): {positive_count:,} ({100*positive_count/len(infiltration_vals):.1f}%)")
+    print(
+        f"  Negative (< 0): {negative_count:,} ({100 * negative_count / len(infiltration_vals):.1f}%)"
+    )
+    print(
+        f"  Zero (= 0): {zero_count:,} ({100 * zero_count / len(infiltration_vals):.1f}%)"
+    )
+    print(
+        f"  Positive (> 0): {positive_count:,} ({100 * positive_count / len(infiltration_vals):.1f}%)"
+    )
 
     print(f"\nInfiltration Statistics:")
     print(f"  Min: {infiltration_vals.min():.2f} mm/år")
@@ -1177,18 +948,30 @@ def _verify_negative_infiltration_sites(
 
     # Check for potential issues
     if positive_count > 0:
-        print(f"\n⚠ WARNING: {positive_count} rows have POSITIVE infiltration!")
+        print(f"\n[WARNING] WARNING: {positive_count} rows have POSITIVE infiltration!")
         print(f"  These should NOT have been filtered out!")
         positive_sites = neg_gdf_proj[neg_gdf_proj["Infiltration_mm_per_year"] > 0]
-        print(f"  Positive value range: {positive_sites['Infiltration_mm_per_year'].min():.2f} to {positive_sites['Infiltration_mm_per_year'].max():.2f} mm/år")
+        print(
+            f"  Positive value range: {positive_sites['Infiltration_mm_per_year'].min():.2f} to {positive_sites['Infiltration_mm_per_year'].max():.2f} mm/år"
+        )
 
         # Save problematic rows
         problem_path = output_dir / "PROBLEM_positive_infiltration_sites.csv"
-        positive_sites[["Lokalitet_ID", "GVFK", "Sampled_Layers", "Infiltration_mm_per_year",
-                       "Polygon_Infiltration_mm_per_year", "Centroid_Infiltration_mm_per_year"]].to_csv(problem_path, index=False)
-        print(f"  ⚠ Saved problematic rows to: {problem_path}")
+        positive_sites[
+            [
+                "Lokalitet_ID",
+                "GVFK",
+                "Sampled_Layers",
+                "Infiltration_mm_per_year",
+                "Polygon_Infiltration_mm_per_year",
+                "Centroid_Infiltration_mm_per_year",
+            ]
+        ].to_csv(problem_path, index=False)
+        print(f"  [WARNING] Saved problematic rows to: {problem_path}")
     else:
-        print(f"\n✓ VERIFICATION PASSED: All filtered sites have negative or zero infiltration")
+        print(
+            f"\n[OK] VERIFICATION PASSED: All filtered sites have negative or zero infiltration"
+        )
 
     # Compare polygon vs centroid sampling
     polygon_vals = neg_gdf_proj["Polygon_Infiltration_mm_per_year"].dropna()
@@ -1201,8 +984,8 @@ def _verify_negative_infiltration_sites(
 
         # Find rows where methods disagree on sign
         both_valid = neg_gdf_proj[
-            neg_gdf_proj["Polygon_Infiltration_mm_per_year"].notna() &
-            neg_gdf_proj["Centroid_Infiltration_mm_per_year"].notna()
+            neg_gdf_proj["Polygon_Infiltration_mm_per_year"].notna()
+            & neg_gdf_proj["Centroid_Infiltration_mm_per_year"].notna()
         ]
 
         if not both_valid.empty:
@@ -1211,10 +994,12 @@ def _verify_negative_infiltration_sites(
             disagreement = poly_neg != cent_neg
             disagreement_count = disagreement.sum()
 
-            print(f"  Sign disagreement: {disagreement_count:,}/{len(both_valid):,} ({100*disagreement_count/len(both_valid):.1f}%)")
+            print(
+                f"  Sign disagreement: {disagreement_count:,}/{len(both_valid):,} ({100 * disagreement_count / len(both_valid):.1f}%)"
+            )
 
             if disagreement_count > 0:
-                print(f"    → Polygon sampling captures spatial variability better")
+                print(f"    -> Polygon sampling captures spatial variability better")
 
 
 def _export_negative_infiltration_stats(
@@ -1259,38 +1044,3 @@ def _export_negative_infiltration_stats(
     stats_path = output_dir / "step6_negative_infiltration_validation.csv"
     export_df.to_csv(stats_path, index=False)
     print("  Validation table saved to:", stats_path)
-
-
-def _add_exceedance_legend(m):
-    """Add legend for exceedance colors to map."""
-    legend_html = '''
-    <div style="position: fixed;
-                bottom: 50px; right: 50px; width: 200px; height: 160px;
-                background-color: white; border:2px solid grey; z-index:9999;
-                font-size:14px; padding: 10px">
-    <p style="margin:0; font-weight:bold;">MKK Exceedance</p>
-    <p style="margin:5px 0;"><span style="color:green;">━━━</span> Below MKK (<1x)</p>
-    <p style="margin:5px 0;"><span style="color:yellow;">━━━</span> 1-10x MKK</p>
-    <p style="margin:5px 0;"><span style="color:orange;">━━━</span> 10-100x MKK</p>
-    <p style="margin:5px 0;"><span style="color:red;">━━━</span> >100x MKK</p>
-    <p style="margin:5px 0;"><span style="color:gray;">━━━</span> No data</p>
-    </div>
-    '''
-    m.get_root().html.add_child(folium.Element(legend_html))
-
-
-def _add_flux_legend(m):
-    """Add legend for flux colors to map."""
-    legend_html = '''
-    <div style="position: fixed;
-                bottom: 50px; right: 50px; width: 200px; height: 140px;
-                background-color: white; border:2px solid grey; z-index:9999;
-                font-size:14px; padding: 10px">
-    <p style="margin:0; font-weight:bold;">Pollution Flux</p>
-    <p style="margin:5px 0;"><span style="background:lightgreen; padding:2px 8px;">  </span> <1 kg/year</p>
-    <p style="margin:5px 0;"><span style="background:yellow; padding:2px 8px;">  </span> 1-10 kg/year</p>
-    <p style="margin:5px 0;"><span style="background:orange; padding:2px 8px;">  </span> 10-100 kg/year</p>
-    <p style="margin:5px 0;"><span style="background:red; padding:2px 8px;">  </span> >100 kg/year</p>
-    </div>
-    '''
-    m.get_root().html.add_child(folium.Element(legend_html))

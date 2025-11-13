@@ -2,19 +2,26 @@
 Step 6: Tilstandsvurdering (State Assessment)
 ============================================
 
-This module follows the agreed workflow:
-1. Load Step 5 results, site geometries, GVFK layer mapping, and river segments.
-2. Derive areas and infiltration values (J = A · C · I) for every site–segment–substance combination.
-3. Aggregate fluxes per river segment and join discharge scenarios.
-4. Compute Cmix for each scenario and (optionally) compare to MKK values.
-5. Export detailed, aggregated, and summary CSV files and trigger basic reporting.
+Calculates pollution flux from contaminated sites to river segments and computes
+mixing concentrations (Cmix) under different flow scenarios.
 
-The implementation intentionally keeps the logic straightforward: no silent fallbacks,
-no hidden heuristics—issues surface as explicit exceptions or warnings.
+Workflow:
+1. Load data (Step 5 results, geometries, GVFK mapping, rivers, flow)
+2. Prepare flux inputs (attach areas, infiltration, river metadata)
+3. Calculate flux per site-scenario (J = A · C · I)
+4. Aggregate flux by river segment
+5. Compute Cmix for Mean/Q90/Q95 scenarios
+6. Apply MKK thresholds and flag exceedances
+7. Export results and visualizations
+
+Core calculations remain in this file; constants and data loading extracted to
+config.py and data_loaders.py for maintainability.
 """
 
 from __future__ import annotations
 
+# Ensure repository root is importable
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -25,243 +32,120 @@ import rasterio
 from rasterio.mask import mask
 from shapely.geometry import mapping
 
-# Ensure the repository root is importable when the script is executed directly.
-import sys
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# Import configuration and constants
 from config import (
-    GVFK_LAYER_MAPPING_PATH,
+    CATEGORY_SCENARIOS,
     GVD_RASTER_DIR,
-    RIVER_FLOW_POINTS_PATH,
-    RIVERS_PATH,
+    GVFK_LAYER_MAPPING_PATH,
+    MKK_THRESHOLDS,
+    MODELSTOFFER,
+    RESULTS_DIR,
+    SECONDS_PER_YEAR,
+    STANDARD_CONCENTRATIONS,
     ensure_results_directory,
     get_output_path,
 )
+
+# Import data loaders
+from data_loaders import (
+    load_flow_scenarios,
+    load_gvfk_layer_mapping,
+    load_river_segments,
+    load_site_geometries,
+    load_step5_results,
+)
+
+# Import visualizations
 try:
     from .step6_visualizations import analyze_and_visualize_step6
-except ImportError:  # Script executed directly
+except ImportError:
     from step6_visualizations import analyze_and_visualize_step6
 
-# Seconds per (mean) year – used to derive flux per second.
-SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
-STANDARD_CONCENTRATIONS = {
-    # MERGED Level 1/2: Branche/Aktivitet + Substance overrides
-    "activity_substance": {
-        # Servicestationer / benzintanke
-        "Servicestationer_Benzen": 8000.0,              # D3 Table 3 – Benzen, servicestationer (90% fraktil)
-        "Benzin og olie, salg af_Benzen": 8000.0,       # Same (duplicate synonym)
 
-        # Villaolietanke
-        "Villaolietank_Olie C10-C25": 6000.0,           # D3 Table 4 – Olie, villaolietanke (90% fraktil)
+# ===========================================================================
+# Main workflow
+# ===========================================================================
 
-        # Renserier (TCE)
-        "Renserier_Trichlorethylen": 42000.0,           # D3 Table 6 – TCE generelt (renserier = "-")
-
-        # PCE not modelstof → retained from your baseline as placeholder
-        "Renserier_Tetrachlorethylen": 2500.0,          # Placeholder (not in Delprojekt modelstoffer)
-
-        # Non-modelstoff example kept
-        "Maskinindustri_Toluen": 1200.0,                # Placeholder
-    },
-
-    # Level 3: Losseplads + specific overrides
-    "losseplads": {
-        "Benzen": 17.0,                 # D3 Table 3 – Benzen, losseplads
-        "Olie C10-C25": 2500.0,         # D3 Table 4 – Olie, losseplads
-        "Trichlorethylen": 2.2,         # D3 Table 6 – TCE, losseplads
-        "Phenol": 6.4,                  # D3 Table 8 – Phenol, losseplads
-        "Arsen": 25.0,                  # D3 Table 16 – Arsen, losseplads
-        "COD": 380000.0,                # D3 Table 17 – COD (landfill context)
-
-        # Category fallbacks inside landfill context
-        "BTXER": 3000.0,
-        "PAH_FORBINDELSER": 2500.0,
-        "UORGANISKE_FORBINDELSER": 1800.0,
-        "PHENOLER": 1500.0,
-        "KLOREREDE_OPLØSNINGSMIDLER": 2800.0,
-        "PESTICIDER": 1000.0,
-    },
-
-    # Level 4: Specific compound defaults (worst-case)
-    "compound": {
-        "Olie C10-C25": 3000.0,               # D3 Table 4 – general
-        "Benzen": 400.0,                     # D3 Table 3 – general
-        "1,1,1-Trichlorethan": 100.0,        # D3 Table 5
-        "Trichlorethylen": 42000.0,          # D3 Table 6
-        "Chloroform": 100.0,                 # D3 Table 7 / text
-        "Chlorbenzen": 100.0,                # D3 Table 12
-        "Phenol": 1300.0,                    # D3 Table 8
-        "4-Nonylphenol": 9.0,                # D3 Table 9
-        "2,6-dichlorphenol": 10000.0,        # D3 Table 11
-        "MTBE": 50000.0,                     # D3 Table 10
-        "Fluoranthen": 30.0,                 # D3 Table 13
-        "Mechlorprop": 1000.0,               # D3 Table 14
-        "Atrazin": 12.0,                     # D3 Table 15
-        "Arsen": 100.0,                      # D3 Table 16 – general
-        "Cyanid": 3500.0,                    # D3 Table 18
-        "COD": 380000.0,                     # D3 Table 17
-    },
-
-    # Level 5: Category scenarios based on modelstoffer
-    # Each category may have multiple scenarios (one per modelstof)
-    # All compounds in a group use these modelstof concentrations
-    "category": {
-        # BTEX / Oil (2 scenarios)
-        "BTXER__via_Benzen": 400.0,                     # D3 Table 3 – Benzen general
-        "BTXER__via_Olie C10-C25": 3000.0,              # D3 Table 4 – Olie C10-C25 general
-
-        # Chlorinated solvents (4 scenarios)
-        "KLOREREDE_OPLØSNINGSMIDLER__via_1,1,1-Trichlorethan": 100.0,     # D3 Table 5
-        "KLOREREDE_OPLØSNINGSMIDLER__via_Trichlorethylen": 42000.0,       # D3 Table 6
-        "KLOREREDE_OPLØSNINGSMIDLER__via_Chloroform": 100.0,              # D3 Table 7
-        "KLOREREDE_OPLØSNINGSMIDLER__via_Chlorbenzen": 100.0,             # D3 Table 12
-
-        # Chlorinated hydrocarbons (synonym category - same scenarios as KLOREREDE_OPLØSNINGSMIDLER)
-        # NOTE: This category appears in Step 5 output due to categorization in refined_compound_analysis.py
-        # It should ideally be merged with KLOREREDE_OPLØSNINGSMIDLER (see MONDAY_TODO_CATEGORIZATION.md)
-        "KLOREDE_KULBRINTER__via_1,1,1-Trichlorethan": 100.0,     # D3 Table 5
-        "KLOREDE_KULBRINTER__via_Trichlorethylen": 42000.0,       # D3 Table 6
-        "KLOREDE_KULBRINTER__via_Chloroform": 100.0,              # D3 Table 7
-        "KLOREDE_KULBRINTER__via_Chlorbenzen": 100.0,             # D3 Table 12
-
-        # Polar compounds (2 scenarios)
-        "POLARE_FORBINDELSER__via_MTBE": 50000.0,       # D3 Table 10
-        "POLARE_FORBINDELSER__via_4-Nonylphenol": 9.0,  # D3 Table 9
-
-        # Phenols (1 scenario)
-        "PHENOLER__via_Phenol": 1300.0,                 # D3 Table 8
-
-        # Chlorinated phenols (1 scenario)
-        "KLOREREDE_PHENOLER__via_2,6-dichlorphenol": 10000.0,  # D3 Table 11
-
-        # Pesticides (2 scenarios)
-        "PESTICIDER__via_Mechlorprop": 1000.0,          # D3 Table 14
-        "PESTICIDER__via_Atrazin": 12.0,                # D3 Table 15
-
-        # PAH (1 scenario)
-        "PAH_FORBINDELSER__via_Fluoranthen": 30.0,      # D3 Table 13
-
-        # Inorganics (2 scenarios)
-        "UORGANISKE_FORBINDELSER__via_Arsen": 100.0,    # D3 Table 16
-        "UORGANISKE_FORBINDELSER__via_Cyanid": 3500.0,  # D3 Table 18
-
-        # Categories without modelstof basis (kept for backward compatibility)
-        "LOSSEPLADS": 1000.0,
-        "ANDRE": 1000.0,
-        "PFAS": 500.0,  # Not part of D3 modelstoffer
-    },
-}
-
-# Map each category to its modelstof scenarios
-# This defines which scenarios to generate for each compound group
-CATEGORY_SCENARIOS = {
-    "BTXER": ["Benzen", "Olie C10-C25"],
-    "KLOREREDE_OPLØSNINGSMIDLER": ["1,1,1-Trichlorethan", "Trichlorethylen", "Chloroform", "Chlorbenzen"],
-    "KLOREDE_KULBRINTER": ["1,1,1-Trichlorethan", "Trichlorethylen", "Chloroform", "Chlorbenzen"],  # Synonym
-    "POLARE_FORBINDELSER": ["MTBE", "4-Nonylphenol"],
-    "PHENOLER": ["Phenol"],
-    "KLOREREDE_PHENOLER": ["2,6-dichlorphenol"],
-    "PESTICIDER": ["Mechlorprop", "Atrazin"],
-    "PAH_FORBINDELSER": ["Fluoranthen"],
-    "UORGANISKE_FORBINDELSER": ["Arsen", "Cyanid"],
-    # Categories without scenarios
-    "LOSSEPLADS": [],
-    "ANDRE": [],
-    "PFAS": [],
-}
-
-
-# Flow statistics to import from the q-point shapefile.
-FLOW_SCENARIO_COLUMNS = {
-    "Average": "Mean",
-    "Q90": "Q90",
-    "Q95": "Q95",
-}
-
-# MKK reference values (µg/L) - Environmental Quality Standards (EQS) for freshwater.
-# Alle værdier er AA-EQS (generelt kvalitetskrav) for ferskvand i µg/L.
-# Kilder: BEK nr. 1022 af 25/08/2010 – Bilag 3 (EU-EQS) og Bilag 2 (nationale EQS).
-#
-# IMPORTANT: Per meeting decision - only use specific MKK for the 16 modelstoffer from Delprojekt 3.
-# For other substances (non-modelstoffer), use category MKK values only.
-# Substance-level entries take precedence over category-level entries.
-
-# The 16 modelstoffer from Delprojekt 3 with specific MKK values
-MODELSTOFFER = {
-    "Olie C10-C25", "Benzen", "1,1,1-Trichlorethan", "Trichlorethylen",
-    "Chloroform", "Chlorbenzen", "Phenol", "4-Nonylphenol", "2,6-dichlorphenol",
-    "MTBE", "Fluoranthen", "Mechlorprop", "Atrazin", "Arsen", "Cyanid", "COD"
-}
-
-MKK_THRESHOLDS: Dict[str, float] = {
-    # ============================================================================
-    # MODELSTOFFER - The 16 modelstoffer from Delprojekt 3 (stof-specifikke MKK)
-    # ============================================================================
-    "Benzen": 10.0,                 # BEK 1022 Bilag 3 – Benzen: ferskvand 10
-    "Olie C10-C25": None,           # Ingen EQS som fraktion (ikke et enkeltstof)
-    "1,1,1-Trichlorethan": 21.0,    # BEK 1022 Bilag 2 – 1,1,1-trichlorethan: 21
-    "Trichlorethylen": 10.0,        # BEK 1022 Bilag 3 – Trichlorethylen: 10
-    "Chloroform": 2.5,              # BEK 1022 Bilag 3 – Trichlormethan (chloroform): 2.5
-    "Chlorbenzen": None,            # Ikke opført i BEK 1022
-    "Phenol": 7.7,                  # BEK 1022 Bilag 2 – Phenol: 7.7
-    "4-Nonylphenol": 0.3,           # BEK 1022 Bilag 3 – Nonylphenol: 0.3
-    "2,6-dichlorphenol": 3.4,       # BEK 1022 Bilag 2 – 2,6-dichlorphenol: 3.4
-    "MTBE": 10.0,                   # BEK 1022 Bilag 2 – MTBE: 10
-    "Fluoranthen": 0.1,             # BEK 1022 Bilag 3 – Fluoranthen: 0.1
-    "Mechlorprop": 18.0,            # BEK 1022 Bilag 2 – mechlorprop-p: 18
-    "Atrazin": 0.6,                 # BEK 1022 Bilag 3 – Atrazin: 0.6
-    "Arsen": 4.3,                   # BEK 1022 Bilag 2 – Arsen (As): 4.3
-    "Cyanid": 10.0,                 # Konservativ værdi (ikke i BEK 1022)
-    "COD": 1000.0,                  # Konservativ værdi (indikator, ikke EQS-stof)
-
-    # ============================================================================
-    # KATEGORI-MKK - Afledt fra modelstoffer (laveste EQS i kategorien)
-    # Alle ikke-modelstoffer bruger disse værdier
-    # ============================================================================
-    "BTXER": 10.0,                       # Fra Benzen (strammest i BTEX-gruppen)
-    "PAH_FORBINDELSER": 0.1,             # Fra Fluoranthen
-    "PHENOLER": 0.3,                     # Fra 4-Nonylphenol (strammest: 0.3 < 7.7)
-    "KLOREREDE_PHENOLER": 3.4,           # Fra 2,6-dichlorphenol
-    "POLARE_FORBINDELSER": 10.0,         # Fra MTBE
-    "KLOREREDE_OPLØSNINGSMIDLER": 2.5,   # Fra Chloroform (strammest: 2.5 < 10 < 21)
-    "KLOREDE_KULBRINTER": 2.5,           # Samme som KLOREREDE_OPLØSNINGSMIDLER
-    "PESTICIDER": 0.6,                   # Fra Atrazin (strammest: 0.6 < 18)
-    "UORGANISKE_FORBINDELSER": 4.3,      # Fra Arsen
-    "PFAS": 0.0044,                      # BEK 796/2023 - PFAS_24 group EQS
-    "LOSSEPLADS": 10.0,                  # Konservativ fallback
-    "ANDRE": 10.0,                       # Konservativ fallback for uspecificerede
-}
 
 def run_step6() -> Dict[str, pd.DataFrame]:
     """
     Execute Step 6 workflow and return the produced DataFrames.
 
     Returns:
-        Dict[str, DataFrame]: keys are 'site_flux', 'segment_flux',
-        'cmix_results', and 'segment_summary'.
+        Dict with keys: site_flux, segment_flux, cmix_results, segment_summary,
+        site_exceedances, gvfk_exceedances, negative_infiltration
     """
     ensure_results_directory()
 
-    step5_results = _load_step5_results()
-    site_geometries = _load_site_geometries()
-    layer_mapping = _load_layer_mapping()
-    river_segments = _load_river_segments()
+    print("\n" + "=" * 60)
+    print("STEP 6: TILSTANDSVURDERING")
+    print("=" * 60)
 
-    enriched_results, negative_infiltration = _prepare_flux_inputs(
+    # Load data
+    print("\n[1/6] Loading data...")
+    step5_results = load_step5_results()
+    site_geometries = load_site_geometries()
+    layer_mapping = load_gvfk_layer_mapping()
+    river_segments = load_river_segments()
+
+    # Prepare flux inputs (filtering + infiltration)
+    print("[2/6] Preparing flux inputs (filtering + infiltration)...")
+    enriched_results, negative_infiltration, filtering_audit = _prepare_flux_inputs(
         step5_results, site_geometries, layer_mapping, river_segments
     )
+
+    # Calculate flux
+    print("[3/6] Calculating flux (scenario-based approach)...")
     flux_details = _calculate_flux(enriched_results)
+
+    # Aggregate by segment
+    print("[4/6] Aggregating flux by segment...")
     segment_flux = _aggregate_flux_by_segment(flux_details)
 
-    flow_scenarios = _load_flow_scenarios()
+    # Compute Cmix
+    print("[5/6] Computing Cmix (Q95 scenario)...")
+    flow_scenarios = load_flow_scenarios()
     cmix_results = _calculate_cmix(segment_flux, flow_scenarios)
     cmix_results = _apply_mkk_thresholds(cmix_results)
-    segment_summary = _build_segment_summary(flux_details, segment_flux, cmix_results)
 
-    _export_results(flux_details, segment_flux, cmix_results, segment_summary)
+    # Build summaries
+    print("[6/6] Building summaries & exporting...")
+    segment_summary = _build_segment_summary(flux_details, segment_flux, cmix_results)
+    site_exceedances, gvfk_exceedances = _extract_exceedance_views(
+        flux_details, cmix_results
+    )
+
+    # Export
+    _export_results(
+        flux_details,
+        cmix_results,
+        segment_summary,
+        site_exceedances,
+    )
+
+    # Export filtering audit
+    if not filtering_audit.empty:
+        audit_path = RESULTS_DIR / "step6_filtering_audit_detailed.csv"
+        filtering_audit.to_csv(audit_path, index=False, encoding="utf-8")
+        print(f"\n{'=' * 60}")
+        print(f"Filtering audit exported: {audit_path.name}")
+        print(f"Total filtered entries: {len(filtering_audit)}")
+        print(
+            f"  Filter 1 (Missing modellag): {(filtering_audit['Filter_Stage'] == 'Filter_1_Missing_Modellag').sum()}"
+        )
+        print(
+            f"  Filter 2 (Negative infiltration): {(filtering_audit['Filter_Stage'] == 'Filter_2_Negative_Infiltration').sum()}"
+        )
+        print(
+            f"  Filter 3 (Missing infiltration): {(filtering_audit['Filter_Stage'] == 'Filter_3_Missing_Infiltration').sum()}"
+        )
+        print(f"{'=' * 60}\n")
+
+    # Visualize
     analyze_and_visualize_step6(
         flux_details,
         segment_flux,
@@ -269,154 +153,83 @@ def run_step6() -> Dict[str, pd.DataFrame]:
         segment_summary,
         negative_infiltration=negative_infiltration,
         site_geometries=site_geometries,
+        site_exceedances=site_exceedances,
+        gvfk_exceedances=gvfk_exceedances,
     )
+
+    print("\n" + "=" * 60)
+    print("Step 6 completed successfully!")
+    print("=" * 60 + "\n")
 
     return {
         "site_flux": flux_details,
         "segment_flux": segment_flux,
         "cmix_results": cmix_results,
         "segment_summary": segment_summary,
+        "site_exceedances": site_exceedances,
+        "gvfk_exceedances": gvfk_exceedances,
         "negative_infiltration": negative_infiltration,
     }
 
 
-# ---------------------------------------------------------------------------
-# Loading helpers
-# ---------------------------------------------------------------------------#
+# ===========================================================================
+# Data preparation (filtering + infiltration)
+# ===========================================================================
 
-def _load_step5_results() -> pd.DataFrame:
-    """Load Step 5 output and validate that required columns are present."""
-    step5_path = get_output_path("step5_compound_detailed_combinations")
-    df = pd.read_csv(step5_path, encoding='utf-8')
-
-    if df.empty:
-        raise ValueError(f"Step 5 output is empty: {step5_path}")
-
-    required_columns = [
-        "Lokalitet_ID",
-        "GVFK",
-        "Qualifying_Category",
-        "Qualifying_Substance",
-        "Distance_to_River_m",
-        "Nearest_River_FID",
-        "Nearest_River_ov_id",
-        "River_Segment_Count",
-    ]
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    if missing_columns:
-        raise ValueError(f"Step 5 output is missing columns: {', '.join(missing_columns)}")
-
-    if df["Nearest_River_FID"].isna().any():
-        raise ValueError("One or more rows are missing 'Nearest_River_FID' – rerun Step 4/5.")
-
-    return df
-
-
-def _load_site_geometries() -> gpd.GeoDataFrame:
-    """
-    Load Step 3 geometries and dissolve by site to obtain unique polygons and areas.
-    """
-    sites = gpd.read_file(get_output_path("step3_v1v2_sites"))
-    if sites.empty:
-        raise ValueError("Step 3 geometries are empty – cannot derive site areas.")
-    dissolved = sites.dissolve(by="Lokalitet_", as_index=False)
-    dissolved["Area_m2"] = dissolved.geometry.area
-    dissolved["Centroid"] = dissolved.geometry.centroid
-
-    return dissolved[["Lokalitet_", "Area_m2", "Centroid", "geometry"]]
-
-
-def _load_layer_mapping() -> pd.DataFrame:
-    """Load GVFK → modellag mapping."""
-    mapping = pd.read_csv(GVFK_LAYER_MAPPING_PATH, sep=";", encoding="latin-1")
-    if "GVForekom" not in mapping.columns or "DK-modellag" not in mapping.columns:
-        raise ValueError("Layer mapping must contain 'GVForekom' and 'DK-modellag' columns.")
-
-    return mapping[["GVForekom", "DK-modellag"]]
-
-
-def _load_river_segments() -> gpd.GeoDataFrame:
-    """Load river segments with contact information."""
-    rivers = gpd.read_file(RIVERS_PATH, encoding='utf-8')
-    if rivers.empty:
-        raise ValueError("River segment file is empty – cannot continue.")
-    rivers = rivers.reset_index().rename(columns={"index": "River_FID"})
-    return rivers
-
-
-def _load_flow_scenarios() -> pd.DataFrame:
-    """
-    Load discharge information per river segment and reshape into long format.
-
-    Returns:
-        DataFrame with columns ['ov_id', 'Scenario', 'Flow_m3_s'].
-        Empty DataFrame is returned if the source file is missing.
-    """
-    flow_path = Path(RIVER_FLOW_POINTS_PATH)
-    if not flow_path.exists():
-        print(f"NOTE: Flow file not found at {flow_path}. Cmix calculations will be skipped.")
-        return pd.DataFrame(columns=["ov_id", "Scenario", "Flow_m3_s"])
-
-    flow_points = gpd.read_file(flow_path)
-    required_columns = {"ov_id", *FLOW_SCENARIO_COLUMNS.keys()}
-    missing_columns = required_columns.difference(flow_points.columns)
-    if missing_columns:
-        raise ValueError(
-            f"Flow file is missing expected columns: {', '.join(sorted(missing_columns))}"
-        )
-
-    # Use maximum flow per segment (downstream end, most conservative dilution)
-    aggregated = (
-        flow_points.groupby("ov_id")[list(FLOW_SCENARIO_COLUMNS.keys())]
-        .max(numeric_only=True)
-        .reset_index()
-    )
-
-    long_format = aggregated.melt(
-        id_vars="ov_id",
-        value_vars=list(FLOW_SCENARIO_COLUMNS.keys()),
-        var_name="Scenario",
-        value_name="Flow_m3_s",
-    )
-    long_format["Scenario"] = long_format["Scenario"].map(FLOW_SCENARIO_COLUMNS)
-    long_format = long_format.dropna(subset=["Flow_m3_s"])
-
-    return long_format
-
-
-# ---------------------------------------------------------------------------
-# Preparation of flux inputs
-# ---------------------------------------------------------------------------#
 
 def _prepare_flux_inputs(
     step5_results: pd.DataFrame,
     site_geometries: gpd.GeoDataFrame,
     layer_mapping: pd.DataFrame,
     river_segments: gpd.GeoDataFrame,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Attach areas, modellag, infiltration, and river segment metadata.
 
     Returns:
-        Tuple containing the filtered enrichment DataFrame and the rows that
-        were dropped due to negative infiltration (for diagnostics/visualization).
+        Tuple containing:
+        - enriched: Filtered DataFrame ready for flux calculation
+        - negative_rows: Rows with negative infiltration (for diagnostics/visualization)
+        - filtering_audit: Complete audit trail of all filtered rows
     """
+    # Print initial statistics
+    initial_total_rows = len(step5_results)
+    initial_total_sites = step5_results["Lokalitet_ID"].nunique()
+    initial_total_gvfk = step5_results["GVFK"].nunique()
+
+    print("\n" + "=" * 80)
+    print("FILTERING CASCADE – Step 6 Data Preparation")
+    print("=" * 80)
+    print(
+        f"INPUT from Step 5: {initial_total_rows} rows, {initial_total_sites} sites, {initial_total_gvfk} GVFK"
+    )
+    print("=" * 80 + "\n")
+
     enriched = step5_results.copy()
     negative_rows = pd.DataFrame(columns=enriched.columns)
 
+    # Initialize filtering audit trail
+    filtering_audit = []
+
     # Attach areas and centroids
     area_lookup = dict(zip(site_geometries["Lokalitet_"], site_geometries["Area_m2"]))
-    centroid_lookup = dict(zip(site_geometries["Lokalitet_"], site_geometries["Centroid"]))
-    geometry_lookup = dict(zip(site_geometries["Lokalitet_"], site_geometries["geometry"]))
+    centroid_lookup = dict(
+        zip(site_geometries["Lokalitet_"], site_geometries["Centroid"])
+    )
+    geometry_lookup = dict(
+        zip(site_geometries["Lokalitet_"], site_geometries["geometry"])
+    )
     enriched["Area_m2"] = enriched["Lokalitet_ID"].map(area_lookup)
 
     if enriched["Area_m2"].isna().any():
-        missing_sites = enriched.loc[enriched["Area_m2"].isna(), "Lokalitet_ID"].unique()
+        missing_sites = enriched.loc[
+            enriched["Area_m2"].isna(), "Lokalitet_ID"
+        ].unique()
         raise ValueError(
-            "Missing geometries for the following sites: " + ", ".join(sorted(missing_sites))
+            "Missing geometries for the following sites: "
+            + ", ".join(sorted(missing_sites))
         )
 
     # Attach modellag information
-    # Only select the columns we need from layer_mapping (not all 83 columns!)
     enriched = enriched.merge(
         layer_mapping[["GVForekom", "DK-modellag"]],
         left_on="GVFK",
@@ -426,14 +239,54 @@ def _prepare_flux_inputs(
     if enriched["DK-modellag"].isna().any():
         missing_layers = enriched.loc[enriched["DK-modellag"].isna(), "GVFK"].unique()
         missing_count = enriched["DK-modellag"].isna().sum()
-        print(f"\nWARNING: Missing modellag mapping for {len(missing_layers)} GVFK(s):")
-        print(f"   GVFKs: {', '.join(sorted(missing_layers))}")
-        print(f"   Affected rows: {missing_count}")
-        print(f"   These rows will be excluded from the analysis.")
-        print(f"   -> TODO: Add these GVFKs to '{GVFK_LAYER_MAPPING_PATH.name}' for complete analysis.\n")
+        missing_sites_count = enriched.loc[
+            enriched["DK-modellag"].isna(), "Lokalitet_ID"
+        ].nunique()
+        missing_sites_list = enriched.loc[
+            enriched["DK-modellag"].isna(), "Lokalitet_ID"
+        ].unique()
+
+        print(f"FILTER 1: Missing modellag mapping")
+        print(
+            f"   GVFKs affected: {len(missing_layers)} ({', '.join(sorted(missing_layers))})"
+        )
+        print(
+            f"   Rows removed: {missing_count} ({missing_count / initial_total_rows * 100:.1f}%)"
+        )
+        print(f"   Sites removed: {missing_sites_count}")
+        print(
+            f"   Example sites: {', '.join(sorted(missing_sites_list)[:5])}{' ...' if len(missing_sites_list) > 5 else ''}"
+        )
+        print(
+            f"   -> TODO: Add these GVFKs to '{GVFK_LAYER_MAPPING_PATH.name}' for complete analysis.\n"
+        )
+
+        # Track filtered rows in audit
+        filtered = enriched[enriched["DK-modellag"].isna()]
+        for _, row in filtered.iterrows():
+            filtering_audit.append(
+                {
+                    "Lokalitet_ID": row["Lokalitet_ID"],
+                    "Lokalitetsnavn": row.get("Lokalitetsnavn", "N/A"),
+                    "GVFK": row["GVFK"],
+                    "Qualifying_Category": row["Qualifying_Category"],
+                    "Nearest_River_ov_id": row.get("Nearest_River_ov_id", "N/A"),
+                    "Distance_to_River_m": row.get("Distance_to_River_m", None),
+                    "Filter_Stage": "Filter_1_Missing_Modellag",
+                    "Filter_Reason": f"No DK-modellag mapping for GVFK {row['GVFK']}",
+                    "Additional_Info": f"Add {row['GVFK']} to {GVFK_LAYER_MAPPING_PATH.name}",
+                }
+            )
 
         # Filter out rows with missing modellag
         enriched = enriched[enriched["DK-modellag"].notna()].copy()
+
+        after_filter1_rows = len(enriched)
+        after_filter1_sites = enriched["Lokalitet_ID"].nunique()
+        after_filter1_gvfk = enriched["GVFK"].nunique()
+        print(
+            f"   AFTER FILTER 1: {after_filter1_rows} rows, {after_filter1_sites} sites, {after_filter1_gvfk} GVFK\n"
+        )
 
     enriched = enriched.drop(columns=["GVForekom"])
 
@@ -441,22 +294,32 @@ def _prepare_flux_inputs(
         enriched, centroid_lookup, geometry_lookup
     )
 
-    enriched["Infiltration_mm_per_year"] = infiltration_stats["Combined_Infiltration_mm_per_year"]
-    enriched["Centroid_Infiltration_mm_per_year"] = infiltration_stats["Centroid_Infiltration_mm_per_year"]
-    enriched["Polygon_Infiltration_mm_per_year"] = infiltration_stats["Polygon_Infiltration_mm_per_year"]
-    enriched["Polygon_Infiltration_Min_mm_per_year"] = infiltration_stats["Polygon_Infiltration_Min_mm_per_year"]
-    enriched["Polygon_Infiltration_Max_mm_per_year"] = infiltration_stats["Polygon_Infiltration_Max_mm_per_year"]
-    enriched["Polygon_Infiltration_Pixel_Count"] = infiltration_stats["Polygon_Infiltration_Pixel_Count"]
+    enriched["Infiltration_mm_per_year"] = infiltration_stats[
+        "Combined_Infiltration_mm_per_year"
+    ]
+    enriched["Centroid_Infiltration_mm_per_year"] = infiltration_stats[
+        "Centroid_Infiltration_mm_per_year"
+    ]
+    enriched["Polygon_Infiltration_mm_per_year"] = infiltration_stats[
+        "Polygon_Infiltration_mm_per_year"
+    ]
+    enriched["Polygon_Infiltration_Min_mm_per_year"] = infiltration_stats[
+        "Polygon_Infiltration_Min_mm_per_year"
+    ]
+    enriched["Polygon_Infiltration_Max_mm_per_year"] = infiltration_stats[
+        "Polygon_Infiltration_Max_mm_per_year"
+    ]
+    enriched["Polygon_Infiltration_Pixel_Count"] = infiltration_stats[
+        "Polygon_Infiltration_Pixel_Count"
+    ]
 
-    # Negative GVD means upward groundwater flow (discharge zones near gaining streams)
-    # Surface contamination won't infiltrate downward in these areas
+    # Filter negative infiltration
     negative_mask = enriched["Infiltration_mm_per_year"] < 0
     negative_count = negative_mask.sum()
     if negative_count > 0:
-        # Capture statistics BEFORE removal
-        initial_rows = len(enriched)
-        initial_sites = enriched["Lokalitet_ID"].nunique()
-        initial_gvfk = enriched["GVFK"].nunique()
+        before_filter2_rows = len(enriched)
+        before_filter2_sites = enriched["Lokalitet_ID"].nunique()
+        before_filter2_gvfk = enriched["GVFK"].nunique()
 
         negative_rows = enriched.loc[negative_mask].copy()
         negative_rows["Sampled_Layers"] = negative_rows["DK-modellag"].apply(
@@ -465,46 +328,105 @@ def _prepare_flux_inputs(
         removed_sites = sorted(enriched.loc[negative_mask, "Lokalitet_ID"].unique())
         removed_gvfk = sorted(enriched.loc[negative_mask, "GVFK"].unique())
 
-        # Apply filter
+        # Track filtered rows in audit
+        for _, row in negative_rows.iterrows():
+            filtering_audit.append(
+                {
+                    "Lokalitet_ID": row["Lokalitet_ID"],
+                    "Lokalitetsnavn": row.get("Lokalitetsnavn", "N/A"),
+                    "GVFK": row["GVFK"],
+                    "Qualifying_Category": row["Qualifying_Category"],
+                    "Nearest_River_ov_id": row.get("Nearest_River_ov_id", "N/A"),
+                    "Distance_to_River_m": row.get("Distance_to_River_m", None),
+                    "Filter_Stage": "Filter_2_Negative_Infiltration",
+                    "Filter_Reason": f"Negative infiltration: {row['Infiltration_mm_per_year']:.1f} mm/yr",
+                    "Additional_Info": f"Opstrømningszone - layers: {row.get('Sampled_Layers', 'N/A')}",
+                }
+            )
+
         enriched = enriched[~negative_mask].copy()
 
-        # Capture statistics AFTER removal
-        final_rows = len(enriched)
-        final_sites = enriched["Lokalitet_ID"].nunique()
-        final_gvfk = enriched["GVFK"].nunique()
+        after_filter2_rows = len(enriched)
+        after_filter2_sites = enriched["Lokalitet_ID"].nunique()
+        after_filter2_gvfk = enriched["GVFK"].nunique()
 
-        # Calculate sites/GVFK that were completely removed vs partially removed
         remaining_sites = set(enriched["Lokalitet_ID"].unique())
         remaining_gvfk = set(enriched["GVFK"].unique())
-        completely_removed_sites = [s for s in removed_sites if s not in remaining_sites]
+        completely_removed_sites = [
+            s for s in removed_sites if s not in remaining_sites
+        ]
         completely_removed_gvfk = [g for g in removed_gvfk if g not in remaining_gvfk]
 
-        print("\nINFO: Removing rows with negative infiltration (opstrømningszoner).")
-        print(f"   BEFORE: {initial_rows} rows, {initial_sites} sites, {initial_gvfk} GVFK")
-        print(f"   REMOVED: {negative_count} rows ({negative_count/initial_rows*100:.1f}%)")
-        print(f"   AFTER: {final_rows} rows, {final_sites} sites, {final_gvfk} GVFK")
-        print(f"\n   Sites with removed rows: {len(removed_sites)}")
-        print(f"   Sites completely removed: {len(completely_removed_sites)} (all rows had negative infiltration)")
-        print(f"   Sites partially affected: {len(removed_sites) - len(completely_removed_sites)} (some rows retained)")
-        print(f"\n   GVFK with removed rows: {len(removed_gvfk)}")
+        print(f"FILTER 2: Negative infiltration (opstroemningszoner)")
+        print(
+            f"   Rows removed: {negative_count} ({negative_count / before_filter2_rows * 100:.1f}%)"
+        )
+        print(f"   Sites with removed rows: {len(removed_sites)}")
+        print(
+            f"   Sites completely removed: {len(completely_removed_sites)} (all rows had negative infiltration)"
+        )
+        print(
+            f"   Sites partially affected: {len(removed_sites) - len(completely_removed_sites)} (some rows retained in other locations)"
+        )
         print(f"   GVFK completely removed: {len(completely_removed_gvfk)}")
-        print(f"   GVFK partially affected: {len(removed_gvfk) - len(completely_removed_gvfk)}")
-        print(f"\n   Example affected sites: {', '.join(removed_sites[:5])}"
-              f"{' ...' if len(removed_sites) > 5 else ''}")
-        print(f"   Example affected GVFK: {', '.join(removed_gvfk[:5])}"
-              f"{' ...' if len(removed_gvfk) > 5 else ''}\n")
+        print(
+            f"   GVFK partially affected: {len(removed_gvfk) - len(completely_removed_gvfk)}"
+        )
+        print(
+            f"   Example sites: {', '.join(removed_sites[:5])}{' ...' if len(removed_sites) > 5 else ''}\n"
+        )
+        print(
+            f"   AFTER FILTER 2: {after_filter2_rows} rows, {after_filter2_sites} sites, {after_filter2_gvfk} GVFK\n"
+        )
 
-    # Filter out rows where infiltration data is missing
+    # Filter missing infiltration
     if enriched["Infiltration_mm_per_year"].isna().any():
+        before_filter3_rows = len(enriched)
+        before_filter3_sites = enriched["Lokalitet_ID"].nunique()
+        before_filter3_gvfk = enriched["GVFK"].nunique()
+
         missing_infiltration = enriched["Infiltration_mm_per_year"].isna().sum()
-        missing_sites = enriched.loc[enriched["Infiltration_mm_per_year"].isna(), "Lokalitet_ID"].unique()
-        print(f"\nWARNING: Missing infiltration data for {len(missing_sites)} site(s):")
-        print(f"   Sites: {', '.join(sorted(missing_sites)[:10])}{' ...' if len(missing_sites) > 10 else ''}")
-        print(f"   Affected rows: {missing_infiltration}")
-        print(f"   Reason: Site polygon/centroid fall outside infiltration raster coverage.")
-        print(f"   These rows will be excluded from the analysis.\n")
+        missing_sites = enriched.loc[
+            enriched["Infiltration_mm_per_year"].isna(), "Lokalitet_ID"
+        ].unique()
+
+        print(f"FILTER 3: Missing infiltration data (outside raster coverage)")
+        print(
+            f"   Rows removed: {missing_infiltration} ({missing_infiltration / before_filter3_rows * 100:.1f}%)"
+        )
+        print(f"   Sites removed: {len(missing_sites)}")
+        print(
+            f"   Example sites: {', '.join(sorted(missing_sites)[:10])}{' ...' if len(missing_sites) > 10 else ''}"
+        )
+        print(
+            f"   Reason: Site polygon/centroid fall outside infiltration raster coverage.\n"
+        )
+
+        # Track filtered rows in audit
+        filtered = enriched[enriched["Infiltration_mm_per_year"].isna()]
+        for _, row in filtered.iterrows():
+            filtering_audit.append(
+                {
+                    "Lokalitet_ID": row["Lokalitet_ID"],
+                    "Lokalitetsnavn": row.get("Lokalitetsnavn", "N/A"),
+                    "GVFK": row["GVFK"],
+                    "Qualifying_Category": row["Qualifying_Category"],
+                    "Nearest_River_ov_id": row.get("Nearest_River_ov_id", "N/A"),
+                    "Distance_to_River_m": row.get("Distance_to_River_m", None),
+                    "Filter_Stage": "Filter_3_Missing_Infiltration",
+                    "Filter_Reason": "No infiltration data",
+                    "Additional_Info": f"Site outside raster coverage or at nodata location - layers: {row.get('DK-modellag', 'N/A')}",
+                }
+            )
 
         enriched = enriched[enriched["Infiltration_mm_per_year"].notna()].copy()
+
+        after_filter3_rows = len(enriched)
+        after_filter3_sites = enriched["Lokalitet_ID"].nunique()
+        after_filter3_gvfk = enriched["GVFK"].nunique()
+        print(
+            f"   AFTER FILTER 3: {after_filter3_rows} rows, {after_filter3_sites} sites, {after_filter3_gvfk} GVFK\n"
+        )
 
     # Attach river metadata
     segment_meta = river_segments[
@@ -531,10 +453,11 @@ def _prepare_flux_inputs(
             enriched["River_Segment_Name"].isna(), "Nearest_River_FID"
         ].unique()
         raise ValueError(
-            "River metadata missing for FID(s): " + ", ".join(str(fid) for fid in sorted(missing_fids))
+            "River metadata missing for FID(s): "
+            + ", ".join(str(fid) for fid in sorted(missing_fids))
         )
 
-    # Sanity-check that ov_id matches the value received from Step 5
+    # Sanity-check ov_id matches
     mismatches = enriched[
         enriched["Nearest_River_ov_id"].astype(str)
         != enriched["River_Segment_ov_id"].astype(str)
@@ -550,261 +473,242 @@ def _prepare_flux_inputs(
     if "Sampled_Layers" not in negative_rows.columns:
         negative_rows["Sampled_Layers"] = pd.Series(dtype=str)
 
-    return enriched, negative_rows
+    # Final summary
+    final_rows = len(enriched)
+    final_sites = enriched["Lokalitet_ID"].nunique()
+    final_gvfk = enriched["GVFK"].nunique()
+
+    print("=" * 80)
+    print("FILTERING CASCADE SUMMARY")
+    print("=" * 80)
+    print(
+        f"INPUT:  {initial_total_rows} rows, {initial_total_sites} sites, {initial_total_gvfk} GVFK"
+    )
+    print(f"OUTPUT: {final_rows} rows, {final_sites} sites, {final_gvfk} GVFK")
+    print(
+        f"TOTAL REMOVED: {initial_total_rows - final_rows} rows ({(initial_total_rows - final_rows) / initial_total_rows * 100:.1f}%), {initial_total_sites - final_sites} sites ({(initial_total_sites - final_sites) / initial_total_sites * 100:.1f}%)"
+    )
+    print("=" * 80 + "\n")
+
+    # Convert audit to DataFrame
+    audit_df = pd.DataFrame(filtering_audit)
+
+    return enriched, negative_rows, audit_df
+
+
+# ===========================================================================
+# Infiltration calculation
+# ===========================================================================
 
 
 def _calculate_infiltration(
     enriched: pd.DataFrame,
     centroid_lookup: Dict[str, Any],
     geometry_lookup: Dict[str, Any],
-    source_crs = None,
+    source_crs=None,
 ) -> pd.DataFrame:
     """
-    Sample infiltration rasters for each (Lokalitet_ID, modellag) pair.
-    Returns a DataFrame with combined, polygon, and centroid metrics aligned with `enriched`.
+    Sample GVD rasters for infiltration using combined centroid + polygon strategy.
 
-    Args:
-        source_crs: CRS of the input geometries (default: EPSG:25832 for Denmark)
+    Returns DataFrame with infiltration columns for each row.
     """
     if source_crs is None:
-        source_crs = "EPSG:25832"  # Standard for Denmark
+        source_crs = "EPSG:25832"
 
-    cache: Dict[Tuple[str, str], Dict[str, float]] = {}
+    infiltration_records = []
 
-    records: List[Dict[str, float]] = []
-    for _, row in enriched.iterrows():
-        site_id = row["Lokalitet_ID"]
-        modellag = row["DK-modellag"]
-        key = (site_id, modellag)
+    for idx, row in enriched.iterrows():
+        lokalitet_id = row["Lokalitet_ID"]
+        dk_modellag = row["DK-modellag"]
 
-        if key not in cache:
-            centroid = centroid_lookup.get(site_id)
-            if centroid is None:
-                raise ValueError(f"No centroid found for site {site_id}")
-            geometry = geometry_lookup.get(site_id)
-            if geometry is None:
-                raise ValueError(f"No geometry found for site {site_id}")
+        centroid = centroid_lookup.get(lokalitet_id)
+        geometry = geometry_lookup.get(lokalitet_id)
 
-            layers = _parse_dk_modellag(modellag)
-            if not layers:
-                raise ValueError(f"Could not interpret modellag '{modellag}' for {site_id}")
+        layers = _parse_dk_modellag(dk_modellag)
 
-            layer_results: List[Dict[str, float]] = []
-            for layer in layers:
-                try:
-                    layer_stats = _sample_infiltration(layer, geometry, centroid, source_crs)
-                    layer_results.append(layer_stats)
-                except ValueError as exc:
-                    print(f"\nWARNING: {exc}")
-                    layer_results.append(
-                        {
-                            "combined": None,
-                            "polygon_mean": None,
-                            "polygon_min": None,
-                            "polygon_max": None,
-                            "polygon_pixel_count": 0,
-                            "centroid": None,
-                        }
-                    )
+        combined_values = []
+        centroid_values = []
+        polygon_values = []
+        polygon_mins = []
+        polygon_maxs = []
+        pixel_counts = []
 
-            combined_values = [item["combined"] for item in layer_results if item["combined"] is not None]
-            polygon_values = [item["polygon_mean"] for item in layer_results if item["polygon_mean"] is not None]
-            centroid_values = [item["centroid"] for item in layer_results if item["centroid"] is not None]
-            polygon_mins = [item["polygon_min"] for item in layer_results if item["polygon_min"] is not None]
-            polygon_maxs = [item["polygon_max"] for item in layer_results if item["polygon_max"] is not None]
-            pixel_counts = [item["polygon_pixel_count"] for item in layer_results if item["polygon_pixel_count"]]
+        for layer in layers:
+            result = _sample_infiltration(layer, geometry, centroid, source_crs)
 
-            combined_mean = float(np.mean(combined_values)) if combined_values else None
-            polygon_mean = float(np.mean(polygon_values)) if polygon_values else np.nan
-            centroid_mean = float(np.mean(centroid_values)) if centroid_values else np.nan
-            polygon_min = float(np.min(polygon_mins)) if polygon_mins else np.nan
-            polygon_max = float(np.max(polygon_maxs)) if polygon_maxs else np.nan
-            polygon_pixel_count = int(np.sum(pixel_counts)) if pixel_counts else 0
+            if result["Combined"] is not None:
+                combined_values.append(result["Combined"])
+            if result["Centroid"] is not None:
+                centroid_values.append(result["Centroid"])
+            if result["Polygon_Mean"] is not None:
+                polygon_values.append(result["Polygon_Mean"])
+            if result["Polygon_Min"] is not None:
+                polygon_mins.append(result["Polygon_Min"])
+            if result["Polygon_Max"] is not None:
+                polygon_maxs.append(result["Polygon_Max"])
+            if result["Polygon_Pixel_Count"] is not None:
+                pixel_counts.append(result["Polygon_Pixel_Count"])
 
-            cache[key] = {
-                "Combined_Infiltration_mm_per_year": combined_mean,
-                "Centroid_Infiltration_mm_per_year": centroid_mean,
-                "Polygon_Infiltration_mm_per_year": polygon_mean,
-                "Polygon_Infiltration_Min_mm_per_year": polygon_min,
-                "Polygon_Infiltration_Max_mm_per_year": polygon_max,
-                "Polygon_Infiltration_Pixel_Count": polygon_pixel_count,
-            }
+        # Use mean of all sampled layers
+        record = {
+            "Combined_Infiltration_mm_per_year": np.mean(combined_values)
+            if combined_values
+            else np.nan,
+            "Centroid_Infiltration_mm_per_year": np.mean(centroid_values)
+            if centroid_values
+            else np.nan,
+            "Polygon_Infiltration_mm_per_year": np.mean(polygon_values)
+            if polygon_values
+            else np.nan,
+            "Polygon_Infiltration_Min_mm_per_year": np.mean(polygon_mins)
+            if polygon_mins
+            else np.nan,
+            "Polygon_Infiltration_Max_mm_per_year": np.mean(polygon_maxs)
+            if polygon_maxs
+            else np.nan,
+            "Polygon_Infiltration_Pixel_Count": int(np.mean(pixel_counts))
+            if pixel_counts
+            else 0,
+        }
 
-        records.append(cache[key])
+        infiltration_records.append(record)
 
-    return pd.DataFrame(records, index=enriched.index)
+    return pd.DataFrame(infiltration_records, index=enriched.index)
 
 
 def _parse_dk_modellag(dk_modellag: str) -> List[str]:
-    """
-    Interpret the modellag string and return individual layer identifiers.
-    Handles simple cases like 'ks3', 'ks1 - ks3', and comma-separated lists.
-    """
-    if not dk_modellag or pd.isna(dk_modellag):
+    """Parse DK-modellag string to list of layer codes."""
+    if pd.isna(dk_modellag) or not dk_modellag:
         return []
 
-    text = str(dk_modellag).strip()
-    if not text:
-        return []
+    # Handle format like "Kalk: kalk; ..." or just "ks2"
+    layers = []
+    parts = [p.strip() for p in str(dk_modellag).split(";")]
 
-    if " - " in text:
-        start, end = text.split(" - ")
-        start = start.strip()
-        end = end.strip()
-        if len(start) < 3 or len(end) < 3:
-            return [text]
-        prefix = start[:2]
-        try:
-            start_num = int(start[2:])
-            end_num = int(end[2:])
-        except ValueError:
-            return [text]
-        return [f"{prefix}{i}" for i in range(start_num, end_num + 1)]
-
-    separators = [",", ";", "/"]
-    for sep in separators:
-        if sep in text:
-            return [part.strip() for part in text.split(sep) if part.strip()]
-
-    return [text]
-
-
-def _sample_infiltration(layer: str, geometry, centroid, source_crs: str = "EPSG:25832") -> Dict[str, float]:
-    """
-    Sample the infiltration raster for a given layer using the full site polygon.
-    Returns both polygon-level statistics and centroid fallback value.
-
-    Note: Assumes rasters and geometries are in the same CRS (EPSG:25832 for Denmark).
-    """
-    if layer.startswith("lag"):
-        layer = "lay12"
-
-    raster_path = Path(GVD_RASTER_DIR) / f"DKM_gvd_{layer}.tif"
-    if not raster_path.exists():
-        raise FileNotFoundError(f"Infiltration raster not found: {raster_path}")
-
-    polygon_mean = None
-    polygon_min = None
-    polygon_max = None
-    pixel_count = 0
-
-    with rasterio.open(raster_path) as src:
-
-        try:
-            data, _ = mask(src, [mapping(geometry)], crop=True)
-            band = data[0]
-            valid = band[(band != src.nodata) & (~np.isnan(band))]
-            if valid.size > 0:
-                polygon_mean = float(valid.mean())
-                polygon_min = float(valid.min())
-                polygon_max = float(valid.max())
-                pixel_count = int(valid.size)
-        except ValueError:
-            pass
-
-        x, y = centroid.x, centroid.y
-        centroid_value = next(src.sample([(x, y)]), [np.nan])[0]
-        if centroid_value is None or np.isnan(centroid_value) or centroid_value == src.nodata:
-            # Enhanced error message with diagnostics
-            geom_bounds = geometry.bounds
-            raise ValueError(
-                f"Infiltration raster {raster_path.name} returned no data for site.\n"
-                f"   Centroid: ({x:.1f}, {y:.1f})\n"
-                f"   Geometry bounds: ({geom_bounds[0]:.1f}, {geom_bounds[1]:.1f}, {geom_bounds[2]:.1f}, {geom_bounds[3]:.1f})\n"
-                f"   Raster bounds: {src.bounds}\n"
-                f"   Sampled value: {centroid_value} (nodata={src.nodata})\n"
-                f"   Possible causes: Site outside raster coverage, or at nodata location (coast/border)"
-            )
-        centroid_value = float(centroid_value)
-
-    combined_value = polygon_mean if polygon_mean is not None else centroid_value
-
-    return {
-        "combined": combined_value,
-        "polygon_mean": polygon_mean,
-        "polygon_min": polygon_min,
-        "polygon_max": polygon_max,
-        "polygon_pixel_count": pixel_count,
-        "centroid": centroid_value,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Flux calculation and aggregation
-# ---------------------------------------------------------------------------#
-
-def _lookup_standard_concentration(row: pd.Series, log_matches: bool = False) -> float:
-    """
-    Look up standard concentration with 4-level hierarchy.
-
-    Priority:
-    1. Industry/Activity + Substance (most specific, merged branche/aktivitet)
-    2. Losseplads + Substance/Category (if applicable)
-    3. Compound name
-    4. Category (fallback)
-
-    Logs when multiple industries/activities are tried (helps identify missing overrides).
-    """
-
-    substance = row['Qualifying_Substance']
-    category = row['Qualifying_Category']
-    branches = row.get('Lokalitetensbranche', '').split(';') if pd.notna(row.get('Lokalitetensbranche')) else []
-    activities = row.get('Lokalitetensaktivitet', '').split(';') if pd.notna(row.get('Lokalitetensaktivitet')) else []
-
-    # Clean up branches/activities (strip whitespace)
-    branches = [b.strip() for b in branches if b.strip()]
-    activities = [a.strip() for a in activities if a.strip()]
-
-    # Combine branches and activities into a single list for Level 1 lookup
-    all_industries = branches + activities
-    tried_multiple = len(all_industries) > 1
-
-    # Level 1: Try Industry/Activity + Substance (merged branche and aktivitet)
-    for i, industry in enumerate(all_industries):
-        key = f"{industry}_{substance}"
-        if key in STANDARD_CONCENTRATIONS['activity_substance']:
-            if log_matches or (tried_multiple and i == 0):
-                print(f"  [OK] Concentration match (Industry/Activity): '{industry}' + '{substance}' -> {STANDARD_CONCENTRATIONS['activity_substance'][key]} ug/L")
-                if tried_multiple:
-                    print(f"    Note: Site has multiple industries/activities: {all_industries}")
-            return STANDARD_CONCENTRATIONS['activity_substance'][key]
-
-    # Level 2: Losseplads override (if applicable)
-    is_losseplads = category == "LOSSEPLADS" or "Landfill Override:" in substance
-    if is_losseplads:
-        # Extract actual substance/category from "Landfill Override: BTXER" format
-        if "Landfill Override:" in substance:
-            actual_substance = substance.replace("Landfill Override:", "").strip()
+    for part in parts:
+        if ":" in part:
+            layer_code = part.split(":")[1].strip().lower()
         else:
-            actual_substance = substance
+            layer_code = part.strip().lower()
 
-        if actual_substance in STANDARD_CONCENTRATIONS['losseplads']:
-            if log_matches:
-                print(f"  [OK] Concentration match (Losseplads): '{actual_substance}' -> {STANDARD_CONCENTRATIONS['losseplads'][actual_substance]} ug/L")
-            return STANDARD_CONCENTRATIONS['losseplads'][actual_substance]
+        if layer_code and layer_code not in layers:
+            layers.append(layer_code)
 
-    # Level 3: Direct compound lookup
-    if substance in STANDARD_CONCENTRATIONS['compound']:
-        return STANDARD_CONCENTRATIONS['compound'][substance]
+    return layers
 
-    # Level 4: Category fallback
-    if category in STANDARD_CONCENTRATIONS['category']:
-        return STANDARD_CONCENTRATIONS['category'][category]
 
-    # No match found - raise error with helpful message
-    raise ValueError(
-        f"No concentration defined for:\n"
-        f"  Substance: '{substance}'\n"
-        f"  Category: '{category}'\n"
-        f"  Industries/Activities: {all_industries}"
-    )
+def _sample_infiltration(
+    layer: str, geometry, centroid, source_crs: str = "EPSG:25832"
+) -> Dict[str, float]:
+    """
+    Sample a single GVD raster layer using both polygon and centroid.
+
+    Returns dict with Combined, Centroid, Polygon_Mean, Polygon_Min, Polygon_Max, Polygon_Pixel_Count.
+    """
+    raster_file = GVD_RASTER_DIR / f"DKM_gvd_{layer}.tif"
+
+    if not raster_file.exists():
+        return {
+            "Combined": None,
+            "Centroid": None,
+            "Polygon_Mean": None,
+            "Polygon_Min": None,
+            "Polygon_Max": None,
+            "Polygon_Pixel_Count": None,
+        }
+
+    try:
+        with rasterio.open(raster_file) as src:
+            nodata = src.nodata
+
+            # Sample centroid
+            centroid_value = None
+            if centroid is not None:
+                coords = [(centroid.x, centroid.y)]
+                sampled = list(src.sample(coords))
+                if sampled and sampled[0][0] != nodata:
+                    centroid_value = float(sampled[0][0])
+
+            # Sample polygon
+            polygon_mean = None
+            polygon_min = None
+            polygon_max = None
+            pixel_count = 0
+
+            if geometry is not None:
+                try:
+                    geom_geojson = [mapping(geometry)]
+                    masked_data, _ = mask(
+                        src, geom_geojson, crop=True, all_touched=False
+                    )
+                    valid_data = masked_data[
+                        (masked_data != nodata) & (~np.isnan(masked_data))
+                    ]
+
+                    if valid_data.size > 0:
+                        polygon_mean = float(np.mean(valid_data))
+                        polygon_min = float(np.min(valid_data))
+                        polygon_max = float(np.max(valid_data))
+                        pixel_count = int(valid_data.size)
+                except Exception:
+                    pass
+
+            # Combined strategy: prefer polygon if available, else centroid
+            combined_value = (
+                polygon_mean if polygon_mean is not None else centroid_value
+            )
+
+            # Warn if no data
+            if combined_value is None:
+                site_id = "Unknown"
+                bounds = geometry.bounds if geometry is not None else "N/A"
+                centroid_coords = (
+                    (centroid.x, centroid.y) if centroid is not None else "N/A"
+                )
+                print(
+                    f"\nWARNING: Infiltration raster {raster_file.name} returned no data for site."
+                )
+                print(f"   Centroid: {centroid_coords}")
+                print(f"   Geometry bounds: {bounds}")
+                print(f"   Raster bounds: {src.bounds}")
+                print(
+                    f"   Sampled value: {sampled[0][0] if 'sampled' in locals() and sampled else 'N/A'} (nodata={nodata})"
+                )
+                print(
+                    f"   Possible causes: Site outside raster coverage, or at nodata location (coast/border)\n"
+                )
+
+            return {
+                "Combined": combined_value,
+                "Centroid": centroid_value,
+                "Polygon_Mean": polygon_mean,
+                "Polygon_Min": polygon_min,
+                "Polygon_Max": polygon_max,
+                "Polygon_Pixel_Count": pixel_count,
+            }
+
+    except Exception as e:
+        print(f"ERROR sampling {raster_file.name}: {e}")
+        return {
+            "Combined": None,
+            "Centroid": None,
+            "Polygon_Mean": None,
+            "Polygon_Min": None,
+            "Polygon_Max": None,
+            "Polygon_Pixel_Count": None,
+        }
+
+
+# ===========================================================================
+# Concentration lookup
+# ===========================================================================
 
 
 def _lookup_concentration_for_scenario(
     scenario_modelstof: str | None,
     category: str,
     original_substance: str | None,
-    row: pd.Series
+    row: pd.Series,
 ) -> float:
     """
     Lookup concentration for a scenario using the hierarchy.
@@ -843,31 +747,34 @@ def _lookup_concentration_for_scenario(
     # Level 1: Activity + Substance
     for industry in all_industries:
         key = f"{industry}_{lookup_substance}"
-        if key in STANDARD_CONCENTRATIONS['activity_substance']:
-            return STANDARD_CONCENTRATIONS['activity_substance'][key]
+        if key in STANDARD_CONCENTRATIONS["activity_substance"]:
+            return STANDARD_CONCENTRATIONS["activity_substance"][key]
 
     # Level 2: Losseplads context
     if is_losseplads:
         # Try exact substance match
-        if lookup_substance and lookup_substance in STANDARD_CONCENTRATIONS['losseplads']:
-            return STANDARD_CONCENTRATIONS['losseplads'][lookup_substance]
+        if (
+            lookup_substance
+            and lookup_substance in STANDARD_CONCENTRATIONS["losseplads"]
+        ):
+            return STANDARD_CONCENTRATIONS["losseplads"][lookup_substance]
         # Try category match
-        if category in STANDARD_CONCENTRATIONS['losseplads']:
-            return STANDARD_CONCENTRATIONS['losseplads'][category]
+        if category in STANDARD_CONCENTRATIONS["losseplads"]:
+            return STANDARD_CONCENTRATIONS["losseplads"][category]
 
     # Level 3: Direct compound lookup (for modelstoffer)
-    if lookup_substance and lookup_substance in STANDARD_CONCENTRATIONS['compound']:
-        return STANDARD_CONCENTRATIONS['compound'][lookup_substance]
+    if lookup_substance and lookup_substance in STANDARD_CONCENTRATIONS["compound"]:
+        return STANDARD_CONCENTRATIONS["compound"][lookup_substance]
 
     # Level 4: Category scenario
     if scenario_modelstof:
         scenario_key = f"{category}__via_{scenario_modelstof}"
-        if scenario_key in STANDARD_CONCENTRATIONS['category']:
-            return STANDARD_CONCENTRATIONS['category'][scenario_key]
+        if scenario_key in STANDARD_CONCENTRATIONS["category"]:
+            return STANDARD_CONCENTRATIONS["category"][scenario_key]
 
     # Level 5: Category fallback (for categories without scenarios)
-    if category in STANDARD_CONCENTRATIONS['category']:
-        return STANDARD_CONCENTRATIONS['category'][category]
+    if category in STANDARD_CONCENTRATIONS["category"]:
+        return STANDARD_CONCENTRATIONS["category"][category]
 
     # No match - raise error
     raise ValueError(
@@ -904,11 +811,16 @@ def _compute_flux_from_concentration(row: pd.Series) -> pd.Series:
     return row
 
 
+# ===========================================================================
+# Flux calculation (scenario-based)
+# ===========================================================================
+
+
 def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
     """
     Compute pollution flux (J = A · C · I) with scenario-based aggregation.
 
-    Key changes:
+    Key approach:
     - All compounds in a category use modelstof concentrations (scenarios)
     - One flux value per scenario per site (NOT per individual substance)
     - Categories with multiple modelstoffer generate multiple scenarios
@@ -917,19 +829,35 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
       - BTXER__via_Benzen (400 µg/L)
       - BTXER__via_Olie C10-C25 (3000 µg/L)
     """
-    print("\nCalculating flux using scenario-based approach...")
-    print("  (Aggregating substances by category + scenario at site level)")
+    # Group by site + segment + category to aggregate substances
+    # NOTE: Critical design choice - each site should contribute flux to a segment
+    # only ONCE per category, even if the site appears in multiple GVFKs!
+    #
+    # Example: Site 813-00736 appears in GVFK dkmj_968_ks and dkmj_979_ks,
+    # both contributing to DKRIVER115. We should count the site's flux ONCE,
+    # using the minimum distance and taking the first GVFK encountered.
+    grouping_cols = ["Lokalitet_ID", "Nearest_River_ov_id", "Qualifying_Category"]
 
-    # Group by site + GVFK + category to aggregate substances
-    # This is the key change: we calculate ONE flux per scenario, not per substance
-    grouping_cols = ["Lokalitet_ID", "GVFK", "Qualifying_Category",
-                     "Area_m2", "Infiltration_mm_per_year",
-                     "Nearest_River_FID", "Nearest_River_ov_id", "River_Segment_Name",
-                     "River_Segment_Length_m", "River_Segment_GVFK", "Distance_to_River_m",
-                     "River_Segment_Count"]
+    # Aggregate all metadata, taking minimum distance and first occurrence of other fields
+    grouped = (
+        enriched.groupby(grouping_cols, dropna=False)
+        .agg(
+            {
+                "GVFK": "first",  # Take first GVFK (arbitrary choice when site spans multiple)
+                "Area_m2": "first",  # Area is constant per site
+                "Infiltration_mm_per_year": "first",  # Infiltration is constant per site
+                "Nearest_River_FID": "first",  # Take first FID
+                "River_Segment_Name": "first",
+                "River_Segment_Length_m": "first",
+                "River_Segment_GVFK": "first",
+                "Distance_to_River_m": "min",  # Use MINIMUM distance across all GVFKs
+                "River_Segment_Count": "max",  # Use maximum count
+            }
+        )
+        .reset_index()
+    )
 
-    # Get unique site-category combinations
-    site_categories = enriched.groupby(grouping_cols, dropna=False).first().reset_index()
+    site_categories = grouped
 
     flux_rows = []
 
@@ -943,9 +871,9 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
             # Category has no scenarios (LOSSEPLADS, ANDRE, PFAS)
             # Use old approach: pick first substance as representative
             site_substances = enriched[
-                (enriched["Lokalitet_ID"] == site_cat["Lokalitet_ID"]) &
-                (enriched["GVFK"] == site_cat["GVFK"]) &
-                (enriched["Qualifying_Category"] == category)
+                (enriched["Lokalitet_ID"] == site_cat["Lokalitet_ID"])
+                & (enriched["GVFK"] == site_cat["GVFK"])
+                & (enriched["Qualifying_Category"] == category)
             ]
             first_substance = site_substances.iloc[0]["Qualifying_Substance"]
 
@@ -954,7 +882,7 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
                 scenario_modelstof=None,
                 category=category,
                 original_substance=first_substance,
-                row=site_cat
+                row=site_cat,
             )
 
             # Create single flux row
@@ -971,7 +899,7 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
                     scenario_modelstof=modelstof,
                     category=category,
                     original_substance=None,  # Not used for scenarios
-                    row=site_cat
+                    row=site_cat,
                 )
 
                 # Create flux row for this scenario
@@ -983,9 +911,27 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
 
     df = pd.DataFrame(flux_rows)
 
+    # Filter out rows with invalid concentration (-1)
+    rows_before = len(df)
+    invalid_rows = df[df["Standard_Concentration_ug_L"] == -1]
+    df = df[df["Standard_Concentration_ug_L"] != -1].copy()
+    rows_after = len(df)
+
     print(f"  Input rows (substances): {len(enriched)}")
-    print(f"  Output rows (scenarios): {len(df)}")
-    print(f"  Concentration range: {df['Standard_Concentration_ug_L'].min():.1f} - {df['Standard_Concentration_ug_L'].max():.1f} µg/L")
+    print(f"  Output rows (scenarios): {rows_after}")
+    if rows_before > rows_after:
+        print(
+            f"  Filtered out {rows_before - rows_after} rows with invalid concentration (-1)"
+        )
+        # Show which categories were filtered
+        filtered_categories = invalid_rows["Qualifying_Category"].value_counts()
+        for cat, count in filtered_categories.items():
+            print(f"    - {cat}: {count} rows")
+
+    if not df.empty:
+        print(
+            f"  Concentration range: {df['Standard_Concentration_ug_L'].min():.1f} - {df['Standard_Concentration_ug_L'].max():.1f} µg/L"
+        )
 
     return df
 
@@ -994,29 +940,43 @@ def _aggregate_flux_by_segment(flux_details: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate fluxes per river segment and substance.
     Returns a DataFrame summarising totals and basic statistics.
+
+    IMPORTANT: Groups ONLY by ov_id (segment identifier), NOT by FID/Length/GVFK!
+    A single ov_id can have multiple FIDs if sites from different GVFKs contribute.
+    Example: DKRIVER2054 has FID 1989 (from dkmj_72_ks) and FID 1990 (from dkmj_1089_ks),
+    but all sites should be aggregated into ONE row per substance.
     """
     if flux_details.empty:
         return pd.DataFrame()
 
     records: List[Dict[str, object]] = []
+    # Group ONLY by segment identifier (ov_id), category, and substance
+    # Metadata fields (FID, Length, GVFK) will be aggregated
     group_columns = [
-        "Nearest_River_FID",
         "Nearest_River_ov_id",
-        "River_Segment_Name",
-        "River_Segment_Length_m",
-        "River_Segment_GVFK",
         "Qualifying_Category",
         "Qualifying_Substance",
     ]
 
     for group_keys, group_df in flux_details.groupby(group_columns, dropna=False):
         record = dict(zip(group_columns, group_keys))
+        # Aggregate metadata - take first occurrence or most common value
+        record["Nearest_River_FID"] = int(group_df["Nearest_River_FID"].iloc[0])
+        record["River_Segment_Name"] = group_df["River_Segment_Name"].iloc[0]
+        record["River_Segment_Length_m"] = group_df["River_Segment_Length_m"].iloc[0]
+        record["River_Segment_GVFK"] = group_df["River_Segment_GVFK"].iloc[0]
+
+        # Aggregate flux values
         record["Total_Flux_ug_per_year"] = group_df["Pollution_Flux_ug_per_year"].sum()
         record["Total_Flux_mg_per_year"] = group_df["Pollution_Flux_mg_per_year"].sum()
         record["Total_Flux_g_per_year"] = group_df["Pollution_Flux_g_per_year"].sum()
         record["Total_Flux_kg_per_year"] = group_df["Pollution_Flux_kg_per_year"].sum()
+
+        # Aggregate site information
         record["Contributing_Site_Count"] = group_df["Lokalitet_ID"].nunique()
-        record["Contributing_Site_IDs"] = ", ".join(sorted(group_df["Lokalitet_ID"].unique()))
+        record["Contributing_Site_IDs"] = ", ".join(
+            sorted(group_df["Lokalitet_ID"].unique())
+        )
         record["Min_Distance_to_River_m"] = group_df["Distance_to_River_m"].min()
         record["Max_Distance_to_River_m"] = group_df["Distance_to_River_m"].max()
         record["River_Segment_Count"] = int(group_df["River_Segment_Count"].max())
@@ -1025,9 +985,10 @@ def _aggregate_flux_by_segment(flux_details: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame.from_records(records)
 
 
-# ---------------------------------------------------------------------------
-# Hydraulics and compliance
-# ---------------------------------------------------------------------------#
+# ===========================================================================
+# Cmix calculation and MKK application
+# ===========================================================================
+
 
 def _calculate_cmix(
     segment_flux: pd.DataFrame,
@@ -1084,16 +1045,15 @@ def _apply_mkk_thresholds(cmix_results: pd.DataFrame) -> pd.DataFrame:
         substance = row.get("Qualifying_Substance")
         category = row.get("Qualifying_Category")
 
-        # Strip "Landfill Override:" prefix if present (MKK is the same regardless of source)
+        # Strip "Landfill Override:" prefix if present
         if substance and "Landfill Override:" in substance:
             substance = substance.replace("Landfill Override:", "").strip()
 
-        # Also strip "Branch/Activity:" prefix if present
+        # Strip "Branch/Activity:" prefix if present
         if substance and "Branch/Activity:" in substance:
             substance = substance.replace("Branch/Activity:", "").strip()
 
         # Per meeting decision: Only use substance-specific MKK for the 16 modelstoffer
-        # For non-modelstoffer, skip to category MKK
         if substance in MODELSTOFFER and substance in MKK_THRESHOLDS:
             return MKK_THRESHOLDS[substance]
 
@@ -1108,11 +1068,17 @@ def _apply_mkk_thresholds(cmix_results: pd.DataFrame) -> pd.DataFrame:
         cmix_results["Cmix_ug_L"] > cmix_results["MKK_ug_L"]
     )
     cmix_results["Exceedance_Ratio"] = np.where(
-        cmix_results["MKK_ug_L"].notna(),
+        cmix_results["MKK_ug_L"].notna() & (cmix_results["MKK_ug_L"] > 0),
         cmix_results["Cmix_ug_L"] / cmix_results["MKK_ug_L"],
         np.nan,
     )
+
     return cmix_results
+
+
+# ===========================================================================
+# Summary and exceedance views
+# ===========================================================================
 
 
 def _build_segment_summary(
@@ -1120,75 +1086,241 @@ def _build_segment_summary(
     segment_flux: pd.DataFrame,
     cmix_results: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Produce a concise per-segment overview."""
-    if segment_flux.empty:
+    """
+    Build a one-row-per-segment summary showing total flux, max exceedance ratio,
+    scenario lists, and contributing sites.
+    """
+    if cmix_results.empty:
         return pd.DataFrame()
 
-    summary_rows: List[Dict[str, object]] = []
-    cmix_lookup = (
-        cmix_results.groupby("Nearest_River_ov_id") if not cmix_results.empty else None
+    group_cols = ["Nearest_River_ov_id", "River_Segment_Name", "River_Segment_GVFK"]
+
+    agg_funcs = {
+        "Total_Flux_kg_per_year": "sum",
+        "Cmix_ug_L": "max",
+        "Exceedance_Ratio": "max",
+        "Flow_Scenario": lambda s: ", ".join(sorted(set(str(v) for v in s.dropna()))),
+        "Qualifying_Category": lambda s: ", ".join(
+            sorted(set(str(v) for v in s.dropna()))
+        ),
+    }
+
+    summary = (
+        cmix_results.groupby(group_cols, dropna=False).agg(agg_funcs).reset_index()
     )
 
-    for segment_id, group in segment_flux.groupby("Nearest_River_ov_id"):
-        related_sites = flux_details.loc[
-            flux_details["Nearest_River_ov_id"] == segment_id, "Lokalitet_ID"
-        ].unique()
+    # Add site counts and IDs
+    site_info = (
+        flux_details.groupby("Nearest_River_ov_id", dropna=False)["Lokalitet_ID"]
+        .agg(Site_Count="nunique", Site_IDs=lambda x: ", ".join(sorted(set(x))))
+        .reset_index()
+    )
 
-        if cmix_lookup is not None and segment_id in cmix_lookup.groups:
-            cmix_subset = cmix_lookup.get_group(segment_id)
+    summary = summary.merge(site_info, on="Nearest_River_ov_id", how="left")
+
+    # Rename columns (keep Total_Flux_kg_per_year for backwards compatibility with visualization code)
+    summary = summary.rename(
+        columns={
+            "Cmix_ug_L": "Max_Cmix_ug_L",
+            "Exceedance_Ratio": "Max_Exceedance_Ratio",
+            "Flow_Scenario": "Flow_Scenarios",
+            "Qualifying_Category": "Categories",
+        }
+    )
+
+    # Flag exceedances
+    summary["Has_MKK_Exceedance"] = summary["Max_Exceedance_Ratio"].notna() & (
+        summary["Max_Exceedance_Ratio"] > 1.0
+    )
+
+    # Add Failing_Scenarios column (expected by visualization code)
+    # This identifies which flow scenarios exceed MKK for each segment
+    failing_scenarios = []
+    for _, row in summary.iterrows():
+        ov_id = row["Nearest_River_ov_id"]
+        segment_cmix = cmix_results[
+            (cmix_results["Nearest_River_ov_id"] == ov_id)
+            & (cmix_results["Exceedance_Flag"] == True)
+        ]
+        if not segment_cmix.empty:
+            scenarios = sorted(segment_cmix["Flow_Scenario"].unique())
+            failing_scenarios.append(", ".join(scenarios))
         else:
-            cmix_subset = pd.DataFrame()
+            failing_scenarios.append("")
 
-        summary_rows.append(
-            {
-                "Nearest_River_ov_id": segment_id,
-                "River_Segment_Name": group["River_Segment_Name"].iloc[0],
-                "River_Segment_Length_m": group["River_Segment_Length_m"].iloc[0],
-                "River_Segment_GVFK": group["River_Segment_GVFK"].iloc[0],
-                "Total_Flux_kg_per_year": group["Total_Flux_kg_per_year"].sum(),
-                "Substances": ", ".join(sorted(group["Qualifying_Substance"].unique())),
-                "Categories": ", ".join(sorted(group["Qualifying_Category"].unique())),
-                "Contributing_Site_Count": len(related_sites),
-                "Contributing_Site_IDs": ", ".join(sorted(related_sites)),
-                "Max_Exceedance_Ratio": (
-                    cmix_subset["Exceedance_Ratio"].max()
-                    if not cmix_subset.empty
-                    else np.nan
-                ),
-                "Failing_Scenarios": ", ".join(
-                    sorted(
-                        cmix_subset.loc[
-                            cmix_subset["Exceedance_Flag"], "Flow_Scenario"
-                        ].unique()
-                    )
-                )
-                if not cmix_subset.empty
-                else "",
-            }
+    summary["Failing_Scenarios"] = failing_scenarios
+
+    return summary.sort_values(
+        "Max_Exceedance_Ratio", ascending=False, na_position="last"
+    )
+
+
+def _extract_exceedance_views(
+    flux_details: pd.DataFrame,
+    cmix_results: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Create per-site and per-GVFK tables limited to segments with MKK exceedances.
+    """
+
+    site_columns = [
+        "GVFK",
+        "Lokalitet_ID",
+        "Lokalitetsnavn",
+        "Qualifying_Category",
+        "Qualifying_Substance",
+        "Pollution_Flux_kg_per_year",
+        "Nearest_River_ov_id",
+        "River_Segment_Name",
+        "River_Segment_GVFK",
+        "Flow_Scenario",
+        "Flow_m3_s",
+        "Cmix_ug_L",
+        "MKK_ug_L",
+        "Exceedance_Ratio",
+        "Segment_Total_Flux_kg_per_year",
+        "Distance_to_River_m",
+    ]
+
+    gvfk_columns = [
+        "GVFK",
+        "Nearest_River_ov_id",
+        "River_Segment_Name",
+        "River_Segment_GVFK",
+        "Contributing_Site_Count",
+        "Site_IDs",
+        "Categories",
+        "Substances",
+        "Flow_Scenarios",
+        "Total_Site_Flux_kg_per_year",
+        "Segment_Total_Flux_kg_per_year",
+        "Max_Cmix_ug_L",
+        "MKK_ug_L",
+        "Max_Exceedance_Ratio",
+    ]
+
+    if cmix_results.empty or "Exceedance_Flag" not in cmix_results.columns:
+        return pd.DataFrame(columns=site_columns), pd.DataFrame(columns=gvfk_columns)
+
+    exceedances = cmix_results.loc[cmix_results["Exceedance_Flag"] == True].copy()
+    if exceedances.empty:
+        return pd.DataFrame(columns=site_columns), pd.DataFrame(columns=gvfk_columns)
+
+    merge_cols = ["Nearest_River_ov_id", "Qualifying_Substance", "Qualifying_Category"]
+    subset_cols = merge_cols + [
+        "Flow_Scenario",
+        "Cmix_ug_L",
+        "MKK_ug_L",
+        "Exceedance_Ratio",
+    ]
+
+    if "Flow_m3_s" in exceedances.columns:
+        subset_cols.append("Flow_m3_s")
+
+    if "Total_Flux_kg_per_year" in exceedances.columns:
+        subset_cols.append("Total_Flux_kg_per_year")
+
+    exceed_subset = exceedances[subset_cols].copy()
+    if "Total_Flux_kg_per_year" in exceed_subset.columns:
+        exceed_subset = exceed_subset.rename(
+            columns={"Total_Flux_kg_per_year": "Segment_Total_Flux_kg_per_year"}
         )
 
-    return pd.DataFrame(summary_rows)
+    site_exceedances = flux_details.merge(exceed_subset, on=merge_cols, how="inner")
+    if site_exceedances.empty:
+        return pd.DataFrame(columns=site_columns), pd.DataFrame(columns=gvfk_columns)
+
+    def _ensure_columns(df: pd.DataFrame, columns: List[str]) -> List[str]:
+        return [col for col in columns if col in df.columns]
+
+    site_exceedances = site_exceedances.sort_values(
+        ["Exceedance_Ratio", "GVFK"], ascending=[False, True], ignore_index=True
+    )
+    site_view = site_exceedances[_ensure_columns(site_exceedances, site_columns)].copy()
+
+    def _join_unique(values: pd.Series) -> str:
+        unique_vals = sorted({str(v) for v in values.dropna() if str(v)})
+        return ", ".join(unique_vals)
+
+    group_cols = [
+        "GVFK",
+        "Nearest_River_ov_id",
+        "River_Segment_Name",
+        "River_Segment_GVFK",
+    ]
+    agg_map = {
+        "Lokalitet_ID": lambda s: len(set(s)),
+        "Pollution_Flux_kg_per_year": "sum",
+        "Qualifying_Category": _join_unique,
+        "Qualifying_Substance": _join_unique,
+        "Flow_Scenario": _join_unique,
+        "Cmix_ug_L": "max",
+        "MKK_ug_L": "max",
+        "Exceedance_Ratio": "max",
+    }
+    if "Segment_Total_Flux_kg_per_year" in site_exceedances.columns:
+        agg_map["Segment_Total_Flux_kg_per_year"] = "max"
+    grouped = (
+        site_exceedances.groupby(group_cols, dropna=False).agg(agg_map).reset_index()
+    )
+
+    if not grouped.empty:
+        grouped = grouped.rename(
+            columns={
+                "Lokalitet_ID": "Contributing_Site_Count",
+                "Pollution_Flux_kg_per_year": "Total_Site_Flux_kg_per_year",
+                "Qualifying_Category": "Categories",
+                "Qualifying_Substance": "Substances",
+                "Flow_Scenario": "Flow_Scenarios",
+                "Cmix_ug_L": "Max_Cmix_ug_L",
+                "Exceedance_Ratio": "Max_Exceedance_Ratio",
+            }
+        )
+        site_ids = (
+            site_exceedances.groupby(group_cols, dropna=False)["Lokalitet_ID"]
+            .apply(lambda s: ", ".join(sorted(set(s))))
+            .reset_index(name="Site_IDs")
+        )
+        grouped = grouped.merge(site_ids, on=group_cols, how="left")
+
+    gvfk_view = grouped[_ensure_columns(grouped, gvfk_columns)].copy()
+    return site_view, gvfk_view
 
 
-# ---------------------------------------------------------------------------
-# Output handling
-# ---------------------------------------------------------------------------#
+# ===========================================================================
+# Output export
+# ===========================================================================
+
 
 def _export_results(
     flux_details: pd.DataFrame,
-    segment_flux: pd.DataFrame,
     cmix_results: pd.DataFrame,
     segment_summary: pd.DataFrame,
+    site_exceedances: pd.DataFrame,
 ) -> None:
-    """Write all Step 6 outputs to disk."""
-    flux_details.to_csv(get_output_path("step6_flux_site_segment"), index=False, encoding="utf-8")
-    segment_flux.to_csv(get_output_path("step6_flux_by_segment"), index=False, encoding="utf-8")
-    cmix_results.to_csv(get_output_path("step6_cmix_results"), index=False, encoding="utf-8")
-    segment_summary.to_csv(get_output_path("step6_segment_summary"), index=False, encoding="utf-8")
+    """Write Step 6 core outputs to disk."""
+    flux_details.to_csv(
+        get_output_path("step6_flux_site_segment"), index=False, encoding="utf-8"
+    )
+    cmix_results.to_csv(
+        get_output_path("step6_cmix_results"), index=False, encoding="utf-8"
+    )
+    segment_summary.to_csv(
+        get_output_path("step6_segment_summary"), index=False, encoding="utf-8"
+    )
+    site_exceedances.to_csv(
+        get_output_path("step6_site_mkk_exceedances"), index=False, encoding="utf-8"
+    )
 
-    # Maintain legacy export for backward compatibility until consumers migrate.
-    flux_details.to_csv(get_output_path("step6_flux_results"), index=False, encoding="utf-8")
+    print(f"\nExported {len(flux_details)} site-level flux records")
+    print(f"Exported {len(cmix_results)} Cmix scenarios")
+    print(f"Exported {len(segment_summary)} segment summaries")
+    print(f"Exported {len(site_exceedances)} site exceedance records")
 
+
+# ===========================================================================
+# Entry point
+# ===========================================================================
 
 if __name__ == "__main__":
     run_step6()

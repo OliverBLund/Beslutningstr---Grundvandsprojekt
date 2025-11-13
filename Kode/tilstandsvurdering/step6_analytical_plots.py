@@ -36,7 +36,7 @@ def create_analytical_plots(
 ) -> None:
     """Generate all analytical plots for Step 6."""
 
-    output_dir = get_visualization_path("step6") / "analytical"
+    output_dir = get_visualization_path("step6", "analytical")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("  Creating analytical plots...")
@@ -64,6 +64,10 @@ def create_analytical_plots(
     # Plot 6: Flow Scenario Sensitivity
     print("    - Flow scenario sensitivity...")
     plot_flow_scenario_sensitivity(cmix_results, output_dir)
+
+    # Plot 7: Multi-scenario category breakdown
+    print("    - Category scenario breakdown...")
+    plot_multi_scenario_breakdown(segment_flux, cmix_results, output_dir)
 
     # Plot 7: Substance Detail Treemap
     print("    - Substance contribution treemap...")
@@ -457,3 +461,114 @@ def plot_substance_treemap(segment_flux: pd.DataFrame, output_dir: Path) -> None
     plt.tight_layout()
     plt.savefig(output_dir / 'substance_treemap.png', dpi=300, bbox_inches='tight')
     plt.close()
+
+
+def plot_multi_scenario_breakdown(
+    segment_flux: pd.DataFrame,
+    cmix_results: pd.DataFrame,
+    output_dir: Path,
+) -> None:
+    """Highlight categories with multiple scenario modelstoffer."""
+
+    flux_df = segment_flux.copy()
+    flux_df["Scenario_Modelstof"] = flux_df["Qualifying_Substance"].apply(_extract_scenario_name)
+    scenario_counts = (
+        flux_df.dropna(subset=["Scenario_Modelstof"])
+        .groupby("Qualifying_Category")["Scenario_Modelstof"]
+        .nunique()
+    )
+    multi_categories = scenario_counts[scenario_counts > 1].index.tolist()
+
+    if not multi_categories:
+        print("    Warning: No categories with multiple scenarios found for breakdown plot")
+        return
+
+    category_order = sorted(multi_categories)
+    flux_filtered = flux_df[
+        flux_df["Qualifying_Category"].isin(category_order)
+        & flux_df["Scenario_Modelstof"].notna()
+    ]
+
+    flux_summary = (
+        flux_filtered.groupby(["Qualifying_Category", "Scenario_Modelstof"])["Total_Flux_kg_per_year"]
+        .sum()
+        .reset_index()
+    )
+    flux_summary["Qualifying_Category"] = pd.Categorical(
+        flux_summary["Qualifying_Category"], categories=category_order, ordered=True
+    )
+
+    exceedances = cmix_results.copy()
+    exceedances["Scenario_Modelstof"] = exceedances["Qualifying_Substance"].apply(
+        _extract_scenario_name
+    )
+    exc_filtered = exceedances[
+        (exceedances["Qualifying_Category"].isin(category_order))
+        & (exceedances["Scenario_Modelstof"].notna())
+        & (exceedances.get("Exceedance_Flag", False) == True)
+    ]
+
+    fig = plt.figure(figsize=(18, 12))
+    gs = fig.add_gridspec(2, 1, height_ratios=[2.2, 1.0], hspace=0.35)
+    ax_flux = fig.add_subplot(gs[0])
+    ax_heat = fig.add_subplot(gs[1])
+
+    sns.barplot(
+        data=flux_summary,
+        x="Qualifying_Category",
+        y="Total_Flux_kg_per_year",
+        hue="Scenario_Modelstof",
+        ax=ax_flux,
+    )
+    ax_flux.set_yscale("log")
+    ax_flux.set_xlabel("Category", fontsize=12)
+    ax_flux.set_ylabel("Total Flux (kg/year, log scale)", fontsize=12)
+    ax_flux.set_title("Scenario Contribution per Category (Flux)", fontsize=14, fontweight="bold")
+    ax_flux.legend(title="Scenario / Modelstof", bbox_to_anchor=(1.02, 1), loc="upper left")
+    plt.setp(ax_flux.get_xticklabels(), rotation=30, ha="right")
+
+    if not exc_filtered.empty:
+        heatmap_data = (
+            exc_filtered.groupby(["Scenario_Modelstof", "Qualifying_Category"])["Exceedance_Ratio"]
+            .max()
+            .unstack()
+            .reindex(columns=category_order)
+        )
+        mask = heatmap_data.isna()
+        sns.heatmap(
+            heatmap_data,
+            ax=ax_heat,
+            cmap="Reds",
+            annot=True,
+            fmt=".2f",
+            cbar_kws={"label": "Max exceedance ratio"},
+            mask=mask,
+        )
+        ax_heat.set_title("Scenario Exceedance Severity (max Cmix/MKK)", fontsize=14, fontweight="bold")
+        ax_heat.set_xlabel("Category")
+        ax_heat.set_ylabel("Scenario / Modelstof")
+    else:
+        ax_heat.axis("off")
+        ax_heat.text(
+            0.5,
+            0.5,
+            "No MKK exceedances were observed for multi-scenario categories.",
+            ha="center",
+            va="center",
+            fontsize=12,
+            fontweight="bold",
+        )
+
+    plt.tight_layout()
+    plt.savefig(output_dir / "category_scenario_breakdown.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+
+def _extract_scenario_name(substance: str) -> str | None:
+    """Return the scenario/modelstof part from 'Category__via_Modelstof' labels."""
+    if not isinstance(substance, str):
+        return None
+    marker = "__via_"
+    if marker in substance:
+        return substance.split(marker, 1)[1]
+    return None
