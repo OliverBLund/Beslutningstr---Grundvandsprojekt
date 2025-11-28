@@ -225,6 +225,8 @@ CORE_OUTPUTS = {
     "step5_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5_compound_gvfk_high_risk.shp",
     # Step 5: Sites without substance data (parked for later analysis)
     "step5_unknown_substance_sites": STEP5_DATA_DIR / "step5_unknown_substance_sites.csv",
+    # Step 5b: Infiltration filtering removed sites
+    "step5_infiltration_removed_sites": STEP5_DATA_DIR / "step5_infiltration_removed_sites.csv",
     # Step 6: Tilstandsvurdering outputs
     "step6_flux_site_segment": STEP6_DATA_DIR / "step6_flux_site_segment.csv",
     "step6_cmix_results": STEP6_DATA_DIR / "step6_cmix_results.csv",

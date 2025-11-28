@@ -216,6 +216,50 @@ def main():
             "risk_analysis": general_analysis,
         }
 
+    # Step 5c: Infiltration-Based Filtering
+    print("\n" + "=" * 80)
+    print("STEP 5c: Infiltration-Based Site Filtering")
+    print("=" * 80)
+    print("Filtering sites based on groundwater flow direction (upward vs. downward)")
+
+    try:
+        from risikovurdering.step5c_infiltration_filter import run_step5c_filtering
+
+        filtered_results, removed_sites = run_step5c_filtering(verbose=True)
+
+        # Update statistics after filtering
+        if not filtered_results.empty:
+            filtered_sites_count = filtered_results["Lokalitet_ID"].nunique()
+            filtered_gvfk_count = filtered_results["GVFK"].nunique()
+            removed_sites_count = removed_sites["Lokalitet_ID"].nunique() if not removed_sites.empty else 0
+
+            print(f"\n✓ Step 5c complete:")
+            print(f"  Sites remaining: {filtered_sites_count:,}")
+            print(f"  GVFKs remaining: {filtered_gvfk_count:,}")
+            print(f"  Sites removed (upward flow): {removed_sites_count:,}")
+
+            # Store results
+            results["step5c"] = {
+                "filtered_results": filtered_results,
+                "removed_sites": removed_sites,
+                "filtered_sites_count": filtered_sites_count,
+                "filtered_gvfk_count": filtered_gvfk_count,
+                "removed_sites_count": removed_sites_count,
+                "success": True,
+            }
+        else:
+            print(f"\n⚠ Warning: Step 5c resulted in no remaining sites")
+            results["step5c"] = {
+                "success": False,
+                "error": "No sites remaining after filtering"
+            }
+    except Exception as e:
+        print(f"\n✗ Step 5c failed: {e}")
+        print("Continuing without infiltration filtering...")
+        import traceback
+        traceback.print_exc()
+        results["step5c"] = {"success": False, "error": str(e)}
+
     # Step 6: Tilstandsvurdering (State Assessment)
     print("\n" + "=" * 80)
     print("STEP 6: Tilstandsvurdering (State Assessment)")
@@ -402,6 +446,21 @@ def generate_workflow_summary(results):
     if high_risk_site_count == 0 and compound_high_risk_site_count == 0:
         print("Step 5 risk assessment: Not completed successfully")
 
+    # Step 5c statistics (infiltration filtering)
+    step5c_filtered_sites = 0
+    step5c_filtered_gvfk = 0
+    step5c_removed_sites = 0
+
+    if "step5c" in results and results["step5c"].get("success"):
+        step5c_filtered_sites = results["step5c"].get("filtered_sites_count", 0)
+        step5c_filtered_gvfk = results["step5c"].get("filtered_gvfk_count", 0)
+        step5c_removed_sites = results["step5c"].get("removed_sites_count", 0)
+
+        print(f"\nStep 5c - Infiltration Filtering:")
+        print(f"  Sites after filtering (downward flow): {step5c_filtered_sites} ({(step5c_filtered_sites / compound_high_risk_site_count * 100 if compound_high_risk_site_count > 0 else 0):.1f}% of Step 5b sites)")
+        print(f"  GVFKs after filtering: {step5c_filtered_gvfk}")
+        print(f"  Sites removed (upward flow): {step5c_removed_sites} ({(step5c_removed_sites / compound_high_risk_site_count * 100 if compound_high_risk_site_count > 0 else 0):.1f}% of Step 5b sites)")
+
     # Create summary DataFrame
     summary_data = {
         "Step": [
@@ -413,6 +472,9 @@ def generate_workflow_summary(results):
             "Step 5: GVFKs with High-Risk Sites (<=500m)",
             "Step 5: High-Risk Sites - General Assessment (<=500m)",
             "Step 5: High-Risk Sites - Compound-Specific Assessment",
+            "Step 5b: Sites After Infiltration Filtering (Downward Flow)",
+            "Step 5b: Sites Removed (Upward Flow)",
+            "Step 5b: GVFKs After Infiltration Filtering",
         ],
         "Count": [
             total_gvfk,
@@ -423,6 +485,9 @@ def generate_workflow_summary(results):
             high_risk_gvfk_count,
             high_risk_site_count,
             compound_high_risk_site_count,
+            step5c_filtered_sites,
+            step5c_removed_sites,
+            step5c_filtered_gvfk,
         ],
         "Percentage_of_Total_GVFKs": [
             "100.0%",
@@ -433,6 +498,9 @@ def generate_workflow_summary(results):
             f"{(high_risk_gvfk_count / total_gvfk * 100):.1f}%",
             f"{(high_risk_site_count / unique_sites * 100 if unique_sites > 0 else 0):.1f}% of sites",
             f"{(compound_high_risk_site_count / unique_sites * 100 if unique_sites > 0 else 0):.1f}% of sites",
+            f"{(step5c_filtered_sites / compound_high_risk_site_count * 100 if compound_high_risk_site_count > 0 else 0):.1f}% of Step 5b sites",
+            f"{(step5c_removed_sites / compound_high_risk_site_count * 100 if compound_high_risk_site_count > 0 else 0):.1f}% of Step 5b sites",
+            f"{(step5c_filtered_gvfk / total_gvfk * 100):.1f}%",
         ],
     }
 
