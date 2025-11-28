@@ -1,14 +1,16 @@
 """
 Main workflow orchestrator for groundwater contamination risk assessment.
 
-STANDARDIZED WORKFLOW (Steps 1-5)
-==================================
+COMPLETE WORKFLOW (Steps 1-6)
+==============================
 
-This is the core standardized workflow for assessing groundwater contamination risk
-from contaminated sites to groundwater aquifers (GVFKs).
+This is the complete workflow for assessing groundwater contamination risk
+from contaminated sites to groundwater aquifers (GVFKs) and computing impact
+on river water quality.
 
 WORKFLOW STEPS:
 ---------------
+RISIKOVURDERING (Risk Assessment - Steps 1-5):
 1. Load all groundwater aquifers (GVFKs) in Denmark
 2. Filter to GVFKs with contact to targeted rivers (Kontakt = 1)
 3. Identify contaminated sites (V1/V2) within these GVFKs
@@ -17,11 +19,15 @@ WORKFLOW STEPS:
    a) General assessment: Universal 500m threshold
    b) Compound-specific: Literature-based variable thresholds per contamination category
 
+TILSTANDSVURDERING (State Assessment - Step 6):
+6. Compute pollution flux from sites to river segments and calculate mixing
+   concentrations (Cmix) under different flow scenarios, with MKK threshold exceedances
+
 CORE OUTPUTS:
--------------s
-- CSV files: Risk assessment results, site-GVFK combinations, parked sites
+-------------
+- CSV files: Risk assessment results, site-GVFK combinations, flux calculations, Cmix results
 - Shapefiles: High-risk GVFKs for GIS visualization
-- Plots: 3 essential verification plots (distance distribution, category breakdown, progression)
+- Plots: Verification plots, category analysis, exceedance maps, interactive visualizations
 
 OPTIONAL ANALYSIS:
 ------------------
@@ -38,7 +44,7 @@ USAGE:
 ------
     python main_workflow.py
 
-Expected runtime: ~5-15 minutes depending on data size.
+Expected runtime: ~10-20 minutes depending on data size.
 """
 
 import pandas as pd
@@ -52,6 +58,7 @@ from risikovurdering.step1_all_gvfk import run_step1
 from risikovurdering.step2_river_contact import run_step2
 from risikovurdering.step3_v1v2_sites import run_step3
 from risikovurdering.step5_risk_assessment import run_step5
+from tilstandsvurdering.step6_tilstandsvurdering import run_step6
 
 # Suppress shapely deprecation warnings
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -59,7 +66,7 @@ warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
 def main():
     """
-    Run the complete standardized groundwater risk assessment workflow.
+    Run the complete groundwater risk and state assessment workflow (Steps 1-6).
 
     This function orchestrates all steps sequentially:
     - Step 1: Count total GVFKs in Denmark
@@ -67,17 +74,18 @@ def main():
     - Step 3: Identify V1/V2 contaminated sites in these GVFKs
     - Step 4: Calculate site-to-river distances
     - Step 5: Risk assessment (general 500m + compound-specific)
-    - Visualizations: Create 3 essential verification plots
+    - Step 6: Tilstandsvurdering (flux calculation, Cmix, MKK exceedances)
+    - Visualizations: Create verification plots and maps
 
     Returns:
-        bool: True if workflow completed successfully, False if any step failed
+        bool: True if workflow completed successfully, False if critical steps failed
 
     Note:
         Results are saved to Resultater/ directory.
-        See config.CORE_OUTPUTS for list of output files created.
+        If Step 6 fails, workflow continues with Steps 1-5 results.
     """
     print("=" * 80)
-    print("GROUNDWATER CONTAMINATION RISK ASSESSMENT - STANDARDIZED WORKFLOW")
+    print("GROUNDWATER CONTAMINATION ASSESSMENT - COMPLETE WORKFLOW (Steps 1-6)")
     print("=" * 80)
 
     # Validate input files before starting
@@ -208,6 +216,24 @@ def main():
             "risk_analysis": general_analysis,
         }
 
+    # Step 6: Tilstandsvurdering (State Assessment)
+    print("\n" + "=" * 80)
+    print("STEP 6: Tilstandsvurdering (State Assessment)")
+    print("=" * 80)
+    print("Computing pollution flux to river segments and mixing concentrations (Cmix)")
+
+    try:
+        step6_results = run_step6()
+        results["step6"] = step6_results
+        print(f"✓ Step 6 complete: Analyzed {len(step6_results['segment_summary'])} river segments")
+        print(f"  - Site flux calculations: {len(step6_results['site_flux'])}")
+        print(f"  - Cmix scenarios: {len(step6_results['cmix_results'])}")
+        print(f"  - MKK exceedances: {len(step6_results['site_exceedances'])} sites")
+    except Exception as e:
+        print(f"✗ Step 6 failed: {e}")
+        print("Continuing to visualizations with Steps 1-5 results only...")
+        results["step6"] = {"success": False, "error": str(e)}
+
     # Create visualizations if available
     print("\n" + "=" * 80)
     print("Creating Verification Visualizations")
@@ -218,7 +244,9 @@ def main():
     print("✓ WORKFLOW COMPLETED SUCCESSFULLY")
     print("=" * 80)
     print("\nResults saved to: Resultater/")
-    print("Visualizations saved to: Resultater/Figures/")
+    print("  - Step-specific outputs: Resultater/step{N}_{name}/data/")
+    print("  - Step-specific figures: Resultater/step{N}_{name}/figures/")
+    print("  - Workflow summary: Resultater/workflow_summary/")
     print("\nFor extended analysis, see: risikovurdering/optional_analysis/")
     return True
 
@@ -465,20 +493,17 @@ def create_visualizations_if_available(results):
         # Create GVFK progression plot
         try:
             import os
-            from config import GRUNDVAND_PATH
+            from config import GRUNDVAND_PATH, WORKFLOW_SUMMARY_DIR
 
             # Define required files for progression plot including Step 5
             required_files = {
                 "all_gvfk": GRUNDVAND_PATH,  # Use original file since Step 1 no longer creates output
-                "river_gvfk": os.path.join(results_path, "step2_gvfk_with_rivers.shp"),
-                "v1v2_gvfk": os.path.join(results_path, "step3_gvfk_with_v1v2.shp"),
-                "high_risk_gvfk": os.path.join(
-                    results_path, "step5_gvfk_high_risk_500m.shp"
-                ),
+                "river_gvfk": get_output_path("step2_river_gvfk"),
+                "v1v2_gvfk": get_output_path("step3_gvfk_polygons"),
+                "high_risk_gvfk": get_output_path("step5_gvfk_high_risk"),
             }
-            figures_path = os.path.join(results_path, "Figures")
-            os.makedirs(figures_path, exist_ok=True)
-            create_progression_plot(figures_path, required_files)
+            WORKFLOW_SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
+            create_progression_plot(str(WORKFLOW_SUMMARY_DIR), required_files)
         except Exception as e:
             print(f"WARNING: Could not create progression plot - {e}")
 

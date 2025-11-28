@@ -1576,7 +1576,7 @@ if __name__ == "__main__":
         "v1v2_gvfk": get_output_path("step3_gvfk_polygons"),
         "high_risk_gvfk": get_output_path("step5_gvfk_high_risk"),
     }
-    figures_path = get_visualization_path("workflow")
+    figures_path = get_visualization_path("workflow_summary")
     create_progression_plot(figures_path, required_files)
 
     print("\nCreating Losseplads override visualizations...")

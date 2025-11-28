@@ -50,6 +50,8 @@ def analyze_and_visualize_step6(
     site_geometries: gpd.GeoDataFrame | None = None,
     site_exceedances: pd.DataFrame | None = None,
     gvfk_exceedances: pd.DataFrame | None = None,
+    pixel_data_records: list | None = None,
+    enriched_results: pd.DataFrame | None = None,
 ) -> None:
     """Print compact diagnostics covering the main Step 6 deliverables."""
 
@@ -65,6 +67,11 @@ def analyze_and_visualize_step6(
     print("=" * 60)
     print("End of Step 6 summary")
     print("=" * 60)
+
+    # Create pixel distribution visualizations FIRST (before any map issues)
+    if pixel_data_records is not None and enriched_results is not None:
+        print("\nGenerating pixel distribution visualizations...")
+        _create_pixel_distribution_plots(pixel_data_records, enriched_results, negative_infiltration)
 
     # Diagnostics for negative infiltration removals
     _create_negative_infiltration_map(negative_infiltration, site_geometries)
@@ -85,7 +92,7 @@ def analyze_and_visualize_step6(
         from step6_analytical_plots import create_analytical_plots
     create_analytical_plots(site_flux, segment_flux, cmix_results, segment_summary)
 
-    print("All visualizations saved to Resultater/Figures/step6/")
+    print("All visualizations saved to Resultater/step6_tilstandsvurdering/figures/")
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +397,7 @@ def _create_negative_infiltration_map(
     multi_layer_sites = neg_gdf[neg_gdf["Is_Multi_Layer"]].copy()
 
     output_dir = get_visualization_path("step6", "negative_infiltration")
+    output_dir.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
 
     # Create layer groups for each modellag (single-layer sites only)
     for layer in all_layers:
@@ -643,7 +651,37 @@ def _create_negative_infiltration_map(
 
     # Save outputs
     map_path = output_dir / "step6_negative_infiltration_validation_map.html"
-    fmap.save(map_path)
+
+    # Handle OneDrive placeholder files that appear in directory but can't be accessed
+    # This happens when OneDrive shows a file in Explorer but hasn't synced it yet
+    import os
+    import time
+
+    # Check if it's a OneDrive placeholder (shows in dir but exists() returns False)
+    try:
+        # Force delete any existing file/placeholder
+        if map_path.exists():
+            os.remove(str(map_path))
+        else:
+            # Try to remove placeholder that doesn't register as existing
+            try:
+                os.remove(str(map_path))
+                print(f"  Removed OneDrive placeholder: {map_path.name}")
+            except:
+                pass
+        time.sleep(0.1)  # Brief pause for filesystem
+    except Exception as e:
+        print(f"  Note: Could not remove existing file: {e}")
+
+    # Save HTML directly with proper encoding
+    try:
+        html_str = fmap.get_root().render()
+        with open(str(map_path), 'w', encoding='utf-8') as f:
+            f.write(html_str)
+        print(f"  Map saved successfully: {map_path.name}")
+    except Exception as e:
+        print(f"  ERROR: Could not save map: {e}")
+        print(f"  This may be a OneDrive sync issue. Try pausing OneDrive and rerunning.")
 
     geojson_path = output_dir / "step6_negative_infiltration_sites.geojson"
     neg_gdf.to_file(geojson_path, driver="GeoJSON")
@@ -1044,3 +1082,249 @@ def _export_negative_infiltration_stats(
     stats_path = output_dir / "step6_negative_infiltration_validation.csv"
     export_df.to_csv(stats_path, index=False)
     print("  Validation table saved to:", stats_path)
+
+
+def _create_pixel_distribution_plots(
+    pixel_data_records: list,
+    enriched_results: pd.DataFrame,
+    negative_infiltration: pd.DataFrame | None = None,
+) -> None:
+    """
+    Create distribution plots of all sampled infiltration pixel values.
+
+    Creates:
+    1. Overall distribution of all pixels sampled
+    2. Distribution split by positive vs negative infiltration sites
+    3. Summary statistics table
+    """
+    if not pixel_data_records:
+        print("  No pixel data available for distribution plots.")
+        return
+
+    output_dir = get_visualization_path("step6", "pixel_distributions")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"  Processing {len(pixel_data_records)} pixel data records...")
+
+    # Flatten all pixel values and track site association
+    all_pixels = []
+    site_pixel_map = {}  # Map lokalitet_id to list of pixel values
+
+    for record in pixel_data_records:
+        lokalitet_id = record["Lokalitet_ID"]
+        pixel_values = record["Pixel_Values"]
+
+        if pixel_values:
+            all_pixels.extend(pixel_values)
+
+            if lokalitet_id not in site_pixel_map:
+                site_pixel_map[lokalitet_id] = []
+            site_pixel_map[lokalitet_id].extend(pixel_values)
+
+    if not all_pixels:
+        print("  No valid pixel values found.")
+        return
+
+    all_pixels = np.array(all_pixels)
+
+    # Determine which sites have negative vs positive infiltration
+    negative_site_ids = set()
+    if negative_infiltration is not None and not negative_infiltration.empty:
+        negative_site_ids = set(negative_infiltration["Lokalitet_ID"].unique())
+
+    positive_site_ids = set(enriched_results["Lokalitet_ID"].unique())
+
+    # Collect pixels by site type
+    positive_pixels = []
+    negative_pixels = []
+
+    for lokalitet_id, pixels in site_pixel_map.items():
+        if lokalitet_id in negative_site_ids:
+            negative_pixels.extend(pixels)
+        elif lokalitet_id in positive_site_ids:
+            positive_pixels.extend(pixels)
+
+    positive_pixels = np.array(positive_pixels) if positive_pixels else np.array([])
+    negative_pixels = np.array(negative_pixels) if negative_pixels else np.array([])
+
+    # Print summary statistics
+    print("\n" + "=" * 80)
+    print("PIXEL DISTRIBUTION SUMMARY")
+    print("=" * 80)
+    print(f"\nTotal pixels sampled: {len(all_pixels):,}")
+    print(f"  From positive infiltration sites: {len(positive_pixels):,}")
+    print(f"  From negative infiltration sites: {len(negative_pixels):,}")
+
+    print(f"\nOverall Statistics (mm/år):")
+    print(f"  Min:    {np.min(all_pixels):>10.2f}")
+    print(f"  Q1:     {np.percentile(all_pixels, 25):>10.2f}")
+    print(f"  Median: {np.median(all_pixels):>10.2f}")
+    print(f"  Mean:   {np.mean(all_pixels):>10.2f}")
+    print(f"  Q3:     {np.percentile(all_pixels, 75):>10.2f}")
+    print(f"  Max:    {np.max(all_pixels):>10.2f}")
+    print(f"  Std:    {np.std(all_pixels):>10.2f}")
+
+    # Count negative vs positive pixels
+    neg_pixel_count = (all_pixels < 0).sum()
+    pos_pixel_count = (all_pixels >= 0).sum()
+    print(f"\nPixel value distribution:")
+    print(f"  Negative (< 0):  {neg_pixel_count:>10,} ({100*neg_pixel_count/len(all_pixels):>5.1f}%)")
+    print(f"  Positive (>= 0): {pos_pixel_count:>10,} ({100*pos_pixel_count/len(all_pixels):>5.1f}%)")
+
+    if len(positive_pixels) > 0:
+        print(f"\nPositive Site Pixels (mm/år):")
+        print(f"  Min:    {np.min(positive_pixels):>10.2f}")
+        print(f"  Median: {np.median(positive_pixels):>10.2f}")
+        print(f"  Mean:   {np.mean(positive_pixels):>10.2f}")
+        print(f"  Max:    {np.max(positive_pixels):>10.2f}")
+
+    if len(negative_pixels) > 0:
+        print(f"\nNegative Site Pixels (mm/år):")
+        print(f"  Min:    {np.min(negative_pixels):>10.2f}")
+        print(f"  Median: {np.median(negative_pixels):>10.2f}")
+        print(f"  Mean:   {np.mean(negative_pixels):>10.2f}")
+        print(f"  Max:    {np.max(negative_pixels):>10.2f}")
+
+    print("=" * 80 + "\n")
+
+    # Create visualizations
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+    # 1. Overall histogram - FULL DATA RANGE
+    ax1 = axes[0, 0]
+    bins = np.linspace(np.min(all_pixels), np.max(all_pixels), 50)
+    ax1.hist(all_pixels, bins=bins, alpha=0.7, color='steelblue', edgecolor='black')
+    ax1.axvline(0, color='red', linestyle='--', linewidth=2, label='Zero infiltration')
+    ax1.axvline(np.median(all_pixels), color='orange', linestyle='--', linewidth=2, label=f'Median: {np.median(all_pixels):.1f}')
+    ax1.set_xlabel('Infiltration (mm/år)', fontsize=12)
+    ax1.set_ylabel('Pixel Count', fontsize=12)
+    ax1.set_title(f'Overall Pixel Distribution (Full Range)\n{len(all_pixels):,} total pixels\nMin: {np.min(all_pixels):.1f}, Max: {np.max(all_pixels):.1f}', fontsize=14, fontweight='bold')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    # 2. Cumulative distribution
+    ax2 = axes[0, 1]
+    sorted_pixels = np.sort(all_pixels)
+    cumulative = np.arange(1, len(sorted_pixels) + 1) / len(sorted_pixels) * 100
+    ax2.plot(sorted_pixels, cumulative, linewidth=2, color='steelblue')
+    ax2.axvline(0, color='red', linestyle='--', linewidth=2, label='Zero infiltration')
+    ax2.axhline(50, color='orange', linestyle='--', linewidth=1, alpha=0.5, label='Median')
+    ax2.set_xlabel('Infiltration (mm/år)', fontsize=12)
+    ax2.set_ylabel('Cumulative Percentage (%)', fontsize=12)
+    ax2.set_title('Cumulative Distribution Function', fontsize=14, fontweight='bold')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    # 3. Positive vs Negative sites comparison
+    ax3 = axes[1, 0]
+
+    if len(positive_pixels) > 0 and len(negative_pixels) > 0:
+        bins_pos_neg = np.linspace(
+            min(np.min(positive_pixels), np.min(negative_pixels)),
+            max(np.max(positive_pixels), np.max(negative_pixels)),
+            50
+        )
+        ax3.hist(positive_pixels, bins=bins_pos_neg, alpha=0.6, color='green',
+                 label=f'Positive sites ({len(positive_pixels):,} pixels)', edgecolor='black')
+        ax3.hist(negative_pixels, bins=bins_pos_neg, alpha=0.6, color='red',
+                 label=f'Negative sites ({len(negative_pixels):,} pixels)', edgecolor='black')
+        ax3.axvline(0, color='black', linestyle='--', linewidth=2, label='Zero infiltration')
+        ax3.set_xlabel('Infiltration (mm/år)', fontsize=12)
+        ax3.set_ylabel('Pixel Count', fontsize=12)
+        ax3.set_title(f'Distribution by Site Type (Full Range)\nPositive: {np.min(positive_pixels):.1f} to {np.max(positive_pixels):.1f}\nNegative: {np.min(negative_pixels):.1f} to {np.max(negative_pixels):.1f}', fontsize=14, fontweight='bold')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+    else:
+        ax3.text(0.5, 0.5, 'Insufficient data for comparison',
+                ha='center', va='center', transform=ax3.transAxes, fontsize=12)
+        ax3.set_title('Distribution by Site Type', fontsize=14, fontweight='bold')
+
+    # 4. Box plot comparison
+    ax4 = axes[1, 1]
+
+    data_to_plot = []
+    labels_to_plot = []
+    colors_to_plot = []
+
+    if len(positive_pixels) > 0:
+        data_to_plot.append(positive_pixels)
+        labels_to_plot.append(f'Positive Sites\n(n={len(positive_pixels):,})')
+        colors_to_plot.append('green')
+
+    if len(negative_pixels) > 0:
+        data_to_plot.append(negative_pixels)
+        labels_to_plot.append(f'Negative Sites\n(n={len(negative_pixels):,})')
+        colors_to_plot.append('red')
+
+    data_to_plot.append(all_pixels)
+    labels_to_plot.append(f'All Sites\n(n={len(all_pixels):,})')
+    colors_to_plot.append('steelblue')
+
+    if data_to_plot:
+        bp = ax4.boxplot(data_to_plot, labels=labels_to_plot, patch_artist=True,
+                         showfliers=True, widths=0.6,
+                         flierprops=dict(marker='o', markersize=2, alpha=0.3))
+
+        for patch, color in zip(bp['boxes'], colors_to_plot):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.6)
+
+        ax4.axhline(0, color='black', linestyle='--', linewidth=2, alpha=0.5, label='Zero infiltration')
+        ax4.set_ylabel('Infiltration (mm/år)', fontsize=12)
+        ax4.set_title('Box Plot Comparison (All Data Including Outliers)', fontsize=14, fontweight='bold')
+        ax4.grid(True, alpha=0.3, axis='y')
+        ax4.legend()
+
+    plt.tight_layout()
+
+    # Save figure
+    plot_path = output_dir / "step6_pixel_distribution_analysis.png"
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"  Pixel distribution plots saved to: {plot_path}")
+
+    # Export statistics to CSV
+    stats_df = pd.DataFrame({
+        'Category': ['Overall', 'Positive Sites', 'Negative Sites'],
+        'Pixel_Count': [len(all_pixels), len(positive_pixels), len(negative_pixels)],
+        'Min_mm_per_year': [
+            np.min(all_pixels),
+            np.min(positive_pixels) if len(positive_pixels) > 0 else np.nan,
+            np.min(negative_pixels) if len(negative_pixels) > 0 else np.nan
+        ],
+        'Q25_mm_per_year': [
+            np.percentile(all_pixels, 25),
+            np.percentile(positive_pixels, 25) if len(positive_pixels) > 0 else np.nan,
+            np.percentile(negative_pixels, 25) if len(negative_pixels) > 0 else np.nan
+        ],
+        'Median_mm_per_year': [
+            np.median(all_pixels),
+            np.median(positive_pixels) if len(positive_pixels) > 0 else np.nan,
+            np.median(negative_pixels) if len(negative_pixels) > 0 else np.nan
+        ],
+        'Mean_mm_per_year': [
+            np.mean(all_pixels),
+            np.mean(positive_pixels) if len(positive_pixels) > 0 else np.nan,
+            np.mean(negative_pixels) if len(negative_pixels) > 0 else np.nan
+        ],
+        'Q75_mm_per_year': [
+            np.percentile(all_pixels, 75),
+            np.percentile(positive_pixels, 75) if len(positive_pixels) > 0 else np.nan,
+            np.percentile(negative_pixels, 75) if len(negative_pixels) > 0 else np.nan
+        ],
+        'Max_mm_per_year': [
+            np.max(all_pixels),
+            np.max(positive_pixels) if len(positive_pixels) > 0 else np.nan,
+            np.max(negative_pixels) if len(negative_pixels) > 0 else np.nan
+        ],
+        'Std_mm_per_year': [
+            np.std(all_pixels),
+            np.std(positive_pixels) if len(positive_pixels) > 0 else np.nan,
+            np.std(negative_pixels) if len(negative_pixels) > 0 else np.nan
+        ],
+    })
+
+    stats_path = output_dir / "step6_pixel_distribution_statistics.csv"
+    stats_df.to_csv(stats_path, index=False)
+    print(f"  Pixel distribution statistics saved to: {stats_path}")

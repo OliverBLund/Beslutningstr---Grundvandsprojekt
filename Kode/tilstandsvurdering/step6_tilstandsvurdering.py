@@ -94,7 +94,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
 
     # Prepare flux inputs (filtering + infiltration)
     print("[2/6] Preparing flux inputs (filtering + infiltration)...")
-    enriched_results, negative_infiltration, filtering_audit = _prepare_flux_inputs(
+    enriched_results, negative_infiltration, filtering_audit, pixel_data_records = _prepare_flux_inputs(
         step5_results, site_geometries, layer_mapping, river_segments
     )
 
@@ -129,7 +129,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
 
     # Export filtering audit
     if not filtering_audit.empty:
-        audit_path = RESULTS_DIR / "step6_filtering_audit_detailed.csv"
+        audit_path = get_output_path("step6_filtering_audit")
         filtering_audit.to_csv(audit_path, index=False, encoding="utf-8")
         print(f"\n{'=' * 60}")
         print(f"Filtering audit exported: {audit_path.name}")
@@ -155,6 +155,8 @@ def run_step6() -> Dict[str, pd.DataFrame]:
         site_geometries=site_geometries,
         site_exceedances=site_exceedances,
         gvfk_exceedances=gvfk_exceedances,
+        pixel_data_records=pixel_data_records,
+        enriched_results=enriched_results,
     )
 
     print("\n" + "=" * 60)
@@ -182,7 +184,7 @@ def _prepare_flux_inputs(
     site_geometries: gpd.GeoDataFrame,
     layer_mapping: pd.DataFrame,
     river_segments: gpd.GeoDataFrame,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, List[Dict[str, Any]]]:
     """Attach areas, modellag, infiltration, and river segment metadata.
 
     Returns:
@@ -190,6 +192,7 @@ def _prepare_flux_inputs(
         - enriched: Filtered DataFrame ready for flux calculation
         - negative_rows: Rows with negative infiltration (for diagnostics/visualization)
         - filtering_audit: Complete audit trail of all filtered rows
+        - pixel_data_records: All pixel values sampled for distribution visualization
     """
     # Print initial statistics
     initial_total_rows = len(step5_results)
@@ -290,7 +293,7 @@ def _prepare_flux_inputs(
 
     enriched = enriched.drop(columns=["GVForekom"])
 
-    infiltration_stats = _calculate_infiltration(
+    infiltration_stats, pixel_data_records = _calculate_infiltration(
         enriched, centroid_lookup, geometry_lookup
     )
 
@@ -493,7 +496,7 @@ def _prepare_flux_inputs(
     # Convert audit to DataFrame
     audit_df = pd.DataFrame(filtering_audit)
 
-    return enriched, negative_rows, audit_df
+    return enriched, negative_rows, audit_df, pixel_data_records
 
 
 # ===========================================================================
@@ -506,16 +509,20 @@ def _calculate_infiltration(
     centroid_lookup: Dict[str, Any],
     geometry_lookup: Dict[str, Any],
     source_crs=None,
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
     """
     Sample GVD rasters for infiltration using combined centroid + polygon strategy.
 
-    Returns DataFrame with infiltration columns for each row.
+    Returns:
+        Tuple containing:
+        - DataFrame with infiltration columns for each row
+        - List of pixel data records for distribution visualization
     """
     if source_crs is None:
         source_crs = "EPSG:25832"
 
     infiltration_records = []
+    pixel_data_records = []  # NEW: Collect all pixel values
 
     for idx, row in enriched.iterrows():
         lokalitet_id = row["Lokalitet_ID"]
@@ -549,6 +556,15 @@ def _calculate_infiltration(
             if result["Polygon_Pixel_Count"] is not None:
                 pixel_counts.append(result["Polygon_Pixel_Count"])
 
+            # NEW: Collect all pixel values for this site
+            if result.get("All_Pixel_Values") is not None and len(result["All_Pixel_Values"]) > 0:
+                pixel_data_records.append({
+                    "Lokalitet_ID": lokalitet_id,
+                    "Layer": layer,
+                    "Pixel_Values": result["All_Pixel_Values"],
+                    "Pixel_Count": len(result["All_Pixel_Values"])
+                })
+
         # Use mean of all sampled layers
         record = {
             "Combined_Infiltration_mm_per_year": np.mean(combined_values)
@@ -573,7 +589,7 @@ def _calculate_infiltration(
 
         infiltration_records.append(record)
 
-    return pd.DataFrame(infiltration_records, index=enriched.index)
+    return pd.DataFrame(infiltration_records, index=enriched.index), pixel_data_records
 
 
 def _parse_dk_modellag(dk_modellag: str) -> List[str]:
@@ -603,7 +619,7 @@ def _sample_infiltration(
     """
     Sample a single GVD raster layer using both polygon and centroid.
 
-    Returns dict with Combined, Centroid, Polygon_Mean, Polygon_Min, Polygon_Max, Polygon_Pixel_Count.
+    Returns dict with Combined, Centroid, Polygon_Mean, Polygon_Min, Polygon_Max, Polygon_Pixel_Count, All_Pixel_Values.
     """
     raster_file = GVD_RASTER_DIR / f"DKM_gvd_{layer}.tif"
 
@@ -615,6 +631,7 @@ def _sample_infiltration(
             "Polygon_Min": None,
             "Polygon_Max": None,
             "Polygon_Pixel_Count": None,
+            "All_Pixel_Values": None,
         }
 
     try:
@@ -634,6 +651,7 @@ def _sample_infiltration(
             polygon_min = None
             polygon_max = None
             pixel_count = 0
+            all_pixel_values = None  # NEW: Store all pixel values
 
             if geometry is not None:
                 try:
@@ -650,6 +668,7 @@ def _sample_infiltration(
                         polygon_min = float(np.min(valid_data))
                         polygon_max = float(np.max(valid_data))
                         pixel_count = int(valid_data.size)
+                        all_pixel_values = valid_data.flatten().tolist()  # NEW: Store all pixel values
                 except Exception:
                     pass
 
@@ -685,6 +704,7 @@ def _sample_infiltration(
                 "Polygon_Min": polygon_min,
                 "Polygon_Max": polygon_max,
                 "Polygon_Pixel_Count": pixel_count,
+                "All_Pixel_Values": all_pixel_values,  # NEW: Return all pixel values
             }
 
     except Exception as e:
@@ -696,6 +716,7 @@ def _sample_infiltration(
             "Polygon_Min": None,
             "Polygon_Max": None,
             "Polygon_Pixel_Count": None,
+            "All_Pixel_Values": None,
         }
 
 

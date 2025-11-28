@@ -8,7 +8,7 @@ based on the ID column. No output files are created as this is just counting.
 import geopandas as gpd
 import warnings
 from shapely.errors import ShapelyDeprecationWarning
-from config import GRUNDVAND_PATH
+from config import GRUNDVAND_PATH, COLUMN_MAPPINGS
 
 # Suppress shapely deprecation warnings
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -24,12 +24,13 @@ def run_step1():
     
     # Read the base shapefile
     gvf = gpd.read_file(GRUNDVAND_PATH)
-    
+
     # Count unique GVFK based on ID column
-    if 'Navn' not in gvf.columns:
-        raise ValueError("'Navn' column not found in groundwater file")
-    
-    unique_gvfk = gvf["Navn"].nunique()
+    gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
+    if gvfk_col not in gvf.columns:
+        raise ValueError(f"'{gvfk_col}' column not found in groundwater file")
+
+    unique_gvfk = gvf[gvfk_col].nunique()
     print(f"Total unique GVFK: {unique_gvfk}")
     
     return gvf, unique_gvfk

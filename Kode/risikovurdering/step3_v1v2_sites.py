@@ -27,8 +27,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pyogrio.raw")
 from shapely.errors import ShapelyDeprecationWarning
 from config import (
     V1_CSV_PATH, V2_CSV_PATH, V1_SHP_PATH, V2_SHP_PATH,
-    get_output_path, ensure_results_directory, ensure_cache_directory, 
-    V1_DISSOLVED_CACHE, V2_DISSOLVED_CACHE, is_cache_valid, GRUNDVAND_PATH
+    get_output_path, ensure_results_directory, ensure_cache_directory,
+    V1_DISSOLVED_CACHE, V2_DISSOLVED_CACHE, is_cache_valid, GRUNDVAND_PATH,
+    COLUMN_MAPPINGS
 )
 
 # Suppress shapely deprecation warnings
@@ -37,18 +38,31 @@ warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 def run_step3(rivers_gvfk):
     """
     Execute Step 3: Find GVFKs with river contact that have V1 and/or V2 sites with active contaminations.
-    
+
     Only includes sites with documented contamination substances (Lokalitetensstoffer),
     ensuring focus on locations with actual contamination risk.
-    
+
     Args:
         rivers_gvfk (list): List of GVFK names with river contact from Step 2
-    
+
     Returns:
         tuple: (gvfk_with_v1v2_names_set, v1v2_combined_geodataframe)
     """
     print("Step 3: Finding GVFKs with V1/V2 sites (active contaminations only)")
-    
+
+    # Get column names from mappings
+    site_id_col = COLUMN_MAPPINGS['contamination_csv']['site_id']
+    gvfk_id_col = COLUMN_MAPPINGS['contamination_csv']['gvfk_id']
+    substances_col = COLUMN_MAPPINGS['contamination_csv']['substances']
+    branch_col = COLUMN_MAPPINGS['contamination_csv']['branch']
+    activity_col = COLUMN_MAPPINGS['contamination_csv']['activity']
+    site_name_col = COLUMN_MAPPINGS['contamination_csv']['site_name']
+    status_col = COLUMN_MAPPINGS['contamination_csv']['status']
+    region_col = COLUMN_MAPPINGS['contamination_csv']['region']
+    municipality_col = COLUMN_MAPPINGS['contamination_csv']['municipality']
+    site_id_shp_col = COLUMN_MAPPINGS['contamination_shp']['site_id']
+    grundvand_gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
+
     # Ensure output directory exists
     ensure_results_directory()
     
@@ -65,16 +79,16 @@ def run_step3(rivers_gvfk):
     print(f"Data sources:")
     print(f"  V1 CSV: {V1_CSV_PATH}")
     print(f"  V2 CSV: {V2_CSV_PATH}")
-    v1_unique_initial = v1_csv_raw['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v1_csv_raw.columns else 0
-    v2_unique_initial = v2_csv_raw['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v2_csv_raw.columns else 0
+    v1_unique_initial = v1_csv_raw[site_id_col].nunique() if site_id_col in v1_csv_raw.columns else 0
+    v2_unique_initial = v2_csv_raw[site_id_col].nunique() if site_id_col in v2_csv_raw.columns else 0
     
     print(f"V1 dataset: {len(v1_csv_raw):,} rows, {v1_unique_initial:,} unique localities")
     print(f"V2 dataset: {len(v2_csv_raw):,} rows, {v2_unique_initial:,} unique localities")
     
     # Check for initial overlap and total unique localities
-    if 'Lokalitetsnr' in v1_csv_raw.columns and 'Lokalitetsnr' in v2_csv_raw.columns:
-        v1_lokaliteter = set(v1_csv_raw['Lokalitetsnr'].dropna())
-        v2_lokaliteter = set(v2_csv_raw['Lokalitetsnr'].dropna())
+    if site_id_col in v1_csv_raw.columns and site_id_col in v2_csv_raw.columns:
+        v1_lokaliteter = set(v1_csv_raw[site_id_col].dropna())
+        v2_lokaliteter = set(v2_csv_raw[site_id_col].dropna())
         overlap_initial = len(v1_lokaliteter.intersection(v2_lokaliteter))
         total_unique_localities = len(v1_lokaliteter | v2_lokaliteter)
         
@@ -100,28 +114,28 @@ def run_step3(rivers_gvfk):
     print("-" * 65)
     
     # Filter V1 to sites with either contamination substances OR branch data
-    if 'Lokalitetensstoffer' not in v1_csv_raw.columns:
-        raise ValueError("'Lokalitetensstoffer' column not found in V1 CSV")
-    if 'Lokalitetensbranche' not in v1_csv_raw.columns:
-        raise ValueError("'Lokalitetensbranche' column not found in V1 CSV")
+    if substances_col not in v1_csv_raw.columns:
+        raise ValueError(f"'{substances_col}' column not found in V1 CSV")
+    if branch_col not in v1_csv_raw.columns:
+        raise ValueError(f"'{branch_col}' column not found in V1 CSV")
     
     # Analyze data breakdown in detail - using UNIQUE LOCALITIES
     print(f"\nDetailed V1 Data Analysis (UNIQUE LOCALITIES):")
-    v1_has_substances = (v1_csv_raw['Lokalitetensstoffer'].notna() & 
-                         (v1_csv_raw['Lokalitetensstoffer'].astype(str).str.strip() != ''))
-    v1_has_branch = (v1_csv_raw['Lokalitetensbranche'].notna() & 
-                     (v1_csv_raw['Lokalitetensbranche'].astype(str).str.strip() != ''))
+    v1_has_substances = (v1_csv_raw[substances_col].notna() &
+                         (v1_csv_raw[substances_col].astype(str).str.strip() != ''))
+    v1_has_branch = (v1_csv_raw[branch_col].notna() &
+                     (v1_csv_raw[branch_col].astype(str).str.strip() != ''))
     
     # Create unique locality analysis
-    v1_localities = v1_csv_raw.groupby('Lokalitetsnr').agg({
-        'Lokalitetensstoffer': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any(),
-        'Lokalitetensbranche': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any()
+    v1_localities = v1_csv_raw.groupby(site_id_col).agg({
+        substances_col: lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any(),
+        branch_col: lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any()
     }).reset_index()
     
-    v1_substance_only_localities = (v1_localities['Lokalitetensstoffer'] & ~v1_localities['Lokalitetensbranche']).sum()
-    v1_branch_only_localities = (~v1_localities['Lokalitetensstoffer'] & v1_localities['Lokalitetensbranche']).sum()
-    v1_both_localities = (v1_localities['Lokalitetensstoffer'] & v1_localities['Lokalitetensbranche']).sum()
-    v1_neither_localities = (~v1_localities['Lokalitetensstoffer'] & ~v1_localities['Lokalitetensbranche']).sum()
+    v1_substance_only_localities = (v1_localities[substances_col] & ~v1_localities[branch_col]).sum()
+    v1_branch_only_localities = (~v1_localities[substances_col] & v1_localities[branch_col]).sum()
+    v1_both_localities = (v1_localities[substances_col] & v1_localities[branch_col]).sum()
+    v1_neither_localities = (~v1_localities[substances_col] & ~v1_localities[branch_col]).sum()
     v1_total_localities = len(v1_localities)
     
     print(f"  Unique localities with substances only: {v1_substance_only_localities:,} ({v1_substance_only_localities/v1_total_localities*100:.1f}%)")
@@ -138,12 +152,12 @@ def run_step3(rivers_gvfk):
     # Old approach: Only sites with substance data
     v1_old_approach = v1_csv_raw[v1_has_substances]
     v1_old_sites = len(v1_old_approach)
-    v1_old_localities = v1_old_approach['Lokalitetsnr'].nunique()
+    v1_old_localities = v1_old_approach[site_id_col].nunique()
     
-    # New approach: Sites with substance OR branch data  
+    # New approach: Sites with substance OR branch data
     v1_new_approach = v1_csv_raw[v1_has_substances | v1_has_branch]
     v1_new_sites = len(v1_new_approach)
-    v1_new_localities = v1_new_approach['Lokalitetsnr'].nunique()
+    v1_new_localities = v1_new_approach[site_id_col].nunique()
     
     # Calculate differences
     v1_added_sites = v1_new_sites - v1_old_sites
@@ -164,28 +178,28 @@ def run_step3(rivers_gvfk):
     v1_csv = v1_csv_raw[v1_has_substances | v1_has_branch]
     
     # Filter V2 to sites with either contamination substances OR branch data
-    if 'Lokalitetensstoffer' not in v2_csv_raw.columns:
-        raise ValueError("'Lokalitetensstoffer' column not found in V2 CSV")
-    if 'Lokalitetensbranche' not in v2_csv_raw.columns:
-        raise ValueError("'Lokalitetensbranche' column not found in V2 CSV")
+    if substances_col not in v2_csv_raw.columns:
+        raise ValueError(f"'{substances_col}' column not found in V2 CSV")
+    if branch_col not in v2_csv_raw.columns:
+        raise ValueError(f"'{branch_col}' column not found in V2 CSV")
     
     # Analyze V2 data breakdown - using UNIQUE LOCALITIES
     print(f"\nDetailed V2 Data Analysis (UNIQUE LOCALITIES):")
-    v2_has_substances = (v2_csv_raw['Lokalitetensstoffer'].notna() & 
-                         (v2_csv_raw['Lokalitetensstoffer'].astype(str).str.strip() != ''))
-    v2_has_branch = (v2_csv_raw['Lokalitetensbranche'].notna() & 
-                     (v2_csv_raw['Lokalitetensbranche'].astype(str).str.strip() != ''))
+    v2_has_substances = (v2_csv_raw[substances_col].notna() &
+                         (v2_csv_raw[substances_col].astype(str).str.strip() != ''))
+    v2_has_branch = (v2_csv_raw[branch_col].notna() &
+                     (v2_csv_raw[branch_col].astype(str).str.strip() != ''))
     
     # Create unique locality analysis
-    v2_localities = v2_csv_raw.groupby('Lokalitetsnr').agg({
-        'Lokalitetensstoffer': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any(),
-        'Lokalitetensbranche': lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any()
+    v2_localities = v2_csv_raw.groupby(site_id_col).agg({
+        substances_col: lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any(),
+        branch_col: lambda x: (x.notna() & (x.astype(str).str.strip() != '')).any()
     }).reset_index()
     
-    v2_substance_only_localities = (v2_localities['Lokalitetensstoffer'] & ~v2_localities['Lokalitetensbranche']).sum()
-    v2_branch_only_localities = (~v2_localities['Lokalitetensstoffer'] & v2_localities['Lokalitetensbranche']).sum()
-    v2_both_localities = (v2_localities['Lokalitetensstoffer'] & v2_localities['Lokalitetensbranche']).sum()
-    v2_neither_localities = (~v2_localities['Lokalitetensstoffer'] & ~v2_localities['Lokalitetensbranche']).sum()
+    v2_substance_only_localities = (v2_localities[substances_col] & ~v2_localities[branch_col]).sum()
+    v2_branch_only_localities = (~v2_localities[substances_col] & v2_localities[branch_col]).sum()
+    v2_both_localities = (v2_localities[substances_col] & v2_localities[branch_col]).sum()
+    v2_neither_localities = (~v2_localities[substances_col] & ~v2_localities[branch_col]).sum()
     v2_total_localities = len(v2_localities)
     
     print(f"  Unique localities with substances only: {v2_substance_only_localities:,} ({v2_substance_only_localities/v2_total_localities*100:.1f}%)")
@@ -197,11 +211,11 @@ def run_step3(rivers_gvfk):
     # V2 Comparative analysis
     v2_old_approach = v2_csv_raw[v2_has_substances]
     v2_old_sites = len(v2_old_approach)
-    v2_old_localities = v2_old_approach['Lokalitetsnr'].nunique()
+    v2_old_localities = v2_old_approach[site_id_col].nunique()
     
     v2_new_approach = v2_csv_raw[v2_has_substances | v2_has_branch]
     v2_new_sites = len(v2_new_approach)
-    v2_new_localities = v2_new_approach['Lokalitetsnr'].nunique()
+    v2_new_localities = v2_new_approach[site_id_col].nunique()
     
     v2_added_sites = v2_new_sites - v2_old_sites
     v2_added_localities = v2_new_localities - v2_old_localities
@@ -227,7 +241,7 @@ def run_step3(rivers_gvfk):
         print(f"    → This suggests overlap or filtering effects!")
 
     # Let's check if the old approach calculation is correct
-    v2_old_recalc = v2_csv_raw[v2_has_substances]['Lokalitetsnr'].nunique()
+    v2_old_recalc = v2_csv_raw[v2_has_substances][site_id_col].nunique()
     print(f"    V2 old localities (recalculated): {v2_old_recalc}")
     if v2_old_localities != v2_old_recalc:
         print(f"    → Mismatch in old calculation: {v2_old_localities} vs {v2_old_recalc}")
@@ -239,12 +253,12 @@ def run_step3(rivers_gvfk):
     print(f"\nFiltering Impact Comparison (UNIQUE LOCALITIES):")
     
     # Calculate old approach unique localities (substances only)
-    v1_old_unique = v1_localities[v1_localities['Lokalitetensstoffer']]['Lokalitetsnr'].nunique()
-    v2_old_unique = v2_localities[v2_localities['Lokalitetensstoffer']]['Lokalitetsnr'].nunique()
-    
+    v1_old_unique = v1_localities[v1_localities[substances_col]][site_id_col].nunique()
+    v2_old_unique = v2_localities[v2_localities[substances_col]][site_id_col].nunique()
+
     # Calculate new approach unique localities (substances OR branch)
-    v1_new_unique = v1_localities[v1_localities['Lokalitetensstoffer'] | v1_localities['Lokalitetensbranche']]['Lokalitetsnr'].nunique()
-    v2_new_unique = v2_localities[v2_localities['Lokalitetensstoffer'] | v2_localities['Lokalitetensbranche']]['Lokalitetsnr'].nunique()
+    v1_new_unique = v1_localities[v1_localities[substances_col] | v1_localities[branch_col]][site_id_col].nunique()
+    v2_new_unique = v2_localities[v2_localities[substances_col] | v2_localities[branch_col]][site_id_col].nunique()
     
     print(f"  OLD approach (substances only):")
     print(f"    V1 unique localities: {v1_old_unique:,}")
@@ -255,11 +269,11 @@ def run_step3(rivers_gvfk):
     
     # Show which additional localities we're gaining
     if v1_branch_only_localities > 0:
-        v1_branch_only_ids = v1_localities[(~v1_localities['Lokalitetensstoffer'] & v1_localities['Lokalitetensbranche'])]['Lokalitetsnr'].tolist()
+        v1_branch_only_ids = v1_localities[(~v1_localities[substances_col] & v1_localities[branch_col])][site_id_col].tolist()
         print(f"    V1 additional branch-only localities (first 10): {v1_branch_only_ids[:10]}")
-    
+
     if v2_branch_only_localities > 0:
-        v2_branch_only_ids = v2_localities[(~v2_localities['Lokalitetensstoffer'] & v2_localities['Lokalitetensbranche'])]['Lokalitetsnr'].tolist()
+        v2_branch_only_ids = v2_localities[(~v2_localities[substances_col] & v2_localities[branch_col])][site_id_col].tolist()
         print(f"    V2 additional branch-only localities (first 10): {v2_branch_only_ids[:10]}")
     
     # COMBINED IMPACT SUMMARY
@@ -286,8 +300,8 @@ def run_step3(rivers_gvfk):
     print(f"{'='*60}")
     
     # Report filtered results
-    v1_unique_filtered = v1_csv['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v1_csv.columns else 0
-    v2_unique_filtered = v2_csv['Lokalitetsnr'].nunique() if 'Lokalitetsnr' in v2_csv.columns else 0
+    v1_unique_filtered = v1_csv[site_id_col].nunique() if site_id_col in v1_csv.columns else 0
+    v2_unique_filtered = v2_csv[site_id_col].nunique() if site_id_col in v2_csv.columns else 0
     
     print(f"After contamination filtering:")
     print(f"V1 dataset: {len(v1_csv):,} rows, {v1_unique_filtered:,} localities ({v1_unique_filtered/v1_unique_initial:.1%} retained)")
@@ -295,8 +309,8 @@ def run_step3(rivers_gvfk):
     
     # Check post-filtering overlap
     if not v1_csv.empty and not v2_csv.empty:
-        v1_lokaliteter_filtered = set(v1_csv['Lokalitetsnr'].dropna())
-        v2_lokaliteter_filtered = set(v2_csv['Lokalitetsnr'].dropna())
+        v1_lokaliteter_filtered = set(v1_csv[site_id_col].dropna())
+        v2_lokaliteter_filtered = set(v2_csv[site_id_col].dropna())
         overlap_filtered = len(v1_lokaliteter_filtered.intersection(v2_lokaliteter_filtered))
         print(f"Overlap after filtering: {overlap_filtered:,} localities in BOTH datasets")
     
@@ -304,28 +318,37 @@ def run_step3(rivers_gvfk):
         raise ValueError("No sites with contamination found in V1 or V2 data")
     
     # Load shapefile geometries and dissolve by locality
-    locality_col = None
-    
     # Process V1 geometries
     v1_shp = gpd.read_file(V1_SHP_PATH)
-    
-    # Find locality ID column
-    for col in ['Lokalitet_', 'Lokalitets', 'Lokalitetsnr', 'LokNr']:
+
+    # Find locality ID column in actual shapefile
+    locality_col_actual = None
+    for col in [site_id_shp_col, 'Lokalitets', 'Lokalitetsnr', 'LokNr']:
         if col in v1_shp.columns:
-            locality_col = col
+            locality_col_actual = col
             break
-    
-    if locality_col is None:
-        raise ValueError("No locality column found in V1 shapefile")
-    
+
+    if locality_col_actual is None:
+        raise ValueError(f"No locality column found in V1 shapefile (looking for {site_id_shp_col})")
+
     # Load or create dissolved V1 geometries with caching
-    v1_geom = _load_or_dissolve_geometries(v1_shp, V1_DISSOLVED_CACHE, V1_SHP_PATH, locality_col, 'V1')
-    
+    v1_geom = _load_or_dissolve_geometries(v1_shp, V1_DISSOLVED_CACHE, V1_SHP_PATH, locality_col_actual, 'V1')
+
     # Process V2 geometries
     v2_shp = gpd.read_file(V2_SHP_PATH)
-    
+
+    # Find locality ID column in V2 shapefile (may be same or different)
+    locality_col_v2 = None
+    for col in [site_id_shp_col, 'Lokalitets', 'Lokalitetsnr', 'LokNr']:
+        if col in v2_shp.columns:
+            locality_col_v2 = col
+            break
+
+    if locality_col_v2 is None:
+        raise ValueError(f"No locality column found in V2 shapefile (looking for {site_id_shp_col})")
+
     # Load or create dissolved V2 geometries with caching
-    v2_geom = _load_or_dissolve_geometries(v2_shp, V2_DISSOLVED_CACHE, V2_SHP_PATH, locality_col, 'V2')
+    v2_geom = _load_or_dissolve_geometries(v2_shp, V2_DISSOLVED_CACHE, V2_SHP_PATH, locality_col_v2, 'V2')
     
     # Section 3: River-Contact GVFK Filtering & Geometry Processing
     print("\n3. RIVER-CONTACT GVFK FILTERING & GEOMETRY PROCESSING")
@@ -339,14 +362,14 @@ def run_step3(rivers_gvfk):
     v1_combined_list = []
     if not v1_csv.empty and not v1_geom.empty:
         v1_combined_list = _process_v1v2_data(
-            v1_csv, v1_geom, rivers_gvfk, locality_col, 'V1'
+            v1_csv, v1_geom, rivers_gvfk, locality_col_actual, 'V1', site_id_col, gvfk_id_col, substances_col
         )
-    
+
     # Process V2 data
     v2_combined_list = []
     if not v2_csv.empty and not v2_geom.empty:
         v2_combined_list = _process_v1v2_data(
-            v2_csv, v2_geom, rivers_gvfk, locality_col, 'V2'
+            v2_csv, v2_geom, rivers_gvfk, locality_col_v2, 'V2', site_id_col, gvfk_id_col, substances_col
         )
     
     # Combine and deduplicate V1 and V2 results
@@ -355,28 +378,28 @@ def run_step3(rivers_gvfk):
     # Get unique GVFKs with V1/V2 sites
     gvfk_with_v1v2_names = set()
     if not v1v2_combined.empty:
-        gvfk_with_v1v2_names = set(v1v2_combined['Navn'].unique())
+        gvfk_with_v1v2_names = set(v1v2_combined[gvfk_id_col].unique())
     
     # DIAGNOSTIC: Check if branch-only sites contribute to new GVFKs
     print(f"\nGVFK Impact Analysis:")
     print(f"  Total GVFKs with V1/V2 sites: {len(gvfk_with_v1v2_names):,}")
     
-    if not v1v2_combined.empty and 'Lokalitetensstoffer' in v1v2_combined.columns:
+    if not v1v2_combined.empty and substances_col in v1v2_combined.columns:
         # Check GVFKs from sites with substances only
         substance_sites = v1v2_combined[
-            v1v2_combined['Lokalitetensstoffer'].notna() & 
-            (v1v2_combined['Lokalitetensstoffer'].astype(str).str.strip() != '') &
-            (v1v2_combined['Lokalitetensstoffer'].astype(str) != 'nan')
+            v1v2_combined[substances_col].notna() &
+            (v1v2_combined[substances_col].astype(str).str.strip() != '') &
+            (v1v2_combined[substances_col].astype(str) != 'nan')
         ]
-        gvfk_from_substance_sites = set(substance_sites['Navn'].unique()) if not substance_sites.empty else set()
-        
+        gvfk_from_substance_sites = set(substance_sites[gvfk_id_col].unique()) if not substance_sites.empty else set()
+
         # Check GVFKs from branch-only sites (sites without substances)
         branch_only_sites = v1v2_combined[
-            ~(v1v2_combined['Lokalitetensstoffer'].notna() & 
-              (v1v2_combined['Lokalitetensstoffer'].astype(str).str.strip() != '') &
-              (v1v2_combined['Lokalitetensstoffer'].astype(str) != 'nan'))
+            ~(v1v2_combined[substances_col].notna() &
+              (v1v2_combined[substances_col].astype(str).str.strip() != '') &
+              (v1v2_combined[substances_col].astype(str) != 'nan'))
         ]
-        gvfk_from_branch_only_sites = set(branch_only_sites['Navn'].unique()) if not branch_only_sites.empty else set()
+        gvfk_from_branch_only_sites = set(branch_only_sites[gvfk_id_col].unique()) if not branch_only_sites.empty else set()
         
         print(f"  GVFKs from substance-containing sites: {len(gvfk_from_substance_sites):,}")
         print(f"  GVFKs from branch-only sites: {len(gvfk_from_branch_only_sites):,}")
@@ -387,8 +410,8 @@ def run_step3(rivers_gvfk):
             print(f"  Examples of new GVFKs from branch-only sites: {new_gvfks}")
     
     # Generate summary statistics and save results
-    _save_step3_results(v1v2_combined, gvfk_with_v1v2_names)
-    
+    _save_step3_results(v1v2_combined, gvfk_with_v1v2_names, site_id_shp_col, gvfk_id_col, grundvand_gvfk_col)
+
     return gvfk_with_v1v2_names, v1v2_combined
 
 def _load_or_dissolve_geometries(shp_data, cache_path, source_path, locality_col, dataset_name):
@@ -431,29 +454,33 @@ def _load_or_dissolve_geometries(shp_data, cache_path, source_path, locality_col
     
     return dissolved_geom
 
-def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type):
+def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type, site_id_col, gvfk_id_col, substances_col):
     """
     Process V1 or V2 data by combining CSV relationships with dissolved geometries.
-    
+
     Args:
         csv_data (DataFrame): CSV file with site-GVFK relationships
         geom_data (GeoDataFrame): Dissolved geometries by locality
         rivers_gvfk (list): List of GVFK names with river contact
-        locality_col (str): Name of locality column
+        locality_col (str): Name of locality column in shapefile
         site_type (str): 'V1' or 'V2'
-    
+        site_id_col (str): Name of site ID column in CSV
+        gvfk_id_col (str): Name of GVFK ID column
+        substances_col (str): Name of substances column
+
     Returns:
         list: List containing processed GeoDataFrame if successful, empty list otherwise
     """
-    # Standardize locality column name (CSV uses 'Lokalitetsnr', we need 'Lokalitet_')
-    if 'Lokalitetsnr' in csv_data.columns and 'Lokalitet_' not in csv_data.columns:
-        csv_data = csv_data.rename(columns={'Lokalitetsnr': 'Lokalitet_'})
-    
+    # Standardize locality column name (CSV uses site_id_col, shapefile uses locality_col)
+    csv_lokalitet_col = 'Lokalitet_'  # Target column name for joining
+    if site_id_col in csv_data.columns and csv_lokalitet_col not in csv_data.columns:
+        csv_data = csv_data.rename(columns={site_id_col: csv_lokalitet_col})
+
     # Filter CSV to only GVFKs with river contact
     rivers_gvfk_set = set(rivers_gvfk)
-    filtered_csv = csv_data[csv_data['Navn'].isin(rivers_gvfk_set)].copy()
+    filtered_csv = csv_data[csv_data[gvfk_id_col].isin(rivers_gvfk_set)].copy()
     # Track unique localities in river-contact GVFKs
-    unique_lokaliteter_in_river_gvfks = filtered_csv['Lokalitet_'].nunique() if not filtered_csv.empty else 0
+    unique_lokaliteter_in_river_gvfks = filtered_csv[csv_lokalitet_col].nunique() if not filtered_csv.empty else 0
     print(f"{site_type}: {len(filtered_csv):,} rows → {unique_lokaliteter_in_river_gvfks:,} unique localities in river-contact GVFKs")
     
     if filtered_csv.empty:
@@ -462,16 +489,16 @@ def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type
     # Aggregate by lokalitet-GVFK combination, preserving all substances
     # Group and aggregate to ensure all substances are preserved
     agg_dict = {}
-    
+
     # Always aggregate substances with semicolon separation
-    agg_dict['Lokalitetensstoffer'] = lambda x: '; '.join(x.dropna().astype(str).unique())
-    
+    agg_dict[substances_col] = lambda x: '; '.join(x.dropna().astype(str).unique())
+
     # For other columns, take first value (should be identical within each group)
     for col in filtered_csv.columns:
-        if col not in ['Lokalitet_', 'Navn', 'Lokalitetensstoffer']:
+        if col not in [csv_lokalitet_col, gvfk_id_col, substances_col]:
             agg_dict[col] = 'first'
-    
-    unique_csv = filtered_csv.groupby(['Lokalitet_', 'Navn'], as_index=False).agg(agg_dict)
+
+    unique_csv = filtered_csv.groupby([csv_lokalitet_col, gvfk_id_col], as_index=False).agg(agg_dict)
     print(f"{site_type}: {len(unique_csv):,} unique lokalitet-GVFK combinations (substances aggregated)")
     
     # Add site type column
@@ -484,9 +511,9 @@ def _process_v1v2_data(csv_data, geom_data, rivers_gvfk, locality_col, site_type
     
     # Join with dissolved geometries
     csv_with_geom = unique_csv.merge(
-        geom_data[[locality_col, 'geometry']], 
-        left_on='Lokalitet_', 
-        right_on=locality_col, 
+        geom_data[[locality_col, 'geometry']],
+        left_on=csv_lokalitet_col,
+        right_on=locality_col,
         how='inner'
     )
     
@@ -545,7 +572,7 @@ def _combine_and_deduplicate_v1v2(v1_combined_list, v2_combined_list):
                         # Split existing semicolon-separated substances and add to list
                         substances = [s.strip() for s in substances_str.split(';') if s.strip()]
                         all_substances.extend(substances)
-                
+
                 # Combine unique substances
                 if all_substances:
                     unique_substances = list(dict.fromkeys(all_substances))  # Preserves order while removing duplicates
@@ -570,29 +597,32 @@ def _combine_and_deduplicate_v1v2(v1_combined_list, v2_combined_list):
     
     return v1v2_combined
 
-def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names):
+def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names, site_id_shp_col, gvfk_id_col, grundvand_gvfk_col):
     """
     Save Step 3 results and generate summary statistics.
-    
+
     Args:
         v1v2_combined (GeoDataFrame): Combined and deduplicated V1/V2 data
         gvfk_with_v1v2_names (set): Set of GVFK names with V1/V2 sites
+        site_id_shp_col (str): Name of site ID column in shapefile
+        gvfk_id_col (str): Name of GVFK ID column
+        grundvand_gvfk_col (str): Name of GVFK ID column in grundvand shapefile
     """
     if v1v2_combined.empty:
         print("No V1/V2 sites found with river contact.")
         return
-    
+
     # Section 4: Final Summary
     print("\n4. FINAL SUMMARY")
     print("-" * 20)
-    
-    unique_sites = v1v2_combined['Lokalitet_'].nunique()
+
+    unique_sites = v1v2_combined[site_id_shp_col].nunique()
     total_site_gvfk_combinations = len(v1v2_combined)
     
     # Properly count V1-only, V2-only, and Both localities
     if 'Lokalitete' in v1v2_combined.columns:
         # Get all unique localities and their site types across all combinations
-        locality_types = v1v2_combined.groupby('Lokalitet_')['Lokalitete'].apply(set).reset_index()
+        locality_types = v1v2_combined.groupby(site_id_shp_col)['Lokalitete'].apply(set).reset_index()
         locality_types['type_summary'] = locality_types['Lokalitete'].apply(
             lambda x: 'V1 og V2' if len(x) > 1 else list(x)[0]
         )
@@ -623,7 +653,7 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names):
     
     # Save GVFK polygons that contain V1/V2 sites
     gvf = gpd.read_file(GRUNDVAND_PATH)
-    gvfk_with_v1v2_polygons = gvf[gvf['Navn'].isin(gvfk_with_v1v2_names)]
+    gvfk_with_v1v2_polygons = gvf[gvf[grundvand_gvfk_col].isin(gvfk_with_v1v2_names)]
     
     gvfk_polygons_path = get_output_path('step3_gvfk_polygons')
     gvfk_with_v1v2_polygons.to_file(gvfk_polygons_path, encoding="utf-8")

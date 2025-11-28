@@ -21,8 +21,36 @@ PROJECT_ROOT = BASE_DIR.parent
 DATA_DIR = PROJECT_ROOT / "Data"
 SHAPE_DIR = DATA_DIR / "shp files"
 RESULTS_DIR = PROJECT_ROOT / "Resultater"
-FIGURES_DIR = RESULTS_DIR / "Figures"
 CACHE_DIR = RESULTS_DIR / "cache"
+
+# Organized step-specific output directories
+STEP2_DIR = RESULTS_DIR / "step2_river_contact"
+STEP2_DATA_DIR = STEP2_DIR / "data"
+STEP2_FIGURES_DIR = STEP2_DIR / "figures"
+
+STEP3_DIR = RESULTS_DIR / "step3_v1v2_sites"
+STEP3_DATA_DIR = STEP3_DIR / "data"
+STEP3_FIGURES_DIR = STEP3_DIR / "figures"
+
+STEP4_DIR = RESULTS_DIR / "step4_distances"
+STEP4_DATA_DIR = STEP4_DIR / "data"
+STEP4_FIGURES_DIR = STEP4_DIR / "figures"
+
+STEP5_DIR = RESULTS_DIR / "step5_risk_assessment"
+STEP5_DATA_DIR = STEP5_DIR / "data"
+STEP5_FIGURES_DIR = STEP5_DIR / "figures"
+
+STEP6_DIR = RESULTS_DIR / "step6_tilstandsvurdering"
+STEP6_DATA_DIR = STEP6_DIR / "data"
+STEP6_FIGURES_DIR = STEP6_DIR / "figures"
+STEP6_FIGURES_COMBINED_DIR = STEP6_FIGURES_DIR / "combined"
+STEP6_FIGURES_ANALYTICAL_DIR = STEP6_FIGURES_DIR / "analytical"
+STEP6_FIGURES_DIAGNOSTICS_DIR = STEP6_FIGURES_DIR / "diagnostics"
+
+WORKFLOW_SUMMARY_DIR = RESULTS_DIR / "workflow_summary"
+
+# Legacy FIGURES_DIR for backward compatibility (can be removed after full migration)
+FIGURES_DIR = RESULTS_DIR / "Figures"
 
 # -------------------------------------------------------------------
 # Load user settings from YAML
@@ -91,6 +119,62 @@ STEP6_MAP_SETTINGS = {
 }
 
 # -------------------------------------------------------------------
+# Input Data Column Mappings
+# -------------------------------------------------------------------
+# Configure column names for external input files to adapt workflow to different datasets
+#
+# Usage: Access via COLUMN_MAPPINGS['source_file']['column_purpose']
+# Example: gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
+
+COLUMN_MAPPINGS = {
+    # GVFK (Groundwater aquifer) shapefile
+    'grundvand': {
+        'gvfk_id': 'Navn',              # GVFK unique identifier column
+    },
+
+    # River network shapefile
+    'rivers': {
+        'river_id': 'ov_id',            # River segment unique ID
+        'river_name': 'ov_navn',        # River segment name (optional, for display)
+        'gvfk_id': 'GVForekom',         # GVFK name associated with river
+        'contact': 'Kontakt',           # Contact indicator column (1 = has contact)
+        'length': 'Shape_Leng',         # River segment length
+    },
+
+    # V1/V2 contamination CSV files
+    'contamination_csv': {
+        'site_id': 'Lokalitetsnr',      # Site unique identifier
+        'gvfk_id': 'Navn',              # GVFK name
+        'substances': 'Lokalitetensstoffer',  # Contaminating substances (semicolon-separated)
+        'branch': 'Lokalitetensbranche',      # Industry/branch classification
+        'activity': 'Lokalitetensaktivitet',  # Activity type
+        'site_name': 'Lokalitetsnavn',        # Site name (optional)
+        'status': 'Lokalitetetsforureningsstatus',  # Contamination status
+        'region': 'Regionsnavn',              # Region name (optional)
+        'municipality': 'Kommunenavn',        # Municipality name (optional)
+    },
+
+    # V1/V2 site geometry shapefiles
+    'contamination_shp': {
+        'site_id': 'Lokalitet_',        # Site identifier (note trailing underscore in Danish data!)
+    },
+
+    # GVFK to DK-model layer mapping CSV
+    'gvfk_layer_mapping': {
+        'gvfk_id': 'GVForekom',         # GVFK identifier
+        'model_layer': 'DK-modellag',   # DK-model aquifer layer (e.g., 'ks3', 'ks4')
+    },
+
+    # River flow Q-points shapefile
+    'flow_points': {
+        'river_id': 'ov_id',            # River segment ID (links to rivers)
+        'flow_mean': 'mean',            # Mean flow (m³/s)
+        'flow_q90': 'Q90',              # Q90 flow (m³/s)
+        'flow_q95': 'Q95',              # Q95 flow (m³/s) - low flow scenario
+    },
+}
+
+# -------------------------------------------------------------------
 # Input data paths
 # -------------------------------------------------------------------
 GRUNDVAND_PATH = SHAPE_DIR / "VP3Genbesøg_grundvand_geometri.shp"
@@ -115,67 +199,65 @@ V1_DISSOLVED_CACHE = CACHE_DIR / "v1_dissolved_geometries.shp"
 V2_DISSOLVED_CACHE = CACHE_DIR / "v2_dissolved_geometries.shp"
 
 # -------------------------------------------------------------------
-# Output file paths - CORE WORKFLOW (Steps 1-5)
+# Output file paths - CORE WORKFLOW (Steps 1-6)
 # -------------------------------------------------------------------
 CORE_OUTPUTS = {
     # Step 2: GVFKs with river contact
-    "step2_river_gvfk": RESULTS_DIR / "step2_gvfk_with_rivers.shp",
+    "step2_river_gvfk": STEP2_DATA_DIR / "step2_gvfk_with_rivers.shp",
     # Step 3: V1/V2 contamination sites
-    "step3_v1v2_sites": RESULTS_DIR / "step3_v1v2_sites.shp",
-    "step3_gvfk_polygons": RESULTS_DIR / "step3_gvfk_with_v1v2.shp",
+    "step3_v1v2_sites": STEP3_DATA_DIR / "step3_v1v2_sites.shp",
+    "step3_gvfk_polygons": STEP3_DATA_DIR / "step3_gvfk_with_v1v2.shp",
     # Step 4: Distance calculations
-    "step4_final_distances_for_risk_assessment": RESULTS_DIR
+    "step4_final_distances_for_risk_assessment": STEP4_DATA_DIR
     / "step4_final_distances.csv",
-    "step4_valid_distances": RESULTS_DIR / "step4_valid_distances.csv",
-    "unique_lokalitet_distances": RESULTS_DIR / "unique_lokalitet_distances.csv",
-    "unique_lokalitet_distances_shp": RESULTS_DIR / "unique_lokalitet_distances.shp",
+    "step4_valid_distances": STEP4_DATA_DIR / "step4_valid_distances.csv",
+    "unique_lokalitet_distances": STEP4_DATA_DIR / "unique_lokalitet_distances.csv",
+    "unique_lokalitet_distances_shp": STEP4_DATA_DIR / "unique_lokalitet_distances.shp",
     # Step 5a: General assessment (500m universal threshold)
-    "step5_high_risk_sites": RESULTS_DIR
+    "step5_high_risk_sites": STEP5_DATA_DIR
     / f"step5_high_risk_sites_{WORKFLOW_SETTINGS['risk_threshold_m']}m.csv",
-    "step5_gvfk_high_risk": RESULTS_DIR
+    "step5_gvfk_high_risk": STEP5_DATA_DIR
     / f"step5_gvfk_high_risk_{WORKFLOW_SETTINGS['risk_threshold_m']}m.shp",
     # Step 5b: Compound-specific assessment
-    "step5_compound_detailed_combinations": RESULTS_DIR
+    "step5_compound_detailed_combinations": STEP5_DATA_DIR
     / "step5_compound_detailed_combinations.csv",
-    "step5_compound_gvfk_high_risk": RESULTS_DIR / "step5_compound_gvfk_high_risk.shp",
+    "step5_compound_specific_sites": STEP5_DATA_DIR / "step5_compound_specific_sites.csv",
+    "step5_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5_compound_gvfk_high_risk.shp",
     # Step 5: Sites without substance data (parked for later analysis)
-    "step5_unknown_substance_sites": RESULTS_DIR / "step5_unknown_substance_sites.csv",
+    "step5_unknown_substance_sites": STEP5_DATA_DIR / "step5_unknown_substance_sites.csv",
+    # Step 6: Tilstandsvurdering outputs
+    "step6_flux_site_segment": STEP6_DATA_DIR / "step6_flux_site_segment.csv",
+    "step6_cmix_results": STEP6_DATA_DIR / "step6_cmix_results.csv",
+    "step6_segment_summary": STEP6_DATA_DIR / "step6_segment_summary.csv",
+    "step6_site_mkk_exceedances": STEP6_DATA_DIR / "step6_sites_mkk_exceedance.csv",
+    "step6_gvfk_mkk_exceedances": STEP6_DATA_DIR / "step6_gvfk_mkk_exceedance.csv",
+    "step6_filtering_audit": STEP6_DATA_DIR / "step6_filtering_audit_detailed.csv",
     # Workflow summary
-    "workflow_summary": RESULTS_DIR / "workflow_summary.csv",
+    "workflow_summary": WORKFLOW_SUMMARY_DIR / "workflow_summary.csv",
+    "interactive_distance_map": WORKFLOW_SUMMARY_DIR / "interactive_distance_map.html",
 }
 
 # -------------------------------------------------------------------
 # Output file paths - OPTIONAL ANALYSIS
 # -------------------------------------------------------------------
-# These files are created by optional analysis modules and are not
-# part of the core standardized workflow. See optional_analysis/ folder.
+# These files are created by optional analysis modules in risikovurdering/optional_analysis/
+# and are not part of the core workflow. See optional_analysis/ folder for details.
 OPTIONAL_OUTPUTS = {
     # Step 5: Additional summary files (optional)
-    "step5_gvfk_risk_summary": RESULTS_DIR / "step5_gvfk_risk_summary.csv",
-    "step5_category_summary": RESULTS_DIR / "step5_category_summary.csv",
-    "step5_category_substance_summary": RESULTS_DIR
+    "step5_gvfk_risk_summary": STEP5_DATA_DIR / "step5_gvfk_risk_summary.csv",
+    "step5_category_summary": STEP5_DATA_DIR / "step5_category_summary.csv",
+    "step5_category_substance_summary": STEP5_DATA_DIR
     / "step5_category_substance_summary.csv",
-    "step5_category_flags": RESULTS_DIR / "step5_category_flags.csv",
-    "step5_multi_threshold_analysis": RESULTS_DIR
+    "step5_category_flags": STEP5_DATA_DIR / "step5_category_flags.csv",
+    "step5_multi_threshold_analysis": STEP5_DATA_DIR
     / "step5_multi_threshold_analysis.csv",
-    "step5_category_distance_statistics": RESULTS_DIR
+    "step5_category_distance_statistics": STEP5_DATA_DIR
     / "step5_category_distance_statistics.csv",
-    "step5_threshold_effectiveness": RESULTS_DIR / "step5_threshold_effectiveness.csv",
-    "step5_compound_catalog": RESULTS_DIR / "step5_compound_catalog.csv",
-    # Interactive visualizations
-    "interactive_distance_map": RESULTS_DIR / "interactive_distance_map.html",
-    # Advanced analysis (Tilstandsvurdering)
-    "step6_flux_site_segment": RESULTS_DIR / "step6_flux_site_segment.csv",
-    "step6_flux_by_segment": RESULTS_DIR / "step6_flux_by_segment.csv",
-    "step6_cmix_results": RESULTS_DIR / "step6_cmix_results.csv",
-    "step6_segment_summary": RESULTS_DIR / "step6_segment_summary.csv",
-    # Legacy export retained until all consumers migrate
-    "step6_flux_results": RESULTS_DIR / "step6_flux_results.csv",
-    "step6_site_mkk_exceedances": RESULTS_DIR / "step6_sites_mkk_exceedance.csv",
-    "step6_gvfk_mkk_exceedances": RESULTS_DIR / "step6_gvfk_mkk_exceedance.csv",
+    "step5_threshold_effectiveness": STEP5_DATA_DIR / "step5_threshold_effectiveness.csv",
+    "step5_compound_catalog": STEP5_DATA_DIR / "step5_compound_catalog.csv",
 }
 
-# Combined dictionary for backward compatibility
+# Combined dictionary for get_output_path() compatibility
 OUTPUT_FILES = {**CORE_OUTPUTS, **OPTIONAL_OUTPUTS}
 
 
@@ -227,20 +309,44 @@ def get_output_path(file_key: str, threshold_m: int | None = None) -> Path:
 
 def get_visualization_path(*parts: str) -> Path:
     """
-    Return (and create) a folder inside `Resultater/Figures`.
+    Return (and create) a folder for visualizations organized by step.
 
     Args:
-        *parts: Path components to join (e.g., 'step5', 'maps')
+        *parts: Path components to join (e.g., 'step5', 'category_maps')
+                First part should be step identifier (step2, step3, step4, step5, step6, workflow_summary)
 
     Returns:
         Path object for the visualization directory
+
+    Examples:
+        get_visualization_path('step5') → Resultater/step5_risk_assessment/figures/
+        get_visualization_path('step5', 'maps') → Resultater/step5_risk_assessment/figures/maps/
+        get_visualization_path('step6', 'combined') → Resultater/step6_tilstandsvurdering/figures/combined/
     """
     if len(parts) == 1 and isinstance(parts[0], str) and "/" in parts[0]:
         pieces = [segment for segment in parts[0].split("/") if segment]
     else:
         pieces = [str(part) for part in parts if part]
 
-    viz_path = FIGURES_DIR.joinpath(*pieces) if pieces else FIGURES_DIR
+    if not pieces:
+        # Default to legacy FIGURES_DIR if no path specified
+        viz_path = FIGURES_DIR
+    elif pieces[0] == "step2":
+        viz_path = STEP2_FIGURES_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else STEP2_FIGURES_DIR
+    elif pieces[0] == "step3":
+        viz_path = STEP3_FIGURES_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else STEP3_FIGURES_DIR
+    elif pieces[0] == "step4":
+        viz_path = STEP4_FIGURES_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else STEP4_FIGURES_DIR
+    elif pieces[0] == "step5":
+        viz_path = STEP5_FIGURES_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else STEP5_FIGURES_DIR
+    elif pieces[0] == "step6":
+        viz_path = STEP6_FIGURES_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else STEP6_FIGURES_DIR
+    elif pieces[0] == "workflow_summary":
+        viz_path = WORKFLOW_SUMMARY_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else WORKFLOW_SUMMARY_DIR
+    else:
+        # Legacy path for unrecognized step identifiers
+        viz_path = FIGURES_DIR.joinpath(*pieces)
+
     viz_path.mkdir(parents=True, exist_ok=True)
     return viz_path
 
@@ -504,6 +610,8 @@ __all__ = [
     "CORE_OUTPUTS",
     "OPTIONAL_OUTPUTS",
     "OUTPUT_FILES",
+    # Column mappings
+    "COLUMN_MAPPINGS",
     # Helper functions
     "ensure_results_directory",
     "ensure_cache_directory",

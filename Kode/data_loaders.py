@@ -18,6 +18,7 @@ from config import (
     RIVER_FLOW_POINTS_PATH,
     RIVERS_PATH,
     get_output_path,
+    COLUMN_MAPPINGS,
 )
 
 
@@ -65,15 +66,16 @@ def load_site_geometries() -> gpd.GeoDataFrame:
     Raises:
         ValueError: If geometries are empty
     """
+    site_id_col = COLUMN_MAPPINGS['contamination_shp']['site_id']
     sites = gpd.read_file(get_output_path("step3_v1v2_sites"))
     if sites.empty:
         raise ValueError("Step 3 geometries are empty – cannot derive site areas.")
 
-    dissolved = sites.dissolve(by="Lokalitet_", as_index=False)
+    dissolved = sites.dissolve(by=site_id_col, as_index=False)
     dissolved["Area_m2"] = dissolved.geometry.area
     dissolved["Centroid"] = dissolved.geometry.centroid
 
-    return dissolved[["Lokalitet_", "Area_m2", "Centroid", "geometry"]]
+    return dissolved[[site_id_col, "Area_m2", "Centroid", "geometry"]]
 
 
 def load_gvfk_layer_mapping() -> pd.DataFrame:
@@ -101,7 +103,9 @@ def load_gvfk_layer_mapping() -> pd.DataFrame:
     else:
         raise ValueError(f"Could not decode {GVFK_LAYER_MAPPING_PATH} with any common encoding")
 
-    required_columns = ["GVForekom", "DK-modellag"]
+    gvfk_col = COLUMN_MAPPINGS['gvfk_layer_mapping']['gvfk_id']
+    layer_col = COLUMN_MAPPINGS['gvfk_layer_mapping']['model_layer']
+    required_columns = [gvfk_col, layer_col]
     missing = [col for col in required_columns if col not in df.columns]
     if missing:
         raise ValueError(f"Layer mapping missing columns: {', '.join(missing)}")
@@ -128,7 +132,11 @@ def load_river_segments() -> gpd.GeoDataFrame:
     # Create River_FID from index (consistent with original workflow)
     rivers = rivers.reset_index().rename(columns={"index": "River_FID"})
 
-    required_columns = ["ov_id", "ov_navn", "Shape_Leng", "GVForekom"]
+    river_id_col = COLUMN_MAPPINGS['rivers']['river_id']
+    river_name_col = COLUMN_MAPPINGS['rivers']['river_name']
+    length_col = COLUMN_MAPPINGS['rivers']['length']
+    gvfk_col = COLUMN_MAPPINGS['rivers']['gvfk_id']
+    required_columns = [river_id_col, river_name_col, length_col, gvfk_col]
     missing = [col for col in required_columns if col not in rivers.columns]
     if missing:
         raise ValueError(f"River shapefile missing columns: {', '.join(missing)}")
@@ -150,13 +158,15 @@ def load_flow_scenarios() -> pd.DataFrame:
 
     qpoints = gpd.read_file(RIVER_FLOW_POINTS_PATH)
 
+    river_id_col = COLUMN_MAPPINGS['flow_points']['river_id']
+
     # Check that flow columns exist
     missing = [col for col in FLOW_SCENARIO_COLUMNS if col not in qpoints.columns]
     if missing:
         raise ValueError(f"Q-point data missing flow columns: {', '.join(missing)}")
 
     # Melt to long format: one row per ov_id × scenario
-    id_vars = ["ov_id"]
+    id_vars = [river_id_col]
     value_vars = list(FLOW_SCENARIO_COLUMNS.keys())
 
     flow_long = qpoints[id_vars + value_vars].melt(
@@ -172,7 +182,7 @@ def load_flow_scenarios() -> pd.DataFrame:
 
     # Take maximum flow per segment (conservative approach)
     flow_max = (
-        flow_long.groupby(["ov_id", "Scenario"], dropna=False)["Flow_m3_s"]
+        flow_long.groupby([river_id_col, "Scenario"], dropna=False)["Flow_m3_s"]
         .max()
         .reset_index()
     )

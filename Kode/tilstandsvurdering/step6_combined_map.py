@@ -201,7 +201,26 @@ def _create_scenario_map(
     output_dir = get_visualization_path("step6", "combined", "scenarios")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"scenario_{safe_name}.html"
-    m.save(str(output_path))
+
+    # Handle OneDrive placeholder files
+    import os
+    import time
+    try:
+        if output_path.exists():
+            os.remove(str(output_path))
+        else:
+            try:
+                os.remove(str(output_path))
+            except:
+                pass
+        time.sleep(0.05)
+    except:
+        pass
+
+    # Save with proper encoding
+    html_str = m.get_root().render()
+    with open(str(output_path), 'w', encoding='utf-8') as f:
+        f.write(html_str)
 
 
 def _add_rivers(
