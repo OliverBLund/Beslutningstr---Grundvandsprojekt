@@ -17,7 +17,12 @@ import geopandas as gpd
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from config import get_output_path, GRUNDVAND_PATH, WORKFLOW_SETTINGS
+from config import (
+    GRUNDVAND_LAYER_NAME,
+    GRUNDVAND_PATH,
+    WORKFLOW_SETTINGS,
+    get_output_path,
+)
 from risikovurdering.compound_matching import (
     DEFAULT_DISTANCE,
     categorize_substance,
@@ -121,7 +126,7 @@ def _extract_unique_gvfk_names(df):
 def create_gvfk_shapefile(high_risk_combinations, output_key):
     """Create shapefile of high-risk GVFK polygons from lokalitet-GVFK combinations."""
     try:
-        grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
+        grundvand_gdf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
 
         # Get high-risk GVFK names from combinations
         high_risk_gvfk_names = _extract_unique_gvfk_names(high_risk_combinations)

@@ -16,10 +16,11 @@ import pandas as pd
 import os
 
 from config import (
-    get_output_path,
-    ensure_results_directory,
-    WORKFLOW_SETTINGS,
+    GRUNDVAND_LAYER_NAME,
     GRUNDVAND_PATH,
+    WORKFLOW_SETTINGS,
+    ensure_results_directory,
+    get_output_path,
 )
 from .step5_utils import (
     categorize_contamination_substance,
@@ -787,7 +788,7 @@ def create_gvfk_shapefile_with_validation(
     import geopandas as gpd
 
     try:
-        grundvand_gdf = gpd.read_file(GRUNDVAND_PATH)
+        grundvand_gdf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
 
         # Get GVFK names from combinations
         high_risk_gvfk_names = _extract_unique_gvfk_names(high_risk_combinations)

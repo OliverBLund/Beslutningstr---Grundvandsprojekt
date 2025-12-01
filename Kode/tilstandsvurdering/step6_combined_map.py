@@ -34,7 +34,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from Kode.config import (
+    RIVER_FLOW_POINTS_LAYER,
     RIVER_FLOW_POINTS_PATH,
+    RIVERS_LAYER_NAME,
     RIVERS_PATH,
     get_output_path,
     get_visualization_path,
@@ -59,11 +61,13 @@ def create_combined_impact_maps(
     sites_gdf = gpd.read_file(get_output_path("step3_v1v2_sites"), encoding="utf-8")
     sites_web = sites_gdf.to_crs("EPSG:4326")
 
-    rivers = gpd.read_file(RIVERS_PATH, encoding="utf-8")
+    rivers = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
     rivers_web = rivers.to_crs("EPSG:4326")
 
     # Load Q-points with geometries
-    qpoints = gpd.read_file(RIVER_FLOW_POINTS_PATH, encoding="utf-8")
+    qpoints = gpd.read_file(
+        RIVER_FLOW_POINTS_PATH, layer=RIVER_FLOW_POINTS_LAYER
+    )
 
     # Set CRS if not defined (Danish data is EPSG:25832)
     if qpoints.crs is None:

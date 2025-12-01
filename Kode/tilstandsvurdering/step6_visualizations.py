@@ -771,10 +771,13 @@ def _overlay_gvfk_boundaries(negative_df: pd.DataFrame, fmap: folium.Map) -> Non
 
 def _normalize_layer_name(layer: str) -> str:
     """Normalize layer name for raster file lookup."""
-    text = layer.strip()
-    if text.lower().startswith("lag"):
-        return "lay12"
-    return text
+    return layer.strip().lower()
+
+
+def _resolve_visualization_raster_filename(layer: str) -> str:
+    """Return raster filename for visualization overlays."""
+    prefix = "dk7" if layer.startswith("lag") else "dk16"
+    return f"{prefix}_gvd_{layer}.tif"
 
 
 def _add_raster_overlay_for_layer(
@@ -785,7 +788,13 @@ def _add_raster_overlay_for_layer(
 ) -> bool:
     """Add GVD raster overlay for the specified modellag to the feature group."""
     normalized_layer = _normalize_layer_name(layer)
-    raster_path = Path(GVD_RASTER_DIR) / f"DKM_gvd_{normalized_layer}.tif"
+    raster_filename = _resolve_visualization_raster_filename(normalized_layer)
+    raster_path = Path(GVD_RASTER_DIR) / raster_filename
+
+    if not raster_path.exists() and not raster_filename.startswith("dk16_"):
+        fallback = Path(GVD_RASTER_DIR) / f"dk16_gvd_{normalized_layer}.tif"
+        if fallback.exists():
+            raster_path = fallback
 
     if not raster_path.exists():
         print(f"    Warning: Raster not found for {layer} ({raster_path.name})")

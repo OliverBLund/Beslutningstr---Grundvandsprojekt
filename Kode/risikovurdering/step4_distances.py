@@ -10,7 +10,15 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import os
-from config import RIVERS_PATH, GRUNDVAND_PATH, get_output_path, WORKFLOW_SETTINGS
+from config import (
+    COLUMN_MAPPINGS,
+    GRUNDVAND_LAYER_NAME,
+    GRUNDVAND_PATH,
+    RIVERS_LAYER_NAME,
+    RIVERS_PATH,
+    WORKFLOW_SETTINGS,
+    get_output_path,
+)
 
 
 def run_step4(v1v2_combined):
@@ -33,12 +41,33 @@ def run_step4(v1v2_combined):
         )
         return None
 
-    # Load rivers file
-    rivers = gpd.read_file(RIVERS_PATH, encoding='utf-8')
-    rivers_with_contact = rivers[rivers["Kontakt"] == 1]
+    gvfk_name_col = COLUMN_MAPPINGS["contamination_csv"]["gvfk_id"]
+
+    # Load rivers dataset
+    rivers = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
+    river_gvfk_col = COLUMN_MAPPINGS["rivers"]["gvfk_id"]
+    contact_col = COLUMN_MAPPINGS["rivers"]["contact"]
+
+    if river_gvfk_col not in rivers.columns:
+        raise ValueError(f"'{river_gvfk_col}' column not found in rivers dataset")
+
+    rivers[river_gvfk_col] = rivers[river_gvfk_col].astype(str).str.strip()
+    valid_gvfk_mask = rivers[river_gvfk_col] != ""
+
+    # Filter for river-GVFK contact
+    # New Grunddata format: GVFK presence indicates contact
+    # Legacy format: Explicit 'Kontakt' column (if present, use for backward compatibility)
+    if contact_col in rivers.columns:
+        contact_value = WORKFLOW_SETTINGS["contact_filter_value"]
+        rivers_with_contact = rivers[
+            (rivers[contact_col] == contact_value) & valid_gvfk_mask
+        ]
+    else:
+        # New Grunddata format: GVFK presence IS the contact indicator
+        rivers_with_contact = rivers[valid_gvfk_mask]
 
     if rivers_with_contact.empty:
-        print("No river segments with Kontakt = 1 found. Cannot calculate distances.")
+        print("No river segments with GVFK contact found. Cannot calculate distances.")
         return None
 
     # Ensure same CRS
@@ -46,8 +75,9 @@ def run_step4(v1v2_combined):
     if rivers_with_contact.crs != target_crs:
         rivers_with_contact = rivers_with_contact.to_crs(target_crs)
 
+    site_id_col = COLUMN_MAPPINGS["contamination_shp"]["site_id"]
     print(
-        f"Processing {v1v2_combined['Lokalitet_'].nunique()} unique sites in {len(v1v2_combined)} site-GVFK combinations"
+        f"Processing {v1v2_combined[site_id_col].nunique()} unique sites in {len(v1v2_combined)} site-GVFK combinations"
     )
 
     # Calculate distances for each lokalitet-GVFK combination
@@ -69,8 +99,8 @@ def run_step4(v1v2_combined):
             )
 
         # Get row properties
-        lokalitet_id = row["Lokalitet_"]
-        gvfk_name = row["Navn"]
+        lokalitet_id = row[site_id_col]
+        gvfk_name = row[gvfk_name_col]
         site_type = row.get("Lokalitete", "Unknown")
         site_geom = row.geometry
 
@@ -80,7 +110,7 @@ def run_step4(v1v2_combined):
 
         # Find river segments in the same GVFK with contact
         matching_rivers = rivers_with_contact[
-            rivers_with_contact["GVForekom"] == gvfk_name
+            rivers_with_contact[river_gvfk_col] == gvfk_name
         ]
 
         segment_indices = matching_rivers.index.tolist()
@@ -200,7 +230,7 @@ def run_step4(v1v2_combined):
         )
 
     # Save results
-    _save_distance_results(results_df, valid_results, v1v2_combined)
+    _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col)
 
     # Create interactive map
     if len(valid_results) > 0:
@@ -209,7 +239,7 @@ def run_step4(v1v2_combined):
     return results_df
 
 
-def _save_distance_results(results_df, valid_results, v1v2_combined):
+def _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col):
     """Save distance calculation results - all lokalitet-GVFK combinations."""
 
     if len(valid_results) == 0:
@@ -270,10 +300,10 @@ def _save_distance_results(results_df, valid_results, v1v2_combined):
     # Create shapefile version with geometry (for visualizations that need geometries)
     if not v1v2_combined.empty:
         # Get geometry for each unique lokalitet (take first occurrence)
-        site_geometries = v1v2_combined.drop_duplicates("Lokalitet_")[
-            ["Lokalitet_", "geometry"]
+        site_geometries = v1v2_combined.drop_duplicates(site_id_col)[
+            [site_id_col, "geometry"]
         ]
-        site_geometries = site_geometries.rename(columns={"Lokalitet_": "Lokalitetsnr"})
+        site_geometries = site_geometries.rename(columns={site_id_col: "Lokalitetsnr"})
 
         # Merge with unique distances
         unique_distances_with_geom = unique_distances.merge(
@@ -294,6 +324,10 @@ def _save_distance_results(results_df, valid_results, v1v2_combined):
 def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
     """Create interactive map visualization using sampled data."""
 
+    gvfk_name_col = COLUMN_MAPPINGS["contamination_csv"]["gvfk_id"]
+    site_id_col = COLUMN_MAPPINGS["contamination_shp"]["site_id"]
+    gvfk_polygon_col = COLUMN_MAPPINGS["grundvand"]["gvfk_id"]
+
     # Sample data for visualization - limit to 1000 sites for performance
     total_sites = valid_results["Lokalitet_ID"].nunique()
     if total_sites <= 1000:
@@ -308,9 +342,9 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
     ].copy()
 
     # Get GVFK polygons for visualization
-    gvf = gpd.read_file(GRUNDVAND_PATH)
+    gvf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
     sampled_gvfks = set(sampled_results["GVFK"].unique())
-    relevant_gvfk_polygons = gvf[gvf["Navn"].isin(sampled_gvfks)]
+    relevant_gvfk_polygons = gvf[gvf[gvfk_polygon_col].isin(sampled_gvfks)]
 
     # Add distance data to combined data for mapping
     v1v2_with_distances = v1v2_combined.copy()
@@ -324,7 +358,9 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
         }
 
     v1v2_with_distances["lookup_key"] = (
-        v1v2_with_distances["Lokalitet_"] + "_" + v1v2_with_distances["Navn"]
+        v1v2_with_distances[site_id_col].astype(str)
+        + "_"
+        + v1v2_with_distances[gvfk_name_col].astype(str)
     )
 
     for key, data in lookup_data.items():
@@ -335,8 +371,8 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
 
     # Filter to sampled combinations
     sampled_combinations = v1v2_with_distances[
-        v1v2_with_distances["Lokalitet_"].isin(sampled_results["Lokalitet_ID"])
-        & v1v2_with_distances["Navn"].isin(sampled_results["GVFK"])
+        v1v2_with_distances[site_id_col].isin(sampled_results["Lokalitet_ID"])
+        & v1v2_with_distances[gvfk_name_col].isin(sampled_results["GVFK"])
     ]
 
     if not sampled_combinations.empty:
@@ -362,3 +398,6 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
             warnings.filterwarnings(
                 "ignore", category=UserWarning, module="pyogrio.raw"
             )
+            print(f"Warning: Failed to create interactive map ({e})")
+    else:
+        print("No sampled combinations available for interactive map.")

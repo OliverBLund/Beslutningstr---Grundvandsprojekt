@@ -9,8 +9,14 @@ import geopandas as gpd
 import warnings
 from shapely.errors import ShapelyDeprecationWarning
 from config import (
-    GRUNDVAND_PATH, RIVERS_PATH, get_output_path, ensure_results_directory,
-    WORKFLOW_SETTINGS, COLUMN_MAPPINGS
+    COLUMN_MAPPINGS,
+    GRUNDVAND_LAYER_NAME,
+    GRUNDVAND_PATH,
+    RIVERS_LAYER_NAME,
+    RIVERS_PATH,
+    WORKFLOW_SETTINGS,
+    ensure_results_directory,
+    get_output_path,
 )
 
 # Suppress shapely deprecation warnings
@@ -28,20 +34,28 @@ def run_step2():
     # Ensure output directory exists
     ensure_results_directory()
 
-    # Read the rivers contact shapefile
-    rivers = gpd.read_file(RIVERS_PATH, encoding='utf-8')
+    # Read the rivers contact dataset
+    rivers = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
 
     # Get column names from mappings
     contact_col = COLUMN_MAPPINGS['rivers']['contact']
     river_gvfk_col = COLUMN_MAPPINGS['rivers']['gvfk_id']
 
-    # Filter to rivers with contact
+    # Filter to rivers with GVFK contact
+    # New Grunddata format: GVFK presence indicates contact
+    # Legacy format: Explicit 'Kontakt' column (if present, use for backward compatibility)
     contact_value = WORKFLOW_SETTINGS['contact_filter_value']
+    rivers[river_gvfk_col] = rivers[river_gvfk_col].astype(str).str.strip()
+    valid_gvfk_mask = rivers[river_gvfk_col] != ""
+
     if contact_col in rivers.columns:
-        rivers_with_contact = rivers[rivers[contact_col] == contact_value]
+        # Legacy format with explicit contact column
+        rivers_with_contact = rivers[
+            (rivers[contact_col] == contact_value) & valid_gvfk_mask
+        ]
     else:
-        print(f"WARNING: '{contact_col}' column not found. Using all river segments.")
-        rivers_with_contact = rivers
+        # New Grunddata format: GVFK presence IS the contact indicator
+        rivers_with_contact = rivers[valid_gvfk_mask]
 
     # Extract unique GVFK names from river contact data
     if river_gvfk_col not in rivers_with_contact.columns:
@@ -56,7 +70,7 @@ def run_step2():
     print(f"GVFK with river contact: {unique_rivers_gvfk}")
 
     # Load base GVFK file and filter to those with river contact
-    gvf = gpd.read_file(GRUNDVAND_PATH)
+    gvf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
 
     # Filter GVFK to only those with river contact
     gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']

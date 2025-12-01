@@ -7,18 +7,22 @@ and improve maintainability across workflow steps.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterable, Sequence
 
 import geopandas as gpd
 import pandas as pd
 
 from config import (
-    FLOW_SCENARIO_COLUMNS,
-    GVFK_LAYER_MAPPING_PATH,
-    RIVER_FLOW_POINTS_PATH,
-    RIVERS_PATH,
-    get_output_path,
     COLUMN_MAPPINGS,
+    FLOW_SCENARIO_COLUMNS,
+    GRUNDVAND_GDB_PATH,
+    GRUNDVAND_LAYER_NAME,
+    RIVER_FLOW_POINTS_LAYER,
+    RIVER_FLOW_POINTS_PATH,
+    RIVERS_LAYER_NAME,
+    RIVERS_PATH,
+    WORKFLOW_SETTINGS,
+    get_output_path,
 )
 
 
@@ -32,7 +36,7 @@ def load_step5_results() -> pd.DataFrame:
         ValueError: If file is empty or missing required columns
     """
     step5_path = get_output_path("step5_compound_detailed_combinations")
-    df = pd.read_csv(step5_path, encoding='utf-8')
+    df = pd.read_csv(step5_path, encoding="utf-8")
 
     if df.empty:
         raise ValueError(f"Step 5 output is empty: {step5_path}")
@@ -66,7 +70,7 @@ def load_site_geometries() -> gpd.GeoDataFrame:
     Raises:
         ValueError: If geometries are empty
     """
-    site_id_col = COLUMN_MAPPINGS['contamination_shp']['site_id']
+    site_id_col = COLUMN_MAPPINGS["contamination_shp"]["site_id"]
     sites = gpd.read_file(get_output_path("step3_v1v2_sites"))
     if sites.empty:
         raise ValueError("Step 3 geometries are empty – cannot derive site areas.")
@@ -78,39 +82,48 @@ def load_site_geometries() -> gpd.GeoDataFrame:
     return dissolved[[site_id_col, "Area_m2", "Centroid", "geometry"]]
 
 
-def load_gvfk_layer_mapping() -> pd.DataFrame:
-    """Load GVFK to DK-model layer mapping.
+def load_gvfk_layer_mapping(columns: Sequence[str] | None = None) -> gpd.GeoDataFrame:
+    """Load GVFK metadata (including raster layer codes) from the Grunddata geodatabase.
+
+    Args:
+        columns: Optional list of columns to return. If omitted, the full GeoDataFrame
+            is returned.
 
     Returns:
-        DataFrame with GVForekom and DK-modellag columns
+        GeoDataFrame with at least GVFK identifiers and dkmlag assignments.
 
     Raises:
-        FileNotFoundError: If mapping file doesn't exist
+        FileNotFoundError: If the Grunddata geodatabase is missing.
+        ValueError: If required columns are missing from the dataset.
     """
-    if not GVFK_LAYER_MAPPING_PATH.exists():
+    if not GRUNDVAND_GDB_PATH.exists():
         raise FileNotFoundError(
-            f"GVFK layer mapping not found: {GVFK_LAYER_MAPPING_PATH}\n"
-            "This file is required for infiltration calculations."
+            f"Grunddata geodatabase not found: {GRUNDVAND_GDB_PATH}\n"
+            "This dataset is required for infiltration calculations."
         )
 
-    # Try multiple encodings (Danish files often use Windows-1252 or latin1)
-    for encoding in ['utf-8', 'windows-1252', 'latin1', 'iso-8859-1']:
-        try:
-            df = pd.read_csv(GVFK_LAYER_MAPPING_PATH, encoding=encoding, sep=';')
-            break
-        except UnicodeDecodeError:
-            continue
+    gvfk_gdf = gpd.read_file(GRUNDVAND_GDB_PATH, layer=GRUNDVAND_LAYER_NAME)
+
+    gvfk_col = COLUMN_MAPPINGS["gvfk_layer_mapping"]["gvfk_id"]
+    layer_col = COLUMN_MAPPINGS["gvfk_layer_mapping"]["model_layer"]
+
+    required: Iterable[str]
+    if columns:
+        required = set(columns) | {gvfk_col, layer_col}
     else:
-        raise ValueError(f"Could not decode {GVFK_LAYER_MAPPING_PATH} with any common encoding")
+        required = {gvfk_col, layer_col}
 
-    gvfk_col = COLUMN_MAPPINGS['gvfk_layer_mapping']['gvfk_id']
-    layer_col = COLUMN_MAPPINGS['gvfk_layer_mapping']['model_layer']
-    required_columns = [gvfk_col, layer_col]
-    missing = [col for col in required_columns if col not in df.columns]
+    missing = [col for col in required if col not in gvfk_gdf.columns]
     if missing:
-        raise ValueError(f"Layer mapping missing columns: {', '.join(missing)}")
+        raise ValueError(
+            f"Grunddata layer '{GRUNDVAND_LAYER_NAME}' missing columns: {', '.join(missing)}"
+        )
 
-    return df
+    if columns:
+        unique_cols = list(dict.fromkeys(columns))  # Preserve order while removing duplicates
+        return gvfk_gdf[unique_cols].copy()
+
+    return gvfk_gdf
 
 
 def load_river_segments() -> gpd.GeoDataFrame:
@@ -125,21 +138,35 @@ def load_river_segments() -> gpd.GeoDataFrame:
     if not RIVERS_PATH.exists():
         raise FileNotFoundError(f"River network not found: {RIVERS_PATH}")
 
-    rivers = gpd.read_file(RIVERS_PATH, encoding='utf-8')
+    rivers = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
     if rivers.empty:
         raise ValueError("River segment file is empty – cannot continue.")
 
     # Create River_FID from index (consistent with original workflow)
     rivers = rivers.reset_index().rename(columns={"index": "River_FID"})
 
-    river_id_col = COLUMN_MAPPINGS['rivers']['river_id']
-    river_name_col = COLUMN_MAPPINGS['rivers']['river_name']
-    length_col = COLUMN_MAPPINGS['rivers']['length']
-    gvfk_col = COLUMN_MAPPINGS['rivers']['gvfk_id']
+    river_id_col = COLUMN_MAPPINGS["rivers"]["river_id"]
+    river_name_col = COLUMN_MAPPINGS["rivers"]["river_name"]
+    length_col = COLUMN_MAPPINGS["rivers"]["length"]
+    gvfk_col = COLUMN_MAPPINGS["rivers"]["gvfk_id"]
     required_columns = [river_id_col, river_name_col, length_col, gvfk_col]
     missing = [col for col in required_columns if col not in rivers.columns]
     if missing:
         raise ValueError(f"River shapefile missing columns: {', '.join(missing)}")
+
+    rivers[gvfk_col] = rivers[gvfk_col].astype(str).str.strip()
+    contact_col = COLUMN_MAPPINGS["rivers"]["contact"]
+    valid_mask = rivers[gvfk_col] != ""
+
+    # Filter for river-GVFK contact:
+    # - New Grunddata format: GVFK presence indicates contact
+    # - Legacy format: Explicit 'Kontakt' column (if present, use it for compatibility)
+    if contact_col in rivers.columns:
+        contact_value = WORKFLOW_SETTINGS["contact_filter_value"]
+        rivers = rivers[(rivers[contact_col] == contact_value) & valid_mask]
+    else:
+        # New Grunddata format: GVFK presence IS the contact indicator
+        rivers = rivers[valid_mask]
 
     return rivers
 
@@ -156,28 +183,40 @@ def load_flow_scenarios() -> pd.DataFrame:
     if not RIVER_FLOW_POINTS_PATH.exists():
         raise FileNotFoundError(f"Flow data not found: {RIVER_FLOW_POINTS_PATH}")
 
-    qpoints = gpd.read_file(RIVER_FLOW_POINTS_PATH)
+    qpoints = gpd.read_file(RIVER_FLOW_POINTS_PATH, layer=RIVER_FLOW_POINTS_LAYER)
 
-    river_id_col = COLUMN_MAPPINGS['flow_points']['river_id']
+    river_id_col = COLUMN_MAPPINGS["flow_points"]["river_id"]
 
-    # Check that flow columns exist
+    # Determine which flow columns are available
+    available = [col for col in FLOW_SCENARIO_COLUMNS if col in qpoints.columns]
     missing = [col for col in FLOW_SCENARIO_COLUMNS if col not in qpoints.columns]
+    if not available:
+        raise ValueError(
+            "Q-point data missing all configured flow columns "
+            f"({', '.join(FLOW_SCENARIO_COLUMNS.keys())})"
+        )
     if missing:
-        raise ValueError(f"Q-point data missing flow columns: {', '.join(missing)}")
+        print(
+            "Warning: Q-point data missing columns: "
+            + ", ".join(missing)
+            + ". Skipping those scenarios."
+        )
+
+    scenario_map = {col: FLOW_SCENARIO_COLUMNS[col] for col in available}
 
     # Melt to long format: one row per ov_id × scenario
     id_vars = [river_id_col]
-    value_vars = list(FLOW_SCENARIO_COLUMNS.keys())
+    value_vars = list(scenario_map.keys())
 
     flow_long = qpoints[id_vars + value_vars].melt(
         id_vars=id_vars,
         value_vars=value_vars,
         var_name="Scenario_raw",
-        value_name="Flow_m3_s"
+        value_name="Flow_m3_s",
     )
 
     # Rename scenarios
-    flow_long["Scenario"] = flow_long["Scenario_raw"].map(FLOW_SCENARIO_COLUMNS)
+    flow_long["Scenario"] = flow_long["Scenario_raw"].map(scenario_map)
     flow_long = flow_long.drop(columns=["Scenario_raw"])
 
     # Take maximum flow per segment (conservative approach)

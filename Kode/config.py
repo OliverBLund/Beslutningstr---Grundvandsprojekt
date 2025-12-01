@@ -3,14 +3,36 @@
 Centralized configuration for file locations, workflow settings, and paths.
 All paths use `pathlib.Path` objects for cross-platform compatibility.
 
-User-configurable settings are loaded from SETTINGS.yaml
+User-configurable settings are defined in WORKFLOW_SETTINGS below.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+import warnings
 
-import yaml
+# Silence noisy pyogrio warnings about field width when writing shapefiles
+warnings.filterwarnings(
+    "ignore",
+    message=r"Value .* of field .* not successfully written",
+    module="pyogrio.raw",
+)
+# Ignore shapefile field name truncation / laundering warnings
+warnings.filterwarnings(
+    "ignore",
+    message=r"Column names longer than 10 characters will be truncated.*",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"Normalized/laundered field name: .*",
+    module="pyogrio.raw",
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"Value '.*' of field .* has been truncated to 254 characters.*",
+    module="pyogrio.raw",
+)
 
 # -------------------------------------------------------------------
 # Project structure
@@ -53,40 +75,31 @@ WORKFLOW_SUMMARY_DIR = RESULTS_DIR / "workflow_summary"
 FIGURES_DIR = RESULTS_DIR / "Figures"
 
 # -------------------------------------------------------------------
-# Load user settings from YAML
+# Workflow Settings
 # -------------------------------------------------------------------
-SETTINGS_FILE = BASE_DIR / "SETTINGS.yaml"
+# User-configurable settings for the workflow.
+# Modify these values to adjust thresholds and behavior.
 
+WORKFLOW_SETTINGS = {
+    # Distance threshold for risk assessment (meters)
+    "risk_threshold_m": 500,
 
-def _load_workflow_settings():
-    """Load workflow settings from SETTINGS.yaml file."""
-    if not SETTINGS_FILE.exists():
-        print(f"WARNING: {SETTINGS_FILE} not found. Using default settings.")
-        return {
-            "risk_threshold_m": 500,
-            "additional_thresholds_m": [250, 500, 1000, 1500, 2000],
-            "progress_interval_percent": 10,
-            "contact_filter_value": 1,
-            "enable_multi_threshold_analysis": False,
-        }
+    # Additional distance thresholds for multi-threshold analysis (meters)
+    "additional_thresholds_m": [250, 500, 1000, 1500, 2000],
 
-    try:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-            settings = yaml.safe_load(f)
-        return settings
-    except Exception as e:
-        print(f"ERROR loading {SETTINGS_FILE}: {e}")
-        print("Using default settings.")
-        return {
-            "risk_threshold_m": 500,
-            "additional_thresholds_m": [250, 500, 1000, 1500, 2000],
-            "progress_interval_percent": 10,
-            "contact_filter_value": 1,
-            "enable_multi_threshold_analysis": False,
-        }
+    # Progress reporting interval (percent)
+    "progress_interval_percent": 10,
 
+    # River contact filter value (1 = has contact, or use GVFK presence in new format)
+    "contact_filter_value": 1,
 
-WORKFLOW_SETTINGS = _load_workflow_settings()
+    # Enable multi-threshold distance analysis (slower, more detailed)
+    "enable_multi_threshold_analysis": False,
+
+    # Maximum infiltration value cap (mm/year) - values above this are capped
+    # Values below 0 (upward flux) are always zeroed
+    "gvd_max_infiltration_cap": 750,
+}
 
 # -------------------------------------------------------------------
 # Step 6 Map Generation Settings
@@ -127,9 +140,9 @@ STEP6_MAP_SETTINGS = {
 # Example: gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
 
 COLUMN_MAPPINGS = {
-    # GVFK (Groundwater aquifer) shapefile
+    # GVFK (Groundwater aquifer) dataset
     'grundvand': {
-        'gvfk_id': 'Navn',              # GVFK unique identifier column
+        'gvfk_id': 'GVForekom',         # GVFK unique identifier column
     },
 
     # River network shapefile
@@ -138,7 +151,7 @@ COLUMN_MAPPINGS = {
         'river_name': 'ov_navn',        # River segment name (optional, for display)
         'gvfk_id': 'GVForekom',         # GVFK name associated with river
         'contact': 'Kontakt',           # Contact indicator column (1 = has contact)
-        'length': 'Shape_Leng',         # River segment length
+        'length': 'Shape_Length',       # River segment length
     },
 
     # V1/V2 contamination CSV files
@@ -159,10 +172,10 @@ COLUMN_MAPPINGS = {
         'site_id': 'Lokalitet_',        # Site identifier (note trailing underscore in Danish data!)
     },
 
-    # GVFK to DK-model layer mapping CSV
+    # GVFK layer metadata from Grunddata geodatabase
     'gvfk_layer_mapping': {
         'gvfk_id': 'GVForekom',         # GVFK identifier
-        'model_layer': 'DK-modellag',   # DK-model aquifer layer (e.g., 'ks3', 'ks4')
+        'model_layer': 'dkmlag',        # Infiltration raster layer column
     },
 
     # River flow Q-points shapefile
@@ -177,22 +190,27 @@ COLUMN_MAPPINGS = {
 # -------------------------------------------------------------------
 # Input data paths
 # -------------------------------------------------------------------
-GRUNDVAND_PATH = SHAPE_DIR / "VP3Genbesøg_grundvand_geometri.shp"
-RIVERS_PATH = SHAPE_DIR / "Rivers_gvf_rev20230825_kontakt.shp"
+GRUNDVAND_DATA_DIR = DATA_DIR / "Ny_data_Lars_11_26_2025" / "supplgrunddata"
+GRUNDVAND_GDB_PATH = GRUNDVAND_DATA_DIR / "Grunddata_results.gdb"
+GRUNDVAND_LAYER_NAME = "dkm_gvf_vp3genbesog_kontakt"
+GRUNDVAND_PATH = GRUNDVAND_GDB_PATH  # Backwards compatibility for legacy imports
+RIVERS_PATH = GRUNDVAND_DATA_DIR / "Grunddata_results.gdb"
+RIVERS_LAYER_NAME = "Rivers_gvf_vp3genbesog_kontakt"
 V1_CSV_PATH = DATA_DIR / "v1_gvfk_forurening.csv"
 V2_CSV_PATH = DATA_DIR / "v2_gvfk_forurening.csv"
 V1_SHP_PATH = SHAPE_DIR / "V1FLADER.shp"
 V2_SHP_PATH = SHAPE_DIR / "V2FLADER.shp"
 
 # Tilstandsvurdering specific inputs (optional - for advanced analysis)
-GVFK_LAYER_MAPPING_PATH = DATA_DIR / "vp3_h1_grundvandsforekomster_VP3Genbesøg.csv"
-GVD_RASTER_DIR = DATA_DIR / "dkm2019_vp3_GVD"
+GVD_RASTER_DIR = GRUNDVAND_DATA_DIR / "dkmtif"
 GVFK_AREA_VOLUME_PATH = DATA_DIR / "volumen areal_genbesøg.csv"
 RIVER_FLOW_POINTS_PATH = (
     DATA_DIR
-    / "dkm2019_vp3_qpunkter_inklq95"
-    / "dkm_qpoints_gvf_rev20230825_kontakt_inklQ95.shp"
+    / "Ny_data_Lars_11_26_2025"
+    / "supplgrunddata"
+    / "Grunddata_results.gdb"
 )
+RIVER_FLOW_POINTS_LAYER = "dkm_qpoints_gvf_vp3genbesog_kontakt"
 
 # Cache files for repeated spatial operations
 V1_DISSOLVED_CACHE = CACHE_DIR / "v1_dissolved_geometries.shp"
@@ -361,7 +379,7 @@ def validate_input_files() -> bool:
         True if all required files exist, False otherwise
     """
     required_files = [
-        GRUNDVAND_PATH,
+        GRUNDVAND_GDB_PATH,
         RIVERS_PATH,
         V1_CSV_PATH,
         V2_CSV_PATH,
@@ -574,6 +592,10 @@ MKK_THRESHOLDS = {
 # Using only Q95 (low flow scenario) for simplified analysis
 FLOW_SCENARIO_COLUMNS = {
     "Q95": "Q95",
+    "Q90": "Q90",
+    "Q50": "Q50",
+    "Q10": "Q10",
+    "Q05": "Q05",
 }
 
 # Seconds per year (for flux calculations)
@@ -592,16 +614,20 @@ __all__ = [
     "FIGURES_DIR",
     "CACHE_DIR",
     # Input files
+    "GRUNDVAND_DATA_DIR",
+    "GRUNDVAND_GDB_PATH",
+    "GRUNDVAND_LAYER_NAME",
     "GRUNDVAND_PATH",
+    "RIVERS_LAYER_NAME",
     "RIVERS_PATH",
     "V1_CSV_PATH",
     "V2_CSV_PATH",
     "V1_SHP_PATH",
     "V2_SHP_PATH",
-    "GVFK_LAYER_MAPPING_PATH",
     "GVD_RASTER_DIR",
     "GVFK_AREA_VOLUME_PATH",
     "RIVER_FLOW_POINTS_PATH",
+    "RIVER_FLOW_POINTS_LAYER",
     # Cache files
     "V1_DISSOLVED_CACHE",
     "V2_DISSOLVED_CACHE",

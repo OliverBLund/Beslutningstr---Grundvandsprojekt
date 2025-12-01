@@ -10,7 +10,12 @@ import os
 import numpy as np
 import pandas as pd
 from matplotlib.patches import FancyArrowPatch
-from config import WORKFLOW_SETTINGS, get_output_path
+from config import (
+    GRUNDVAND_LAYER_NAME,
+    GRUNDVAND_PATH,
+    WORKFLOW_SETTINGS,
+    get_output_path,
+)
 
 
 def create_html_table(data, headers, title, filename, output_dir):
@@ -597,7 +602,11 @@ def create_progression_plot(figures_path, required_files):
         if "all_gvfk" in required_files and os.path.exists(required_files["all_gvfk"]):
             import geopandas as gpd
 
-            all_gvfk_df = gpd.read_file(required_files["all_gvfk"])
+            all_path = required_files["all_gvfk"]
+            if Path(all_path).suffix.lower() == ".gdb" or Path(all_path) == GRUNDVAND_PATH:
+                all_gvfk_df = gpd.read_file(all_path, layer=GRUNDVAND_LAYER_NAME)
+            else:
+                all_gvfk_df = gpd.read_file(all_path)
             total_gvfks = len(all_gvfk_df)
         else:
             raise FileNotFoundError(

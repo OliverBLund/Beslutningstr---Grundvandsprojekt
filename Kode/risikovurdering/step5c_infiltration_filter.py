@@ -43,11 +43,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from config import (
-    GVD_RASTER_DIR,
-    GVFK_LAYER_MAPPING_PATH,
-    get_output_path,
-)
+from config import GVD_RASTER_DIR, get_output_path
+from data_loaders import load_gvfk_layer_mapping
 
 
 def filter_sites_by_infiltration_direction(
@@ -89,12 +86,15 @@ def filter_sites_by_infiltration_direction(
         print(f"  {initial_gvfks:,} unique GVFKs\n")
 
     # Merge layer mapping info
+    layer_columns = ["GVForekom", "dkmlag", "dknr"]
     enriched = step5_results.merge(
-        layer_mapping[["GVForekom", "DK-modellag"]],
+        layer_mapping[layer_columns],
         left_on="GVFK",
         right_on="GVForekom",
         how="left",
     )
+    enriched = enriched.rename(columns={"dkmlag": "DK-modellag", "dknr": "Model_Region"})
+    enriched["Model_Region"] = enriched["Model_Region"].fillna("dk16")
 
     # Filter out rows with missing modellag (like Step 6 does)
     # This prevents trying to sample infiltration for GVFKs without layer mapping
@@ -160,17 +160,20 @@ def filter_sites_by_infiltration_direction(
 
     # Print summary
     if verbose:
+        def pct(part: int | float, total: int | float) -> float:
+            return (part / total * 100) if total else 0.0
+
         print("\n" + "=" * 80)
         print("INFILTRATION FILTERING SUMMARY")
         print("=" * 80)
         print(f"\nDownward flow (KEPT):")
-        print(f"  {final_combinations:,} combinations ({final_combinations / initial_combinations * 100:.1f}%)")
-        print(f"  {final_sites:,} sites ({final_sites / initial_sites * 100:.1f}%)")
+        print(f"  {final_combinations:,} combinations ({pct(final_combinations, initial_combinations):.1f}%)")
+        print(f"  {final_sites:,} sites ({pct(final_sites, initial_sites):.1f}%)")
         print(f"  {final_gvfks:,} GVFKs")
 
         print(f"\nUpward flow - REMOVED (opstrømningszoner):")
-        print(f"  {removed_combinations:,} combinations ({removed_combinations / initial_combinations * 100:.1f}%)")
-        print(f"  {removed_sites_count:,} sites ({removed_sites_count / initial_sites * 100:.1f}%)")
+        print(f"  {removed_combinations:,} combinations ({pct(removed_combinations, initial_combinations):.1f}%)")
+        print(f"  {removed_sites_count:,} sites ({pct(removed_sites_count, initial_sites):.1f}%)")
         print(f"  {removed_gvfks:,} GVFKs affected")
 
         if no_data_sites_count > 0:
@@ -202,7 +205,9 @@ def _analyze_site_gvfk_flow_directions(
         Dict mapping (Lokalitet_ID, GVFK) tuple to flow direction ("upward", "downward", or "no_data")
     """
     # Get unique site-GVFK pairs
-    site_gvfk_pairs = enriched[["Lokalitet_ID", "GVFK", "DK-modellag"]].drop_duplicates()
+    site_gvfk_pairs = enriched[
+        ["Lokalitet_ID", "GVFK", "DK-modellag", "Model_Region"]
+    ].drop_duplicates()
 
     site_gvfk_flow_directions = {}
     total_pairs = len(site_gvfk_pairs)
@@ -216,6 +221,7 @@ def _analyze_site_gvfk_flow_directions(
         lokalitet_id = row["Lokalitet_ID"]
         gvfk = row["GVFK"]
         dk_modellag = row["DK-modellag"]
+        model_region = row["Model_Region"]
 
         key = (lokalitet_id, gvfk)
         geometry = geometry_lookup.get(lokalitet_id)
@@ -232,7 +238,7 @@ def _analyze_site_gvfk_flow_directions(
         centroid = geometry.centroid if geometry is not None else None
 
         for layer in layers:
-            pixel_values = _sample_infiltration_pixels(layer, geometry, centroid)
+            pixel_values = _sample_infiltration_pixels(layer, model_region, geometry, centroid)
             if pixel_values is not None and len(pixel_values) > 0:
                 all_pixel_values.extend(pixel_values)
 
@@ -264,10 +270,13 @@ def _analyze_site_gvfk_flow_directions(
         downward_count = sum(1 for d in site_gvfk_flow_directions.values() if d == "downward")
         no_data_count = sum(1 for d in site_gvfk_flow_directions.values() if d == "no_data")
 
-        print("Flow direction distribution:")
-        print(f"  Downward (positive infiltration): {downward_count:,} site-GVFK pairs ({downward_count/total_pairs*100:.1f}%)")
-        print(f"  Upward (negative infiltration):   {upward_count:,} site-GVFK pairs ({upward_count/total_pairs*100:.1f}%)")
-        print(f"  No data:                          {no_data_count:,} site-GVFK pairs ({no_data_count/total_pairs*100:.1f}%)\n")
+        if total_pairs > 0:
+            print("Flow direction distribution:")
+            print(f"  Downward (positive infiltration): {downward_count:,} site-GVFK pairs ({downward_count/total_pairs*100:.1f}%)")
+            print(f"  Upward (negative infiltration):   {upward_count:,} site-GVFK pairs ({upward_count/total_pairs*100:.1f}%)")
+            print(f"  No data:                          {no_data_count:,} site-GVFK pairs ({no_data_count/total_pairs*100:.1f}%)\n")
+        else:
+            print("Flow direction distribution: No analyzed site-GVFK pairs\n")
 
     return site_gvfk_flow_directions
 
@@ -292,13 +301,20 @@ def _parse_dk_modellag(dk_modellag: str) -> List[str]:
     return layers
 
 
-def _sample_infiltration_pixels(layer: str, geometry, centroid, source_crs: str = "EPSG:25832") -> List[float] | None:
+def _sample_infiltration_pixels(
+    layer: str,
+    model_region: str,
+    geometry,
+    centroid,
+    source_crs: str = "EPSG:25832",
+) -> List[float] | None:
     """
     Sample all pixel values from infiltration raster for given geometry.
     Uses polygon sampling with centroid fallback (same strategy as Step 6).
 
     Args:
         layer: GVD layer code (e.g., "ks", "kalk")
+        model_region: Regional code (dk16 mainland, dk7 Bornholm, etc.)
         geometry: Site polygon geometry
         centroid: Site centroid (for fallback if polygon fails)
         source_crs: CRS of the geometry
@@ -306,7 +322,18 @@ def _sample_infiltration_pixels(layer: str, geometry, centroid, source_crs: str 
     Returns:
         List of pixel values, or None if no data available
     """
-    raster_file = GVD_RASTER_DIR / f"DKM_gvd_{layer}.tif"
+    normalized_layer = str(layer).lower()
+    raster_filename = _build_raster_filename(normalized_layer, model_region)
+    if raster_filename is None:
+        return None
+
+    raster_file = GVD_RASTER_DIR / raster_filename
+
+    # Fallback to mainland raster if regional file missing (dk16 covers most of Denmark)
+    if not raster_file.exists() and not raster_filename.startswith("dk16_"):
+        fallback = GVD_RASTER_DIR / f"dk16_gvd_{normalized_layer}.tif"
+        if fallback.exists():
+            raster_file = fallback
 
     if not raster_file.exists():
         return None
@@ -347,8 +374,23 @@ def _sample_infiltration_pixels(layer: str, geometry, centroid, source_crs: str 
 
             return None
 
-    except Exception as e:
+    except Exception:
         return None
+
+
+def _build_raster_filename(layer: str, model_region: str | None) -> str | None:
+    """Construct raster filename using dk16/dk7 prefixes."""
+    if not layer:
+        return None
+
+    normalized_layer = str(layer).lower()
+    region = (model_region or "").lower()
+    if region.startswith("dk7"):
+        prefix = "dk7"
+    else:
+        prefix = "dk16"
+
+    return f"{prefix}_gvd_{normalized_layer}.tif"
 
 
 def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -370,21 +412,8 @@ def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFra
     from data_loaders import load_site_geometries
     site_geometries = load_site_geometries()
 
-    # Load layer mapping
-    if not GVFK_LAYER_MAPPING_PATH.exists():
-        raise FileNotFoundError(
-            f"GVFK layer mapping not found: {GVFK_LAYER_MAPPING_PATH}"
-        )
-
-    # Try multiple encodings (Danish files often use Windows-1252 or latin1)
-    for encoding in ['utf-8', 'windows-1252', 'latin1', 'iso-8859-1']:
-        try:
-            layer_mapping = pd.read_csv(GVFK_LAYER_MAPPING_PATH, sep=';', encoding=encoding)
-            break
-        except UnicodeDecodeError:
-            if encoding == 'iso-8859-1':
-                raise
-            continue
+    # Load layer mapping from Grunddata geodatabase
+    layer_mapping = load_gvfk_layer_mapping(columns=["GVForekom", "dkmlag", "dknr"])
 
     # Run filtering
     filtered_results, removed_sites = filter_sites_by_infiltration_direction(
@@ -395,15 +424,15 @@ def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFra
     if verbose:
         print("Saving filtered results...")
 
-    filtered_results.to_csv(step5_path, index=False, encoding='utf-8')
+    filtered_results.to_csv(step5_path, index=False, encoding="utf-8")
 
     # Save removed sites for reference
     removed_path = get_output_path("step5_infiltration_removed_sites")
-    removed_sites.to_csv(removed_path, index=False, encoding='utf-8')
+    removed_sites.to_csv(removed_path, index=False, encoding="utf-8")
 
     if verbose:
-        print(f"  ✓ Updated: {step5_path.name}")
-        print(f"  ✓ Saved removed sites: {removed_path.name}")
+        print(f"  - Updated: {step5_path.name}")
+        print(f"  - Saved removed sites: {removed_path.name}")
 
     return filtered_results, removed_sites
 
@@ -411,6 +440,6 @@ def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFra
 if __name__ == "__main__":
     # Run standalone filtering
     filtered, removed = run_step5c_filtering(verbose=True)
-    print(f"\n✓ Step 5c infiltration filtering completed")
+    print("\n- Step 5c infiltration filtering completed")
     print(f"  Final results: {len(filtered):,} combinations, {filtered['Lokalitet_ID'].nunique():,} sites")
     print(f"  Removed: {removed['Lokalitet_ID'].nunique():,} sites with upward flow")

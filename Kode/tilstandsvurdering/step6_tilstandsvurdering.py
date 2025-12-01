@@ -39,8 +39,9 @@ if str(REPO_ROOT) not in sys.path:
 # Import configuration and constants
 from config import (
     CATEGORY_SCENARIOS,
+    COLUMN_MAPPINGS,
+    GRUNDVAND_LAYER_NAME,
     GVD_RASTER_DIR,
-    GVFK_LAYER_MAPPING_PATH,
     MKK_THRESHOLDS,
     MODELSTOFFER,
     RESULTS_DIR,
@@ -89,7 +90,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     print("\n[1/6] Loading data...")
     step5_results = load_step5_results()
     site_geometries = load_site_geometries()
-    layer_mapping = load_gvfk_layer_mapping()
+    layer_mapping = load_gvfk_layer_mapping(columns=["GVForekom", "dkmlag", "dknr"])
     river_segments = load_river_segments()
 
     # Prepare flux inputs (filtering + infiltration)
@@ -233,12 +234,16 @@ def _prepare_flux_inputs(
         )
 
     # Attach modellag information
+    layer_info = layer_mapping[["GVForekom", "dkmlag", "dknr"]].rename(
+        columns={"dkmlag": "DK-modellag", "dknr": "Model_Region"}
+    )
     enriched = enriched.merge(
-        layer_mapping[["GVForekom", "DK-modellag"]],
+        layer_info,
         left_on="GVFK",
         right_on="GVForekom",
         how="left",
     )
+    enriched["Model_Region"] = enriched["Model_Region"].fillna("dk16")
     if enriched["DK-modellag"].isna().any():
         missing_layers = enriched.loc[enriched["DK-modellag"].isna(), "GVFK"].unique()
         missing_count = enriched["DK-modellag"].isna().sum()
@@ -261,7 +266,8 @@ def _prepare_flux_inputs(
             f"   Example sites: {', '.join(sorted(missing_sites_list)[:5])}{' ...' if len(missing_sites_list) > 5 else ''}"
         )
         print(
-            f"   -> TODO: Add these GVFKs to '{GVFK_LAYER_MAPPING_PATH.name}' for complete analysis.\n"
+            "   -> TODO: Add these GVFKs to the Grunddata layer "
+            f"'{GRUNDVAND_LAYER_NAME}' with a valid dkmlag assignment.\n"
         )
 
         # Track filtered rows in audit
@@ -276,8 +282,8 @@ def _prepare_flux_inputs(
                     "Nearest_River_ov_id": row.get("Nearest_River_ov_id", "N/A"),
                     "Distance_to_River_m": row.get("Distance_to_River_m", None),
                     "Filter_Stage": "Filter_1_Missing_Modellag",
-                    "Filter_Reason": f"No DK-modellag mapping for GVFK {row['GVFK']}",
-                    "Additional_Info": f"Add {row['GVFK']} to {GVFK_LAYER_MAPPING_PATH.name}",
+                    "Filter_Reason": f"No dkmlag mapping for GVFK {row['GVFK']}",
+                    "Additional_Info": f"Add {row['GVFK']} to Grunddata layer '{GRUNDVAND_LAYER_NAME}'",
                 }
             )
 
@@ -432,14 +438,15 @@ def _prepare_flux_inputs(
         )
 
     # Attach river metadata
+    river_length_col = COLUMN_MAPPINGS["rivers"]["length"]
     segment_meta = river_segments[
-        ["River_FID", "ov_id", "ov_navn", "Shape_Leng", "GVForekom"]
+        ["River_FID", "ov_id", "ov_navn", river_length_col, "GVForekom"]
     ].copy()
     segment_meta = segment_meta.rename(
         columns={
             "ov_id": "River_Segment_ov_id",
             "ov_navn": "River_Segment_Name",
-            "Shape_Leng": "River_Segment_Length_m",
+            river_length_col: "River_Segment_Length_m",
             "GVForekom": "River_Segment_GVFK",
         }
     )
@@ -524,9 +531,23 @@ def _calculate_infiltration(
     infiltration_records = []
     pixel_data_records = []  # NEW: Collect all pixel values
 
+    # Track GVD value cleaning statistics
+    total_pixels_capped = 0
+    total_pixels_zeroed = 0
+    total_centroids_capped = 0
+    total_centroids_zeroed = 0
+    sites_with_capped_pixels = set()
+    sites_with_zeroed_pixels = set()
+
+    # Track sampling method usage
+    sites_using_centroid = set()  # Sites that used centroid-only sampling
+    sites_using_polygon = set()   # Sites that used polygon sampling
+    sites_without_data = set()    # Sites with no raster coverage
+
     for idx, row in enriched.iterrows():
         lokalitet_id = row["Lokalitet_ID"]
         dk_modellag = row["DK-modellag"]
+        model_region = row.get("Model_Region", "dk16")
 
         centroid = centroid_lookup.get(lokalitet_id)
         geometry = geometry_lookup.get(lokalitet_id)
@@ -541,7 +562,7 @@ def _calculate_infiltration(
         pixel_counts = []
 
         for layer in layers:
-            result = _sample_infiltration(layer, geometry, centroid, source_crs)
+            result = _sample_infiltration(layer, model_region, geometry, centroid, source_crs)
 
             if result["Combined"] is not None:
                 combined_values.append(result["Combined"])
@@ -564,6 +585,29 @@ def _calculate_infiltration(
                     "Pixel_Values": result["All_Pixel_Values"],
                     "Pixel_Count": len(result["All_Pixel_Values"])
                 })
+
+            # Track capping/zeroing statistics
+            if result.get("Pixels_Capped", 0) > 0:
+                total_pixels_capped += result["Pixels_Capped"]
+                sites_with_capped_pixels.add(lokalitet_id)
+            if result.get("Pixels_Zeroed", 0) > 0:
+                total_pixels_zeroed += result["Pixels_Zeroed"]
+                sites_with_zeroed_pixels.add(lokalitet_id)
+            if result.get("Centroid_Capped", False):
+                total_centroids_capped += 1
+            if result.get("Centroid_Zeroed", False):
+                total_centroids_zeroed += 1
+
+        # Track which sampling method was used for this site
+        if polygon_values:
+            # Polygon sampling succeeded
+            sites_using_polygon.add(lokalitet_id)
+        elif centroid_values:
+            # Only centroid sampling succeeded (polygon failed or unavailable)
+            sites_using_centroid.add(lokalitet_id)
+        else:
+            # No data available for this site
+            sites_without_data.add(lokalitet_id)
 
         # Use mean of all sampled layers
         record = {
@@ -588,6 +632,50 @@ def _calculate_infiltration(
         }
 
         infiltration_records.append(record)
+
+    # Report comprehensive infiltration sampling statistics
+    from config import WORKFLOW_SETTINGS
+    gvd_cap = WORKFLOW_SETTINGS.get("gvd_max_infiltration_cap", 750)
+
+    total_sites = len(set(enriched["Lokalitet_ID"]))
+
+    print("\n" + "=" * 80)
+    print("INFILTRATION SAMPLING SUMMARY")
+    print("=" * 80)
+
+    # Sampling method breakdown
+    print(f"\nSampling method usage (total {total_sites} unique sites):")
+    print(f"  Polygon sampling:     {len(sites_using_polygon):,} sites ({len(sites_using_polygon)/total_sites*100:.1f}%)")
+    print(f"  Centroid-only:        {len(sites_using_centroid):,} sites ({len(sites_using_centroid)/total_sites*100:.1f}%)")
+    print(f"  No raster coverage:   {len(sites_without_data):,} sites ({len(sites_without_data)/total_sites*100:.1f}%)")
+
+    # GVD value cleaning statistics
+    print(f"\nGVD value cleaning (cap: {gvd_cap} mm/year):")
+    print(f"  Pixels capped (>{gvd_cap}):  {total_pixels_capped:,} pixels, {len(sites_with_capped_pixels):,} sites")
+    print(f"  Pixels zeroed (<0):         {total_pixels_zeroed:,} pixels, {len(sites_with_zeroed_pixels):,} sites")
+
+    if total_centroids_capped > 0 or total_centroids_zeroed > 0:
+        print(f"  Centroid adjustments:       ", end="")
+        parts = []
+        if total_centroids_capped > 0:
+            parts.append(f"{total_centroids_capped:,} capped")
+        if total_centroids_zeroed > 0:
+            parts.append(f"{total_centroids_zeroed:,} zeroed")
+        print(", ".join(parts))
+
+    # List sites without data if any
+    if sites_without_data:
+        print(f"\nSites without raster coverage (n={len(sites_without_data)}):")
+        sorted_sites = sorted(sites_without_data)
+        if len(sorted_sites) <= 20:
+            for site_id in sorted_sites:
+                print(f"  - {site_id}")
+        else:
+            for site_id in sorted_sites[:10]:
+                print(f"  - {site_id}")
+            print(f"  ... and {len(sorted_sites)-10} more (see log for details)")
+
+    print("=" * 80 + "\n")
 
     return pd.DataFrame(infiltration_records, index=enriched.index), pixel_data_records
 
@@ -614,14 +702,36 @@ def _parse_dk_modellag(dk_modellag: str) -> List[str]:
 
 
 def _sample_infiltration(
-    layer: str, geometry, centroid, source_crs: str = "EPSG:25832"
+    layer: str,
+    model_region: str,
+    geometry,
+    centroid,
+    source_crs: str = "EPSG:25832",
 ) -> Dict[str, float]:
     """
     Sample a single GVD raster layer using both polygon and centroid.
 
     Returns dict with Combined, Centroid, Polygon_Mean, Polygon_Min, Polygon_Max, Polygon_Pixel_Count, All_Pixel_Values.
     """
-    raster_file = GVD_RASTER_DIR / f"DKM_gvd_{layer}.tif"
+    normalized_layer = str(layer).lower()
+    raster_filename = _build_raster_filename(normalized_layer, model_region)
+    if not raster_filename:
+        return {
+            "Combined": None,
+            "Centroid": None,
+            "Polygon_Mean": None,
+            "Polygon_Min": None,
+            "Polygon_Max": None,
+            "Polygon_Pixel_Count": None,
+            "All_Pixel_Values": None,
+        }
+
+    raster_file = GVD_RASTER_DIR / raster_filename
+
+    if not raster_file.exists() and not raster_filename.startswith("dk16_"):
+        fallback = GVD_RASTER_DIR / f"dk16_gvd_{normalized_layer}.tif"
+        if fallback.exists():
+            raster_file = fallback
 
     if not raster_file.exists():
         return {
@@ -638,13 +748,28 @@ def _sample_infiltration(
         with rasterio.open(raster_file) as src:
             nodata = src.nodata
 
+            # Get GVD cap from settings
+            from config import WORKFLOW_SETTINGS
+            gvd_cap = WORKFLOW_SETTINGS.get("gvd_max_infiltration_cap", 750)
+
             # Sample centroid
             centroid_value = None
+            centroid_capped = False
+            centroid_zeroed = False
             if centroid is not None:
                 coords = [(centroid.x, centroid.y)]
                 sampled = list(src.sample(coords))
                 if sampled and sampled[0][0] != nodata:
-                    centroid_value = float(sampled[0][0])
+                    raw_value = float(sampled[0][0])
+                    # Clean centroid value: zero negative, cap positive
+                    if raw_value < 0:
+                        centroid_value = 0.0
+                        centroid_zeroed = True
+                    elif raw_value > gvd_cap:
+                        centroid_value = gvd_cap
+                        centroid_capped = True
+                    else:
+                        centroid_value = raw_value
 
             # Sample polygon
             polygon_mean = None
@@ -652,6 +777,8 @@ def _sample_infiltration(
             polygon_max = None
             pixel_count = 0
             all_pixel_values = None  # NEW: Store all pixel values
+            pixels_capped = 0
+            pixels_zeroed = 0
 
             if geometry is not None:
                 try:
@@ -664,11 +791,21 @@ def _sample_infiltration(
                     ]
 
                     if valid_data.size > 0:
-                        polygon_mean = float(np.mean(valid_data))
-                        polygon_min = float(np.min(valid_data))
-                        polygon_max = float(np.max(valid_data))
-                        pixel_count = int(valid_data.size)
-                        all_pixel_values = valid_data.flatten().tolist()  # NEW: Store all pixel values
+                        # Clean GVD values: zero negative (upward flux), cap positive values
+                        # Count how many values are affected
+                        pixels_zeroed = int(np.sum(valid_data < 0))
+                        pixels_capped = int(np.sum(valid_data > gvd_cap))
+
+                        # Zero out negative values (upward flux)
+                        cleaned_data = np.where(valid_data < 0, 0, valid_data)
+                        # Cap positive values
+                        cleaned_data = np.where(cleaned_data > gvd_cap, gvd_cap, cleaned_data)
+
+                        polygon_mean = float(np.mean(cleaned_data))
+                        polygon_min = float(np.min(cleaned_data))
+                        polygon_max = float(np.max(cleaned_data))
+                        pixel_count = int(cleaned_data.size)
+                        all_pixel_values = cleaned_data.flatten().tolist()  # NEW: Store all pixel values
                 except Exception:
                     pass
 
@@ -677,25 +814,7 @@ def _sample_infiltration(
                 polygon_mean if polygon_mean is not None else centroid_value
             )
 
-            # Warn if no data
-            if combined_value is None:
-                site_id = "Unknown"
-                bounds = geometry.bounds if geometry is not None else "N/A"
-                centroid_coords = (
-                    (centroid.x, centroid.y) if centroid is not None else "N/A"
-                )
-                print(
-                    f"\nWARNING: Infiltration raster {raster_file.name} returned no data for site."
-                )
-                print(f"   Centroid: {centroid_coords}")
-                print(f"   Geometry bounds: {bounds}")
-                print(f"   Raster bounds: {src.bounds}")
-                print(
-                    f"   Sampled value: {sampled[0][0] if 'sampled' in locals() and sampled else 'N/A'} (nodata={nodata})"
-                )
-                print(
-                    f"   Possible causes: Site outside raster coverage, or at nodata location (coast/border)\n"
-                )
+            # Note: Individual no-data warnings suppressed - see aggregated report at end of _calculate_infiltration()
 
             return {
                 "Combined": combined_value,
@@ -705,6 +824,10 @@ def _sample_infiltration(
                 "Polygon_Max": polygon_max,
                 "Polygon_Pixel_Count": pixel_count,
                 "All_Pixel_Values": all_pixel_values,  # NEW: Return all pixel values
+                "Pixels_Capped": pixels_capped,
+                "Pixels_Zeroed": pixels_zeroed,
+                "Centroid_Capped": centroid_capped,
+                "Centroid_Zeroed": centroid_zeroed,
             }
 
     except Exception as e:
@@ -717,7 +840,25 @@ def _sample_infiltration(
             "Polygon_Max": None,
             "Polygon_Pixel_Count": None,
             "All_Pixel_Values": None,
+            "Pixels_Capped": 0,
+            "Pixels_Zeroed": 0,
+            "Centroid_Capped": False,
+            "Centroid_Zeroed": False,
         }
+
+
+def _build_raster_filename(layer: str, model_region: str | None) -> str | None:
+    """Return raster filename with appropriate dk16/dk7 prefix."""
+    if not layer:
+        return None
+
+    region = (model_region or "").lower()
+    if region.startswith("dk7"):
+        prefix = "dk7"
+    else:
+        prefix = "dk16"
+
+    return f"{prefix}_gvd_{layer}.tif"
 
 
 # ===========================================================================

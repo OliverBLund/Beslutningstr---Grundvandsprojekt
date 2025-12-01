@@ -161,7 +161,7 @@ def create_gvfk_progression_chart(figures_path):
     Create bar chart showing GVFK count progression through workflow steps.
     Verifies that filtering logic is working correctly at each step.
     """
-    from config import get_output_path, GRUNDVAND_PATH
+    from config import GRUNDVAND_LAYER_NAME, GRUNDVAND_PATH, get_output_path
     import geopandas as gpd
 
     steps = []
@@ -169,7 +169,7 @@ def create_gvfk_progression_chart(figures_path):
 
     # Step 1: All Denmark
     try:
-        all_gvfk = gpd.read_file(GRUNDVAND_PATH)
+        all_gvfk = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
         steps.append('Step 1:\nAll GVFKs')
         counts.append(len(all_gvfk))
     except:

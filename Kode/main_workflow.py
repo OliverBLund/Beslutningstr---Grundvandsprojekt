@@ -36,7 +36,7 @@ See that folder's README for details on branch analysis, comprehensive visualiza
 
 CONFIGURATION:
 --------------
-- Settings: Edit SETTINGS.yaml to modify risk thresholds
+- Settings: Edit WORKFLOW_SETTINGS in config.py to modify risk thresholds and GVD cap
 - Paths: config.py contains all data file locations
 - Requirements: Install dependencies with 'pip install -r requirements.txt'
 

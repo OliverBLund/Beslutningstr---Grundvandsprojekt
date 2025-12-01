@@ -4,15 +4,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-from config import GVFK_LAYER_MAPPING_PATH, get_output_path
+from data_loaders import load_gvfk_layer_mapping
+from config import get_output_path
 
 # Load Step 5 results
 step5 = pd.read_csv(get_output_path("step5_compound_detailed_combinations"), encoding='utf-8')
 print(f"Step 5 columns: {len(step5.columns)}")
 print(f"Step 5 column names: {sorted(step5.columns.tolist())}\n")
 
-# Load layer mapping
-layer_mapping = pd.read_csv(GVFK_LAYER_MAPPING_PATH, sep=";", encoding="latin-1")
+# Load layer mapping from Grunddata
+layer_mapping = load_gvfk_layer_mapping().rename(columns={"dkmlag": "DK-modellag"})
 print(f"Layer mapping columns: {len(layer_mapping.columns)}")
 print(f"Layer mapping column names (first 20): {sorted(layer_mapping.columns.tolist())[:20]}\n")
 

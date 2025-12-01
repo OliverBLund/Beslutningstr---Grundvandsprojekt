@@ -5,19 +5,6 @@ This step uses a hybrid CSV+shapefile approach to preserve one-to-many site-GVFK
 relationships while maintaining accurate spatial geometries. It includes proper
 deduplication to ensure each lokalitet-GVFK combination appears only once.
 
-FROM LUC:
-
-Kobling af informationer om lokation, forurening, branche, aktivitet og forureningsstatus for forurenede grunde, som truer grundvand.
-For at koble yderligere informationer til de grundvandsforekomstspecifikke forurenende V1 og V2 lokaliteter er der udarbejdet et python script, vedlagt som Bilag 1.
-Det endelige datasÃ¦t indeholder sÃ¥ledes 110814 unikke forurenede grunde, der fordeler sig pÃ¥ fÃ¸lgende Lokalitetetsforureningsstatus:
-â€¢	UdgÃ¥et inden kortlÃ¦gning    53441
-â€¢	V1 kortlagt                 19603
-â€¢	V2 kortlagt                 17660
-â€¢	UdgÃ¥et efter kortlÃ¦gning    12788
-â€¢	Lokaliseret (uafklaret)      3714
-â€¢	V1 og V2 kortlagt            3608
-
-
 """
 
 import geopandas as gpd
@@ -26,10 +13,19 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pyogrio.raw")
 from shapely.errors import ShapelyDeprecationWarning
 from config import (
-    V1_CSV_PATH, V2_CSV_PATH, V1_SHP_PATH, V2_SHP_PATH,
-    get_output_path, ensure_results_directory, ensure_cache_directory,
-    V1_DISSOLVED_CACHE, V2_DISSOLVED_CACHE, is_cache_valid, GRUNDVAND_PATH,
-    COLUMN_MAPPINGS
+    COLUMN_MAPPINGS,
+    GRUNDVAND_LAYER_NAME,
+    GRUNDVAND_PATH,
+    V1_CSV_PATH,
+    V1_DISSOLVED_CACHE,
+    V1_SHP_PATH,
+    V2_CSV_PATH,
+    V2_DISSOLVED_CACHE,
+    V2_SHP_PATH,
+    ensure_cache_directory,
+    ensure_results_directory,
+    get_output_path,
+    is_cache_valid,
 )
 
 # Suppress shapely deprecation warnings
@@ -652,7 +648,7 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names, site_id_shp_col, gv
     v1v2_combined.to_file(v1v2_sites_path, encoding="utf-8")
     
     # Save GVFK polygons that contain V1/V2 sites
-    gvf = gpd.read_file(GRUNDVAND_PATH)
+    gvf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
     gvfk_with_v1v2_polygons = gvf[gvf[grundvand_gvfk_col].isin(gvfk_with_v1v2_names)]
     
     gvfk_polygons_path = get_output_path('step3_gvfk_polygons')

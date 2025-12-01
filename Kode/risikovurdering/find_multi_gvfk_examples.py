@@ -12,7 +12,14 @@ import sys
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from config import get_output_path, GRUNDVAND_PATH, RIVERS_PATH, RESULTS_DIR
+from config import (
+    GRUNDVAND_LAYER_NAME,
+    GRUNDVAND_PATH,
+    RIVERS_LAYER_NAME,
+    RIVERS_PATH,
+    RESULTS_DIR,
+    get_output_path,
+)
 
 print("="*80)
 print("FINDING MULTI-GVFK SITE EXAMPLES")
@@ -158,8 +165,8 @@ print(f"  {len(example_gvfks)} GVFKs involved")
 # Load geometries
 print("\nLoading geometries...")
 step4_geometries = gpd.read_file(get_output_path('unique_lokalitet_distances_shp'))
-gvfk_polygons = gpd.read_file(GRUNDVAND_PATH)
-rivers = gpd.read_file(RIVERS_PATH)
+gvfk_polygons = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
+rivers = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
 rivers_with_contact = rivers[rivers['Kontakt'] == 1]
 
 # Get geometries for example sites
