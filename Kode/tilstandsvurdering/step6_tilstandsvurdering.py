@@ -1113,10 +1113,12 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
     print(f"  Input rows (substances): {len(enriched)}")
     print(f"  Output rows (scenarios): {rows_after}")
     if rows_before > rows_after:
+        removed = rows_before - rows_after
         print(
-            f"  Filtered out {rows_before - rows_after} rows with invalid concentration (-1)"
+            f"  Filtered out {removed} rows where STANDARD_CONCENTRATIONS returned -1 "
+            f"(no valid concentration defined for those categories in config)."
         )
-        # Show which categories were filtered
+        # Show which categories were filtered (e.g., LOSSEPLADS, ANDRE, PFAS)
         filtered_categories = invalid_rows["Qualifying_Category"].value_counts()
         for cat, count in filtered_categories.items():
             print(f"    - {cat}: {count} rows")
@@ -1514,6 +1516,12 @@ def _export_results(
     print(f"Exported {len(cmix_results)} Cmix scenarios")
     print(f"Exported {len(segment_summary)} segment summaries")
     print(f"Exported {len(site_exceedances)} site exceedance records")
+    # Quick reminder of primary Step 6 outputs
+    print("\nStep 6 output files (see config.py CORE_OUTPUTS):")
+    print(f"  - site_flux:        {get_output_path('step6_flux_site_segment')}")
+    print(f"  - cmix_results:     {get_output_path('step6_cmix_results')}")
+    print(f"  - segment_summary:  {get_output_path('step6_segment_summary')}")
+    print(f"  - site_exceedances: {get_output_path('step6_site_mkk_exceedances')}")
 
 
 # ===========================================================================

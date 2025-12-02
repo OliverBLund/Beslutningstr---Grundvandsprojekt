@@ -47,6 +47,7 @@ from Kode.config import (
     RIVERS_LAYER_NAME,
     RIVERS_PATH,
     STEP6_MAP_SETTINGS,
+    STEP6_PRIMARY_FLOW_SCENARIO,
     get_output_path,
     get_visualization_path,
 )
@@ -55,6 +56,7 @@ from Kode.config import (
 def create_combined_impact_maps(
     site_flux: pd.DataFrame,
     segment_summary: pd.DataFrame,
+    cmix_results: pd.DataFrame,
     gvfk_exceedances: pd.DataFrame | None = None,
 ) -> None:
     """
@@ -155,6 +157,7 @@ def create_combined_impact_maps(
         _create_overall_exceedance_maps(
             rivers_web,
             segment_summary,
+            cmix_results,
             site_flux,
             sites_web,
             qpoint_lookup,
@@ -274,6 +277,7 @@ def _create_scenario_map(
 def _create_overall_exceedance_maps(
     rivers_web: gpd.GeoDataFrame,
     segment_summary: pd.DataFrame,
+    cmix_results: pd.DataFrame,
     site_flux: pd.DataFrame,
     sites_web: gpd.GeoDataFrame,
     qpoint_lookup: Dict[str, Tuple],
@@ -305,7 +309,22 @@ def _create_overall_exceedance_maps(
 
     gvfk_gdf, gvfk_id_column = gvfk_data
 
-    aggregation = _aggregate_gvfk_impacts(site_flux)
+    # Filter to segments with confirmed MKK exceedance (per segment_summary)
+    exceed_fids = set(
+        segment_summary.loc[
+            segment_summary.get("Has_MKK_Exceedance", False) == True, "Nearest_River_FID"
+        ]
+        .dropna()
+        .astype(int)
+        .unique()
+    )
+    site_flux_for_maps = (
+        site_flux[site_flux["Nearest_River_FID"].isin(exceed_fids)].copy()
+        if exceed_fids
+        else pd.DataFrame()
+    )
+
+    aggregation = _aggregate_gvfk_impacts(site_flux_for_maps)
     if aggregation is None:
         print("      Unable to aggregate GVFK impacts; skipping overall GVFK maps.")
         return
@@ -339,13 +358,17 @@ def _create_overall_exceedance_maps(
 
     river_geoms = {}
     if rivers_web is not None and not rivers_web.empty:
-        rivers_with_fid = rivers_web.reset_index().rename(columns={"index": "River_FID"})
+        rivers_with_fid = rivers_web.copy()
+        fid_col = "River_FID" if "River_FID" in rivers_with_fid.columns else None
+        if fid_col is None:
+            rivers_with_fid = rivers_with_fid.reset_index().rename(columns={"index": "River_FID"})
+            fid_col = "River_FID"
+
         for _, row in rivers_with_fid.iterrows():
-            seg_fid = row.get("River_FID")
             if row.geometry is None:
                 continue
             try:
-                seg_fid_int = int(seg_fid)
+                seg_fid_int = int(row[fid_col])
             except Exception:
                 continue
             river_geoms[seg_fid_int] = row.geometry
@@ -368,14 +391,13 @@ def _create_overall_exceedance_maps(
 
     output_dir = get_visualization_path("step6", "combined", "overall")
 
-    # Filter to segments with confirmed MKK exceedance
+    # Filter to segments with confirmed MKK exceedance in the primary flow scenario
+    primary_exceed = cmix_results[
+        (cmix_results["Exceedance_Flag"] == True)
+        & (cmix_results["Flow_Scenario"] == STEP6_PRIMARY_FLOW_SCENARIO)
+    ]
     exceed_fids = set(
-        segment_summary.loc[
-            segment_summary.get("Has_MKK_Exceedance", False) == True, "Nearest_River_FID"
-        ]
-        .dropna()
-        .astype(int)
-        .unique()
+        primary_exceed["Nearest_River_FID"].dropna().astype(int).unique()
     )
     if exceed_fids:
         overall_flux = site_flux[site_flux["Nearest_River_FID"].isin(exceed_fids)].copy()
@@ -492,16 +514,13 @@ def _create_overall_exceedance_maps(
         # Layer 2: River basemap (all segments, faint)
         _add_river_basemap(m)
 
-        # Layer 3: Affected segments (highlighted)
-        # Combine all affected segments into a single GeoDataFrame to avoid legend clutter
-        if affected_segment_ids:
-            exceeding_features = []
-            for seg_fid in affected_segment_ids:
+        # Layer 3: Contact segments (blue) and exceeding segments (red)
+        if river_geoms:
+            contact_features = []
+            exceed_features = []
+            for seg_fid, geom in river_geoms.items():
                 info = segment_lookup.get(seg_fid, {})
-                geom = river_geoms.get(seg_fid)
-                if geom is None:
-                    continue
-
+                is_exceed = seg_fid in affected_segment_ids
                 popup_html = f"""
                 <b>Segment FID {seg_fid}</b><br>
                 {info.get('segment_name', 'Unknown')}<br>
@@ -510,26 +529,27 @@ def _create_overall_exceedance_maps(
                 Categories: {info.get('categories', 'n/a')}<br>
                 Sites: {info.get('site_count', 0)} ({info.get('site_ids', '')})
                 """
+                feature = {
+                    "geometry": geom,
+                    "properties": {
+                        "segment_fid": seg_fid,
+                        "popup_html": popup_html,
+                    },
+                }
+                if is_exceed:
+                    exceed_features.append(feature)
+                else:
+                    contact_features.append(feature)
 
-                exceeding_features.append({
-                    'geometry': geom,
-                    'properties': {
-                        'segment_fid': seg_fid,
-                        'popup_html': popup_html
-                    }
-                })
-
-            if exceeding_features:
-                # Create GeoDataFrame from features
-                exceeding_gdf = gpd.GeoDataFrame.from_features(exceeding_features, crs="EPSG:4326")
-
-                # Add as single GeoJson layer (prevents legend clutter)
+            # Non-exceeding contact segments (blue)
+            if contact_features:
+                contact_gdf = gpd.GeoDataFrame.from_features(contact_features, crs="EPSG:4326")
                 folium.GeoJson(
-                    exceeding_gdf,
+                    contact_gdf,
                     style_function=lambda x: {
-                        "color": "#FF0000",  # Bright red for maximum visibility
-                        "weight": 5,  # Increased from 4
-                        "opacity": 1.0,  # Full opacity
+                        "color": "#1f77b4",  # Blue
+                        "weight": 3,
+                        "opacity": 0.7,
                     },
                     popup=folium.GeoJsonPopup(
                         fields=["popup_html"],
@@ -538,7 +558,28 @@ def _create_overall_exceedance_maps(
                         parse_html=True,
                         max_width=350,
                     ),
-                    name="Affected segments (Step 6 flux)",
+                    name="Contact segments (no exceedance)",
+                    show=False,
+                ).add_to(m)
+
+            # Exceeding segments (red)
+            if exceed_features:
+                exceeding_gdf = gpd.GeoDataFrame.from_features(exceed_features, crs="EPSG:4326")
+                folium.GeoJson(
+                    exceeding_gdf,
+                    style_function=lambda x: {
+                        "color": "#FF0000",  # Bright red
+                        "weight": 5,
+                        "opacity": 1.0,
+                    },
+                    popup=folium.GeoJsonPopup(
+                        fields=["popup_html"],
+                        aliases=[""],
+                        labels=False,
+                        parse_html=True,
+                        max_width=350,
+                    ),
+                    name="Exceeding segments (MKK)",
                 ).add_to(m)
 
         # Layer 4: Q-points

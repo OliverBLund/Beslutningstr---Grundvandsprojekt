@@ -158,6 +158,9 @@ STEP6_MAP_SETTINGS = {
     "river_metric_filtered": "cmix_pct_mkk",
 }
 
+# Primary flow scenario to use for overall map / reporting context
+STEP6_PRIMARY_FLOW_SCENARIO = "Q95"
+
 # -------------------------------------------------------------------
 # Input Data Column Mappings
 # -------------------------------------------------------------------
@@ -274,9 +277,13 @@ CORE_OUTPUTS = {
     "step5_infiltration_removed_sites": STEP5_DATA_DIR / "step5_infiltration_removed_sites.csv",
     # Step 6: Tilstandsvurdering outputs
     "step6_flux_site_segment": STEP6_DATA_DIR / "step6_flux_site_segment.csv",
+    # Per-segment scenario rows with Cmix/MKK flags (one row per segment/substance/scenario)
     "step6_cmix_results": STEP6_DATA_DIR / "step6_cmix_results.csv",
+    # One row per segment (FID/ov_id) with max exceedance and contributing sites
     "step6_segment_summary": STEP6_DATA_DIR / "step6_segment_summary.csv",
+    # Site-level exceedance view (filtered to MKK exceedances)
     "step6_site_mkk_exceedances": STEP6_DATA_DIR / "step6_sites_mkk_exceedance.csv",
+    # GVFK-level exceedance view (filtered to MKK exceedances)
     "step6_gvfk_mkk_exceedances": STEP6_DATA_DIR / "step6_gvfk_mkk_exceedance.csv",
     "step6_filtering_audit": STEP6_DATA_DIR / "step6_filtering_audit_detailed.csv",
     # Workflow summary
@@ -632,6 +639,6 @@ SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
 
 # ------------------------------------------------------------------
 # End of configuration
-# 
+#
 # ------------------------------------------------------------------
 # All settings above are available for import by the workflow.

@@ -82,11 +82,12 @@ def analyze_and_visualize_step6(
     overall_flag = STEP6_MAP_SETTINGS.get("generate_overall_maps", True)
     if scenario_flag or overall_flag:
         print("\nGenerating combined/overall impact maps...")
-        try:
-            from .step6_combined_map import create_combined_impact_maps
-        except ImportError:
-            from step6_combined_map import create_combined_impact_maps
-        create_combined_impact_maps(site_flux, segment_summary, gvfk_exceedances)
+    try:
+        from .step6_combined_map import create_combined_impact_maps
+        create_combined_impact_maps(site_flux, segment_summary, cmix_results, gvfk_exceedances)
+    except ImportError:
+        from step6_combined_map import create_combined_impact_maps
+        create_combined_impact_maps(site_flux, segment_summary, cmix_results, gvfk_exceedances)
     else:
         print(
             "\nSkipping combined impact maps (all Step 6 map flags disabled)."
