@@ -39,6 +39,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from Kode.config import (
+    COLUMN_MAPPINGS,
     GRUNDVAND_LAYER_NAME,
     GRUNDVAND_PATH,
     RIVER_FLOW_POINTS_LAYER,
@@ -76,6 +77,7 @@ def create_combined_impact_maps(
     from Kode.config import COLUMN_MAPPINGS, WORKFLOW_SETTINGS
 
     rivers_all = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
+    rivers_all = rivers_all.reset_index().rename(columns={"index": "River_FID"})
     river_gvfk_col = COLUMN_MAPPINGS["rivers"]["gvfk_id"]
     contact_col = COLUMN_MAPPINGS["rivers"]["contact"]
 
@@ -157,6 +159,7 @@ def create_combined_impact_maps(
             sites_web,
             qpoint_lookup,
             gvfk_exceedances,
+            rivers_all_web=rivers_all_web,
         )
     else:
         print("    Skipping overall GVFK exceedance maps (disabled in config).")
@@ -275,24 +278,24 @@ def _create_overall_exceedance_maps(
     sites_web: gpd.GeoDataFrame,
     qpoint_lookup: Dict[str, Tuple],
     gvfk_exceedances: pd.DataFrame | None = None,
+    rivers_all_web: gpd.GeoDataFrame | None = None,
 ) -> None:
-    """Create GVFK-focused overview maps showing segments with exceedances."""
+    """
+    Create GVFK-focused overview maps showing Step 6 impacts in binary form.
 
-    if segment_summary is None or segment_summary.empty:
-        print("      Segment summary is empty; skipping overall GVFK maps.")
+    Rivers: red if they appear in Step 6 flux results; gray otherwise.
+    GVFK polygons: colored by counts derived from the same flux results.
+    """
+
+    if site_flux is None or site_flux.empty:
+        print("      No Step 6 flux rows available; skipping overall GVFK maps.")
         return
 
-    if "Max_Exceedance_Ratio" not in segment_summary.columns:
-        print("      Segment summary lacks exceedance metrics; skipping overall GVFK maps.")
-        return
-
-    exceed_segments = segment_summary[
-        segment_summary["Max_Exceedance_Ratio"].notna()
-        & (segment_summary["Max_Exceedance_Ratio"] > 1.0)
-    ].copy()
-
-    if exceed_segments.empty:
-        print("      No river segments exceed MKK; skipping overall GVFK maps.")
+    affected_segments = (
+        site_flux["Nearest_River_ov_id"].dropna().astype(str).unique().tolist()
+    )
+    if len(affected_segments) == 0:
+        print("      No affected river segments found in Step 6; skipping overall GVFK maps.")
         return
 
     gvfk_data = _load_gvfk_geodata()
@@ -302,9 +305,9 @@ def _create_overall_exceedance_maps(
 
     gvfk_gdf, gvfk_id_column = gvfk_data
 
-    aggregation = _aggregate_gvfk_exceedances(exceed_segments, gvfk_exceedances)
+    aggregation = _aggregate_gvfk_impacts(site_flux)
     if aggregation is None:
-        print("      Unable to aggregate GVFK exceedances; skipping overall GVFK maps.")
+        print("      Unable to aggregate GVFK impacts; skipping overall GVFK maps.")
         return
 
     methods = STEP6_MAP_SETTINGS.get(
@@ -319,27 +322,33 @@ def _create_overall_exceedance_maps(
         "unique_segments": {
             "series": aggregation["unique_segment_counts"],
             "filename": "overall_gvfk_unique_segments",
-            "title": "GVFK Impact Overview – Unique Segments",
-            "subtitle": "Each GVFK is colored by the number of unique river segments with ≥1 MKK exceedance.",
-            "legend": "Unique segments with ≥1 exceedance",
-            "metric_label": "Unique segments exceeding MKK",
+            "title": "GVFK Impact Overview - Unique Affected Segments",
+            "subtitle": "Each GVFK is colored by the number of unique river segments that receive Step 6 flux.",
+            "legend": "Unique affected segments",
+            "metric_label": "Unique affected segments",
         },
         "scenario_occurrences": {
             "series": aggregation["scenario_occurrence_counts"],
             "filename": "overall_gvfk_scenario_occurrences",
-            "title": "GVFK Impact Overview – Scenario Count",
-            "subtitle": "Each GVFK is colored by the total number of exceedances across all flow scenarios.",
-            "legend": "Scenario exceedance count",
-            "metric_label": "Scenario exceedance count",
+            "title": "GVFK Impact Overview - Scenario Count",
+            "subtitle": "Each GVFK is colored by the total number of Step 6 flux rows (site x scenario) impacting it.",
+            "legend": "Scenario impact count",
+            "metric_label": "Scenario impact count",
         },
     }
 
     river_geoms = {}
-    if rivers_web is not None and not rivers_web.empty and "ov_id" in rivers_web.columns:
-        for _, row in rivers_web.iterrows():
-            seg_id = _normalize_segment_id(row.get("ov_id"))
-            if seg_id and row.geometry is not None:
-                river_geoms[seg_id] = row.geometry
+    if rivers_web is not None and not rivers_web.empty:
+        rivers_with_fid = rivers_web.reset_index().rename(columns={"index": "River_FID"})
+        for _, row in rivers_with_fid.iterrows():
+            seg_fid = row.get("River_FID")
+            if row.geometry is None:
+                continue
+            try:
+                seg_fid_int = int(seg_fid)
+            except Exception:
+                continue
+            river_geoms[seg_fid_int] = row.geometry
 
     scenario_counts_map = aggregation["scenario_occurrence_counts"].to_dict()
     details_by_gvfk = aggregation["details_by_gvfk"]
@@ -358,29 +367,34 @@ def _create_overall_exceedance_maps(
         center_lat, center_lon = 56.0, 10.0
 
     output_dir = get_visualization_path("step6", "combined", "overall")
-    affected_segment_ids = (
-        exceed_segments["Nearest_River_ov_id"].dropna().map(str).unique()
+
+    # Filter to segments with confirmed MKK exceedance
+    exceed_fids = set(
+        segment_summary.loc[
+            segment_summary.get("Has_MKK_Exceedance", False) == True, "Nearest_River_FID"
+        ]
+        .dropna()
+        .astype(int)
+        .unique()
     )
-    if site_flux is not None and not site_flux.empty and len(affected_segment_ids) > 0:
-        flux_segment_ids = site_flux["Nearest_River_ov_id"].astype(str)
-        mask = flux_segment_ids.isin(affected_segment_ids)
-        overall_flux = site_flux[mask].copy()
-        overall_flux["Nearest_River_ov_id"] = flux_segment_ids[mask]
+    if exceed_fids:
+        overall_flux = site_flux[site_flux["Nearest_River_FID"].isin(exceed_fids)].copy()
     else:
         overall_flux = pd.DataFrame()
-
-    exceed_segment_ids = set(segment_lookup.keys())
+    affected_segment_ids = set(overall_flux["Nearest_River_FID"].dropna().astype(int).unique())
 
     def _add_river_basemap(fmap: folium.Map) -> None:
-        if rivers_web is None or rivers_web.empty:
+        # Show all rivers for context if available, otherwise fallback to GVFK-contact set
+        display_rivers = rivers_all_web if rivers_all_web is not None else rivers_web
+        if display_rivers is None or display_rivers.empty:
             return
         base_group = folium.FeatureGroup(name="All river segments", show=True)
         folium.GeoJson(
-            rivers_web,
+            display_rivers,
             style_function=lambda x: {
-                "color": "#1f77b4",  # Clear blue instead of gray
-                "weight": 2.0,  # Increased from 1.2
-                "opacity": 0.6,  # Increased from 0.35
+                "color": "#1f77b4",
+                "weight": 2.0,
+                "opacity": 0.35,
             },
         ).add_to(base_group)
         base_group.add_to(fmap)
@@ -478,34 +492,29 @@ def _create_overall_exceedance_maps(
         # Layer 2: River basemap (all segments, faint)
         _add_river_basemap(m)
 
-        # Layer 3: Exceeding segments (highlighted)
-        # Combine all exceeding segments into a single GeoDataFrame to avoid legend clutter
-        if exceed_segment_ids:
+        # Layer 3: Affected segments (highlighted)
+        # Combine all affected segments into a single GeoDataFrame to avoid legend clutter
+        if affected_segment_ids:
             exceeding_features = []
-            for seg_id, info in segment_lookup.items():
-                geom = river_geoms.get(seg_id)
+            for seg_fid in affected_segment_ids:
+                info = segment_lookup.get(seg_fid, {})
+                geom = river_geoms.get(seg_fid)
                 if geom is None:
                     continue
 
-                max_ratio = info.get("max_ratio")
-                if isinstance(max_ratio, (int, float)) and np.isfinite(max_ratio):
-                    ratio_text = f"{max_ratio:.2f}x MKK"
-                else:
-                    ratio_text = "n/a"
-
                 popup_html = f"""
-                <b>Segment {seg_id}</b><br>
+                <b>Segment FID {seg_fid}</b><br>
                 {info.get('segment_name', 'Unknown')}<br>
+                ov_id: {info.get('segment_id', 'N/A')}<br>
                 GVFK: {info.get('segment_gvfk', 'N/A')}<br>
-                Scenarios: {info.get('scenarios', 'n/a')}<br>
-                Max exceedance: {ratio_text}<br>
+                Categories: {info.get('categories', 'n/a')}<br>
                 Sites: {info.get('site_count', 0)} ({info.get('site_ids', '')})
                 """
 
                 exceeding_features.append({
                     'geometry': geom,
                     'properties': {
-                        'segment_id': seg_id,
+                        'segment_fid': seg_fid,
                         'popup_html': popup_html
                     }
                 })
@@ -529,7 +538,7 @@ def _create_overall_exceedance_maps(
                         parse_html=True,
                         max_width=350,
                     ),
-                    name="Exceeding segments (MKK violations)",
+                    name="Affected segments (Step 6 flux)",
                 ).add_to(m)
 
         # Layer 4: Q-points
@@ -565,151 +574,97 @@ def _create_overall_exceedance_maps(
         print(f"      Saved overall GVFK map ({method}) to {output_path}")
 
 
-def _aggregate_gvfk_exceedances(
-    exceed_segments: pd.DataFrame,
-    gvfk_exceedances: pd.DataFrame | None = None,
+
+def _aggregate_gvfk_impacts(
+    site_flux: pd.DataFrame,
 ) -> Dict[str, object] | None:
     """
-    Aggregate exceedance counts per GVFK using site-level GVFK assignments.
+    Aggregate impact counts per GVFK using all Step 6 flux rows (binary impact view).
 
-    Uses gvfk_exceedances (site-level) instead of splitting River_Segment_GVFK
-    to avoid inflating count with boundary aquifers.
+    Counts per GVFK:
+    - unique_segment_counts: unique river segments receiving flux
+    - scenario_occurrence_counts: total flux rows (site x scenario) impacting the GVFK
+    Also builds segment-level lookup for popups.
     """
 
-    required_columns = [
-        "Nearest_River_ov_id",
-        "River_Segment_GVFK",
-        "Failing_Scenarios",
-    ]
-    for col in required_columns:
-        if col not in exceed_segments.columns:
-            print(f"      Required column '{col}' missing from segment summary.")
-            return None
-
-    records = []
-    details_by_gvfk: Dict[str, List[Dict[str, object]]] = defaultdict(list)
-    segment_lookup: Dict[str, Dict[str, object]] = {}
-
-    # Build segment lookup for details
-    for _, row in exceed_segments.iterrows():
-        segment_id = _normalize_segment_id(row.get("Nearest_River_ov_id"))
-        if not segment_id:
-            continue
-
-        if segment_id not in segment_lookup:
-            segment_lookup[segment_id] = {
-                "segment_name": row.get("River_Segment_Name"),
-                "segment_gvfk": row.get("River_Segment_GVFK"),
-                "scenarios": row.get("Failing_Scenarios", ""),
-                "max_ratio": row.get("Max_Exceedance_Ratio"),
-                "site_count": row.get("Site_Count")
-                or row.get("Contributing_Site_Count"),
-                "site_ids": row.get("Site_IDs") or row.get("Contributing_Site_IDs"),
-            }
-
-    # Use site-level GVFK from gvfk_exceedances if available
-    if gvfk_exceedances is not None and not gvfk_exceedances.empty:
-        # DEBUG: Check what GVFK columns are available
-        print(f"      DEBUG: gvfk_exceedances columns: {list(gvfk_exceedances.columns)}")
-        print(f"      DEBUG: Unique site GVFK: {gvfk_exceedances['GVFK'].nunique()}")
-        if 'River_Segment_GVFK' in gvfk_exceedances.columns:
-            print(f"      DEBUG: Unique River_Segment_GVFK (before split): {gvfk_exceedances['River_Segment_GVFK'].nunique()}")
-
-        # Group by GVFK and segment to get unique GVFK-segment pairs
-        for _, gvfk_row in gvfk_exceedances.iterrows():
-            gvfk_value = gvfk_row.get("GVFK")
-            segment_id = _normalize_segment_id(gvfk_row.get("Nearest_River_ov_id"))
-
-            if not gvfk_value or not segment_id:
-                continue
-
-            norm_gvfk = _normalize_gvfk_id(gvfk_value)
-            if not norm_gvfk:
-                continue
-
-            # Get segment details from lookup
-            segment_info = segment_lookup.get(segment_id, {})
-            scenario_count = max(_count_unique_values(segment_info.get("scenarios", "")), 1)
-
-            records.append(
-                {
-                    "GVFK": norm_gvfk,
-                    "Segment_ID": segment_id,
-                    "Scenario_Count": scenario_count,
-                }
-            )
-
-            # Only add to details if not already present
-            existing = details_by_gvfk.get(norm_gvfk, [])
-            if not any(d.get("segment_id") == segment_id for d in existing):
-                details_by_gvfk[norm_gvfk].append(
-                    {
-                        "segment_id": segment_id,
-                        "segment_name": segment_info.get("segment_name", ""),
-                        "scenarios": segment_info.get("scenarios", ""),
-                        "max_ratio": segment_info.get("max_ratio"),
-                        "site_count": segment_info.get("site_count"),
-                        "site_ids": segment_info.get("site_ids", ""),
-                        "categories": segment_info.get("categories", ""),
-                    }
-                )
-    else:
-        # Fallback: split River_Segment_GVFK (old behavior)
-        print("      Warning: Using fallback GVFK aggregation (may show inflated count)")
-        for _, row in exceed_segments.iterrows():
-            segment_id = _normalize_segment_id(row.get("Nearest_River_ov_id"))
-            if not segment_id:
-                continue
-
-            gvfk_values = _split_multi_value(row.get("River_Segment_GVFK"))
-            if not gvfk_values:
-                continue
-
-            scenario_count = max(_count_unique_values(row.get("Failing_Scenarios")), 1)
-
-            for gvfk_value in gvfk_values:
-                norm_gvfk = _normalize_gvfk_id(gvfk_value)
-                if not norm_gvfk:
-                    continue
-
-                records.append(
-                    {
-                        "GVFK": norm_gvfk,
-                        "Segment_ID": segment_id,
-                        "Scenario_Count": scenario_count,
-                    }
-                )
-                details_by_gvfk[norm_gvfk].append(
-                    {
-                        "segment_id": segment_id,
-                        "segment_name": row.get("River_Segment_Name"),
-                        "scenarios": row.get("Failing_Scenarios", ""),
-                        "max_ratio": row.get("Max_Exceedance_Ratio"),
-                        "site_count": row.get("Site_Count")
-                        or row.get("Contributing_Site_Count"),
-                        "site_ids": row.get("Site_IDs") or row.get("Contributing_Site_IDs"),
-                        "categories": row.get("Categories", ""),
-                    }
-                )
-
-    if not records:
+    if site_flux is None or site_flux.empty:
         return None
 
-    link_df = pd.DataFrame.from_records(records)
+    required_columns = [
+        "GVFK",
+        "Nearest_River_ov_id",
+        "River_Segment_Name",
+        "River_Segment_GVFK",
+        "Lokalitet_ID",
+        "Qualifying_Category",
+        "Qualifying_Substance",
+    ]
+    for col in required_columns:
+        if col not in site_flux.columns:
+            print(f"      Required column '{col}' missing from site_flux.")
+            return None
 
-    # DEBUG: Show what we're aggregating
-    print(f"      DEBUG: Created {len(records)} GVFK-segment records from iteration")
-    print(f"      DEBUG: Unique GVFK in records: {link_df['GVFK'].nunique()}")
+    working = site_flux.copy()
+    working["__gvfk_norm"] = working["GVFK"].apply(_normalize_gvfk_id)
+    working["__seg_fid"] = pd.to_numeric(working["Nearest_River_FID"], errors="coerce")
+    working["__seg_id_norm"] = working["Nearest_River_ov_id"].apply(_normalize_segment_id)
+    working = working.dropna(subset=["__gvfk_norm", "__seg_fid"])
 
-    segment_counts = (
-        link_df.groupby("GVFK")["Segment_ID"].nunique().sort_values(ascending=False)
-    )
+    if working.empty:
+        return None
+
+    segment_counts = working.groupby("__gvfk_norm")["__seg_fid"].nunique().sort_values(ascending=False)
     segment_counts.name = "unique_segment_count"
 
-    scenario_counts = link_df.groupby("GVFK")["Scenario_Count"].sum().sort_values(
-        ascending=False
-    )
-    scenario_counts.name = "scenario_exceedance_count"
+    scenario_counts = working.groupby("__gvfk_norm").size().sort_values(ascending=False)
+    scenario_counts.name = "scenario_occurrence_counts"
+
+    segment_lookup: Dict[str, Dict[str, object]] = {}
+    for seg_fid, group in working.groupby("__seg_fid"):
+        segment_name_series = group["River_Segment_Name"].dropna()
+        segment_gvfk_values = {
+            _normalize_gvfk_id(val)
+            for val in group["River_Segment_GVFK"].dropna().astype(str).unique()
+            if _normalize_gvfk_id(val)
+        }
+        categories = {str(c) for c in group["Qualifying_Category"].dropna().unique()}
+        site_ids = {str(s) for s in group["Lokalitet_ID"].dropna().unique()}
+        ov_ids = {str(v) for v in group["Nearest_River_ov_id"].dropna().unique()}
+
+        segment_lookup[seg_fid] = {
+            "segment_name": segment_name_series.iloc[0] if not segment_name_series.empty else "",
+            "segment_gvfk": "; ".join(sorted(segment_gvfk_values)) if segment_gvfk_values else "",
+            "segment_id": "; ".join(sorted(ov_ids)) if ov_ids else "",
+            "site_count": len(site_ids),
+            "site_ids": ", ".join(sorted(site_ids)),
+            "categories": ", ".join(sorted(categories)) if categories else "n/a",
+        }
+
+    details_by_gvfk: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    for seg_fid, group in working.groupby("__seg_fid"):
+        lookup = segment_lookup.get(seg_fid, {})
+        segment_name = lookup.get("segment_name", "")
+        segment_gvfk = lookup.get("segment_gvfk", "")
+        segment_id = lookup.get("segment_id", "")
+        categories = lookup.get("categories", "n/a")
+        site_count = lookup.get("site_count", 0)
+        site_ids = lookup.get("site_ids", "")
+        scenario_count = group["Qualifying_Substance"].nunique()
+
+        for gvfk_val in sorted({val for val in group["__gvfk_norm"].unique() if val}):
+            details_by_gvfk[gvfk_val].append(
+                {
+                    "segment_id": segment_id,
+                    "segment_fid": seg_fid,
+                    "segment_name": segment_name,
+                    "segment_gvfk": segment_gvfk,
+                    "scenarios": scenario_count,
+                    "max_ratio": None,
+                    "site_count": site_count,
+                    "site_ids": site_ids,
+                    "categories": categories,
+                }
+            )
 
     return {
         "unique_segment_counts": segment_counts,
@@ -720,109 +675,62 @@ def _aggregate_gvfk_exceedances(
 
 
 def _load_gvfk_geodata() -> Tuple[gpd.GeoDataFrame, str] | None:
-    """Load GVFK polygons, returning GeoDataFrame in WGS84 and ID column."""
+    """Load GVFK polygons for overall maps."""
+    gvfk_id_column = COLUMN_MAPPINGS["grundvand"]["gvfk_id"]
+    try:
+        gdf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
+    except Exception as exc:
+        print(f"      Error loading GVFK polygons: {exc}")
+        return None
 
-    candidate_sources = [
-        (get_output_path("step3_gvfk_polygons"), None),
-        (GRUNDVAND_PATH, GRUNDVAND_LAYER_NAME),
-    ]
+    if gvfk_id_column not in gdf.columns:
+        print(f"      GVFK id column '{gvfk_id_column}' not found in GVFK layer.")
+        return None
 
-    for path, layer in candidate_sources:
-        path = Path(path)
-        if not path.exists():
-            continue
-        try:
-            if layer and path.suffix.lower() == ".gdb":
-                gvfk_gdf = gpd.read_file(path, layer=layer)
-            else:
-                gvfk_gdf = gpd.read_file(path)
-        except Exception as exc:
-            print(f"      Warning: Failed to load GVFK polygons from {path}: {exc}")
-            continue
+    try:
+        gdf = gdf.to_crs("EPSG:4326")
+    except Exception:
+        # If CRS is missing, assume EPSG:25832 then convert
+        if gdf.crs is None:
+            gdf = gdf.set_crs("EPSG:25832", allow_override=True)
+        gdf = gdf.to_crs("EPSG:4326")
 
-        id_column = _find_gvfk_id_column(gvfk_gdf.columns)
-        if not id_column:
-            print(
-                f"      Warning: Could not identify GVFK ID column in dataset {path}."
-            )
-            continue
-
-        if gvfk_gdf.crs is None:
-            gvfk_gdf = gvfk_gdf.set_crs("EPSG:25832", allow_override=True)
-
-        gvfk_gdf = gvfk_gdf.to_crs("EPSG:4326")
-        return gvfk_gdf, id_column
-
-    return None
-
-
-def _find_gvfk_id_column(columns: List[str]) -> str | None:
-    """Identify the GVFK identifier column from a list of column names."""
-    normalized = {col.lower(): col for col in columns}
-    preferred = [
-        "gvfk",
-        "gvforekom",
-        "gv_forekom",
-        "gvfk_id",
-        "magasinid",
-        "navn",
-        "name",
-    ]
-
-    for key in preferred:
-        if key in normalized:
-            return normalized[key]
-    return None
+    return gdf, gvfk_id_column
 
 
 def _prepare_gvfk_popup(
-    display_name: str | None,
+    display_name: str,
     norm_id: str,
-    metric_value: float,
+    metric_value: object,
     metric_label: str,
-    scenario_count: float | int,
-    segment_details: List[Dict[str, object]],
+    scenario_count: object,
+    segment_details: List[Dict[str, object]] | None = None,
 ) -> str:
-    """Create HTML popup for a GVFK polygon."""
+    """Build HTML popup for GVFK polygons in overall maps."""
 
-    name = display_name or norm_id or "Ukendt GVFK"
+    metric_val = metric_value if pd.notna(metric_value) else "n/a"
+    scenario_val = scenario_count if pd.notna(scenario_count) else "n/a"
 
-    if isinstance(metric_value, (int, float)) and np.isfinite(metric_value):
-        if abs(metric_value - int(metric_value)) < 1e-6:
-            metric_text = f"{int(metric_value)}"
-        else:
-            metric_text = f"{metric_value:.1f}"
-    else:
-        metric_text = "0"
-
-    if isinstance(scenario_count, (int, float)) and np.isfinite(scenario_count):
-        scenario_text = f"{int(scenario_count)}"
-    else:
-        scenario_text = "0"
-
-    html = [
-        f"<b>{name}</b>",
-        f"{metric_label}: {metric_text}",
-        f"Scenario exceedances: {scenario_text}",
-    ]
-
+    details_html = ""
     if segment_details:
-        html.append("<hr><b>Segments with exceedance:</b><ul>")
-        for detail in segment_details[:5]:
-            seg_id = detail.get("segment_id", "N/A")
-            seg_name = detail.get("segment_name", "Unknown")
-            scenarios = detail.get("scenarios", "n/a")
-            categories = detail.get("categories", "")
-            site_count = detail.get("site_count") or 0
-            html.append(
-                f"<li><b>{seg_id}</b> ({seg_name}) – Scenarios: {scenarios or 'n/a'}; "
-                f"Sites: {site_count}; Categories: {categories or 'n/a'}</li>"
-            )
-        if len(segment_details) > 5:
-            html.append(f"<li>...and {len(segment_details) - 5} more segments</li>")
-        html.append("</ul>")
+        rows = []
+        for entry in segment_details:
+            seg_id = entry.get("segment_id", "")
+            seg_name = entry.get("segment_name", "")
+            seg_scen = entry.get("scenarios", "n/a")
+            seg_sites = entry.get("site_ids", "")
+            rows.append(f"<li><b>{seg_id}</b> {seg_name} — scenarios: {seg_scen}; sites: {seg_sites}</li>")
+        details_html = "<ul>" + "".join(rows) + "</ul>"
 
-    return "<br>".join(html)
+    popup_html = f"""
+    <b>GVFK: {display_name}</b><br>
+    ID: {norm_id}<br>
+    {metric_label}: {metric_val}<br>
+    Scenario count: {scenario_val}<br>
+    """
+    if details_html:
+        popup_html += f"<hr style='margin:4px 0;'>Segments:<br>{details_html}"
+    return popup_html
 
 
 def _split_multi_value(value: object) -> List[str]:
@@ -1119,18 +1027,24 @@ def _add_connections(
             continue
         site_polygon = site_geom.iloc[0].geometry
 
-        # Get river segment geometry - filter by BOTH ov_id AND GVFK
-        # (same ov_id can have multiple segments, some with/without GVFK contact)
-        river_segment = rivers_web[
+        # Get river segment geometry - filter by BOTH ov_id AND GVFK.
+        # If multiple segments share the same ov_id, pick the one closest to the site.
+        candidates = rivers_web[
             (rivers_web["ov_id"] == river_id) &
             (rivers_web["GVForekom"] == gvfk_id)
         ]
-        if river_segment.empty:
-            # Fallback: try just ov_id if GVFK filter fails
-            river_segment = rivers_web[rivers_web["ov_id"] == river_id]
-            if river_segment.empty:
-                continue
-        river_geom = river_segment.iloc[0].geometry
+        if candidates.empty:
+            candidates = rivers_web[rivers_web["ov_id"] == river_id]
+        if candidates.empty:
+            continue
+        candidates = candidates.copy()
+        if len(candidates) > 1:
+            candidates_proj = candidates.to_crs(epsg=25832)
+            site_proj = gpd.GeoSeries([site_polygon], crs=sites_web.crs).to_crs(epsg=25832).iloc[0]
+            candidates["__dist_tmp"] = candidates_proj.geometry.distance(site_proj)
+        else:
+            candidates["__dist_tmp"] = 0
+        river_geom = candidates.sort_values("__dist_tmp").iloc[0].geometry
 
         # CONNECTION 1: Site → River segment (contamination pathway)
         closest_point_on_site_river, closest_point_on_river = nearest_points(site_polygon, river_geom)
@@ -1250,18 +1164,24 @@ def _add_connections_basic(
             continue
         site_polygon = site_geom.iloc[0].geometry
 
-        # Get river segment geometry - filter by BOTH ov_id AND GVFK
-        # (same ov_id can have multiple segments, some with/without GVFK contact)
-        river_segment = rivers_web[
+        # Get river segment geometry - filter by BOTH ov_id AND GVFK.
+        # If multiple segments share the same ov_id, pick the one closest to the site.
+        river_candidates = rivers_web[
             (rivers_web["ov_id"] == river_id) &
             (rivers_web["GVForekom"] == gvfk_id)
         ]
-        if river_segment.empty:
-            # Fallback: try just ov_id if GVFK filter fails
-            river_segment = rivers_web[rivers_web["ov_id"] == river_id]
-            if river_segment.empty:
-                continue
-        river_geom = river_segment.iloc[0].geometry
+        if river_candidates.empty:
+            river_candidates = rivers_web[rivers_web["ov_id"] == river_id]
+        if river_candidates.empty:
+            continue
+        river_candidates = river_candidates.copy()
+        if len(river_candidates) > 1:
+            river_candidates_proj = river_candidates.to_crs(epsg=25832)
+            site_proj = gpd.GeoSeries([site_polygon], crs=sites_web.crs).to_crs(epsg=25832).iloc[0]
+            river_candidates["__dist_tmp"] = river_candidates_proj.geometry.distance(site_proj)
+        else:
+            river_candidates["__dist_tmp"] = 0
+        river_geom = river_candidates.sort_values("__dist_tmp").iloc[0].geometry
 
         # CONNECTION 1: Site → River segment
         closest_point_on_site_river, closest_point_on_river = nearest_points(site_polygon, river_geom)

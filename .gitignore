@@ -8,7 +8,7 @@
 /notat.docx
 /Præsentationer
 /Resultater
-
+/kode/__pycache__
 *.pyc
 *.png
 *.jpg

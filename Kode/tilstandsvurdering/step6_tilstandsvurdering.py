@@ -1134,18 +1134,15 @@ def _aggregate_flux_by_segment(flux_details: pd.DataFrame) -> pd.DataFrame:
     Aggregate fluxes per river segment and substance.
     Returns a DataFrame summarising totals and basic statistics.
 
-    IMPORTANT: Groups ONLY by ov_id (segment identifier), NOT by FID/Length/GVFK!
-    A single ov_id can have multiple FIDs if sites from different GVFKs contribute.
-    Example: DKRIVER2054 has FID 1989 (from dkmj_72_ks) and FID 1990 (from dkmj_1089_ks),
-    but all sites should be aggregated into ONE row per substance.
+    IMPORTANT: Use River_FID to keep split geometries distinct even if ov_id repeats.
     """
     if flux_details.empty:
         return pd.DataFrame()
 
     records: List[Dict[str, object]] = []
-    # Group ONLY by segment identifier (ov_id), category, and substance
-    # Metadata fields (FID, Length, GVFK) will be aggregated
+    # Group by FID + ov_id + category + substance
     group_columns = [
+        "Nearest_River_FID",
         "Nearest_River_ov_id",
         "Qualifying_Category",
         "Qualifying_Substance",
@@ -1153,7 +1150,7 @@ def _aggregate_flux_by_segment(flux_details: pd.DataFrame) -> pd.DataFrame:
 
     for group_keys, group_df in flux_details.groupby(group_columns, dropna=False):
         record = dict(zip(group_columns, group_keys))
-        # Aggregate metadata - take first occurrence or most common value
+        # Aggregate metadata - take first occurrence
         record["Nearest_River_FID"] = int(group_df["Nearest_River_FID"].iloc[0])
         record["River_Segment_Name"] = group_df["River_Segment_Name"].iloc[0]
         record["River_Segment_Length_m"] = group_df["River_Segment_Length_m"].iloc[0]
@@ -1286,7 +1283,12 @@ def _build_segment_summary(
     if cmix_results.empty:
         return pd.DataFrame()
 
-    group_cols = ["Nearest_River_ov_id", "River_Segment_Name", "River_Segment_GVFK"]
+    group_cols = [
+        "Nearest_River_FID",
+        "Nearest_River_ov_id",
+        "River_Segment_Name",
+        "River_Segment_GVFK",
+    ]
 
     agg_funcs = {
         "Total_Flux_kg_per_year": "sum",
@@ -1304,12 +1306,12 @@ def _build_segment_summary(
 
     # Add site counts and IDs
     site_info = (
-        flux_details.groupby("Nearest_River_ov_id", dropna=False)["Lokalitet_ID"]
+        flux_details.groupby(["Nearest_River_FID", "Nearest_River_ov_id"], dropna=False)["Lokalitet_ID"]
         .agg(Site_Count="nunique", Site_IDs=lambda x: ", ".join(sorted(set(x))))
         .reset_index()
     )
 
-    summary = summary.merge(site_info, on="Nearest_River_ov_id", how="left")
+    summary = summary.merge(site_info, on=["Nearest_River_FID", "Nearest_River_ov_id"], how="left")
 
     # Rename columns (keep Total_Flux_kg_per_year for backwards compatibility with visualization code)
     summary = summary.rename(
@@ -1363,6 +1365,7 @@ def _extract_exceedance_views(
         "Qualifying_Category",
         "Qualifying_Substance",
         "Pollution_Flux_kg_per_year",
+        "Nearest_River_FID",
         "Nearest_River_ov_id",
         "River_Segment_Name",
         "River_Segment_GVFK",
@@ -1377,6 +1380,7 @@ def _extract_exceedance_views(
 
     gvfk_columns = [
         "GVFK",
+        "Nearest_River_FID",
         "Nearest_River_ov_id",
         "River_Segment_Name",
         "River_Segment_GVFK",
@@ -1399,7 +1403,7 @@ def _extract_exceedance_views(
     if exceedances.empty:
         return pd.DataFrame(columns=site_columns), pd.DataFrame(columns=gvfk_columns)
 
-    merge_cols = ["Nearest_River_ov_id", "Qualifying_Substance", "Qualifying_Category"]
+    merge_cols = ["Nearest_River_FID", "Nearest_River_ov_id", "Qualifying_Substance", "Qualifying_Category"]
     subset_cols = merge_cols + [
         "Flow_Scenario",
         "Cmix_ug_L",
@@ -1437,6 +1441,7 @@ def _extract_exceedance_views(
 
     group_cols = [
         "GVFK",
+        "Nearest_River_FID",
         "Nearest_River_ov_id",
         "River_Segment_Name",
         "River_Segment_GVFK",
