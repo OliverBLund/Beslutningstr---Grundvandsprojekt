@@ -160,10 +160,12 @@ def create_gvfk_progression_chart(figures_path):
     """
     Create bar chart showing GVFK count progression through workflow steps.
     Verifies that filtering logic is working correctly at each step.
+    Note: Counts UNIQUE GVFKs, not polygon features (some GVFKs have multiple polygons).
     """
-    from config import GRUNDVAND_LAYER_NAME, GRUNDVAND_PATH, get_output_path
+    from config import GRUNDVAND_LAYER_NAME, GRUNDVAND_PATH, get_output_path, COLUMN_MAPPINGS
     import geopandas as gpd
 
+    gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
     steps = []
     counts = []
 
@@ -171,7 +173,7 @@ def create_gvfk_progression_chart(figures_path):
     try:
         all_gvfk = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
         steps.append('Step 1:\nAll GVFKs')
-        counts.append(len(all_gvfk))
+        counts.append(all_gvfk[gvfk_col].nunique())  # Count unique GVFKs, not polygons
     except:
         pass
 
@@ -181,7 +183,7 @@ def create_gvfk_progression_chart(figures_path):
         try:
             river_gvfk = gpd.read_file(step2_file)
             steps.append('Step 2:\nRiver Contact')
-            counts.append(len(river_gvfk))
+            counts.append(river_gvfk[gvfk_col].nunique())  # Count unique GVFKs, not polygons
         except:
             pass
 
@@ -191,7 +193,7 @@ def create_gvfk_progression_chart(figures_path):
         try:
             v1v2_gvfk = gpd.read_file(step3_file)
             steps.append('Step 3:\nV1/V2 Sites')
-            counts.append(len(v1v2_gvfk))
+            counts.append(v1v2_gvfk[gvfk_col].nunique())  # Count unique GVFKs, not polygons
         except:
             pass
 

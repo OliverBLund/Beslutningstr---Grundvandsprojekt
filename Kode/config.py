@@ -1,9 +1,30 @@
-"""Core configuration for groundwater analysis workflows.
+"""
+CONFIGURATION FILE - Groundwater Risk Assessment Workflow
 
-Centralized configuration for file locations, workflow settings, and paths.
-All paths use `pathlib.Path` objects for cross-platform compatibility.
+This file contains all settings and paths for the workflow.
 
-User-configurable settings are defined in WORKFLOW_SETTINGS below.
+WHAT TO MODIFY:
+===============
+1. WORKFLOW_SETTINGS (lines ~80-100):
+   - risk_threshold_m: Distance threshold for risk assessment
+   - gvd_max_infiltration_cap: Maximum infiltration value (mm/year)
+   - Other workflow parameters
+
+2. Input data paths (lines ~200-230):
+   - Update if your data files are in different locations
+   - Most users won't need to change these
+
+3. Column mappings (lines ~150-200):
+   - Only change if your input data has different column names
+
+WHAT NOT TO MODIFY:
+===================
+- Project structure (BASE_DIR, RESULTS_DIR, etc.)
+- Output file naming conventions
+- Helper functions at the end
+- Concentration/threshold constants (unless you know what you're doing)
+
+All paths use pathlib.Path for cross-platform compatibility.
 """
 
 from __future__ import annotations
@@ -105,6 +126,12 @@ WORKFLOW_SETTINGS = {
 # Step 6 Map Generation Settings
 # -------------------------------------------------------------------
 STEP6_MAP_SETTINGS = {
+    "generate_combined_maps": False,  # Generate combined site/Q-point maps
+    "generate_overall_maps": True,  # Generate aggregated GVFK exceedance maps
+    "overall_map_count_methods": [
+        "unique_segments",
+        "scenario_occurrences",
+    ],
     "generate_category_maps": True,  # Generate maps for all categories
     "generate_compound_maps": True,  # Generate specific compound maps
     # Specific compounds to generate maps for (expandable list)
@@ -602,56 +629,9 @@ FLOW_SCENARIO_COLUMNS = {
 SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
 
 # -------------------------------------------------------------------
-# Module exports
-# -------------------------------------------------------------------
-__all__ = [
-    # Directories
-    "BASE_DIR",
-    "PROJECT_ROOT",
-    "DATA_DIR",
-    "SHAPE_DIR",
-    "RESULTS_DIR",
-    "FIGURES_DIR",
-    "CACHE_DIR",
-    # Input files
-    "GRUNDVAND_DATA_DIR",
-    "GRUNDVAND_GDB_PATH",
-    "GRUNDVAND_LAYER_NAME",
-    "GRUNDVAND_PATH",
-    "RIVERS_LAYER_NAME",
-    "RIVERS_PATH",
-    "V1_CSV_PATH",
-    "V2_CSV_PATH",
-    "V1_SHP_PATH",
-    "V2_SHP_PATH",
-    "GVD_RASTER_DIR",
-    "GVFK_AREA_VOLUME_PATH",
-    "RIVER_FLOW_POINTS_PATH",
-    "RIVER_FLOW_POINTS_LAYER",
-    # Cache files
-    "V1_DISSOLVED_CACHE",
-    "V2_DISSOLVED_CACHE",
-    # Settings
-    "WORKFLOW_SETTINGS",
-    "STEP6_MAP_SETTINGS",
-    # Output dictionaries
-    "CORE_OUTPUTS",
-    "OPTIONAL_OUTPUTS",
-    "OUTPUT_FILES",
-    # Column mappings
-    "COLUMN_MAPPINGS",
-    # Helper functions
-    "ensure_results_directory",
-    "ensure_cache_directory",
-    "get_output_path",
-    "get_visualization_path",
-    "validate_input_files",
-    "is_cache_valid",
-    # Step 6 constants
-    "STANDARD_CONCENTRATIONS",
-    "CATEGORY_SCENARIOS",
-    "MODELSTOFFER",
-    "MKK_THRESHOLDS",
-    "FLOW_SCENARIO_COLUMNS",
-    "SECONDS_PER_YEAR",
-]
+
+# ------------------------------------------------------------------
+# End of configuration
+# 
+# ------------------------------------------------------------------
+# All settings above are available for import by the workflow.

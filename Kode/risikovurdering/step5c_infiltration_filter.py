@@ -434,6 +434,10 @@ def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFra
         print(f"  - Updated: {step5_path.name}")
         print(f"  - Saved removed sites: {removed_path.name}")
 
+    # Create visualization of removed sites (upward flux zones)
+    if not removed_sites.empty:
+        _create_upward_flux_map(removed_sites, site_geometries, verbose=verbose)
+
     return filtered_results, removed_sites
 
 
@@ -443,3 +447,126 @@ if __name__ == "__main__":
     print("\n- Step 5c infiltration filtering completed")
     print(f"  Final results: {len(filtered):,} combinations, {filtered['Lokalitet_ID'].nunique():,} sites")
     print(f"  Removed: {removed['Lokalitet_ID'].nunique():,} sites with upward flow")
+
+
+def _create_upward_flux_map(
+    removed_df: pd.DataFrame,
+    site_geometries: gpd.GeoDataFrame,
+    verbose: bool = True,
+) -> None:
+    """
+    Create interactive map showing sites excluded for upward groundwater flux.
+
+    This visualization shows sites BEFORE they are filtered out, helping validate
+    the infiltration-based filtering logic.
+    """
+    if verbose:
+        print("\nCreating upward flux zone visualization...")
+
+    if removed_df.empty:
+        if verbose:
+            print("  No sites with upward flux - skipping map.")
+        return
+
+    if site_geometries is None or site_geometries.empty:
+        if verbose:
+            print("  Site geometries unavailable - cannot create map.")
+        return
+
+    try:
+        import folium
+        import numpy as np
+    except ImportError:
+        if verbose:
+            print("  Folium not available - skipping map.")
+        return
+
+    # Prepare geometries
+    geometry_df = site_geometries.rename(columns={"Lokalitet_": "Lokalitet_ID"})[
+        ["Lokalitet_ID", "geometry"]
+    ]
+    joined = removed_df.merge(geometry_df, on="Lokalitet_ID", how="left")
+    joined = joined.dropna(subset=["geometry"])
+
+    if joined.empty:
+        if verbose:
+            print("  Removed sites missing geometries - skipping map.")
+        return
+
+    removed_gdf = gpd.GeoDataFrame(joined, geometry="geometry", crs=site_geometries.crs)
+    if removed_gdf.crs is None:
+        if verbose:
+            print("  CRS undefined - cannot create map.")
+        return
+
+    removed_gdf = removed_gdf.to_crs(epsg=4326)
+
+    # Calculate map center
+    bounds = removed_gdf.total_bounds
+    if np.any(~np.isfinite(bounds)):
+        if verbose:
+            print("  Invalid geometry bounds - skipping map.")
+        return
+
+    center_lat = (bounds[1] + bounds[3]) / 2
+    center_lon = (bounds[0] + bounds[2]) / 2
+
+    # Create map
+    fmap = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=7,
+        tiles="CartoDB positron",
+        control_scale=True,
+    )
+
+    # Group sites by unique lokalitet for cleaner visualization
+    unique_sites = removed_gdf.drop_duplicates(subset=["Lokalitet_ID"])
+
+    # Add excluded sites to map
+    for _, row in unique_sites.iterrows():
+        popup_html = f"""
+        <div style="font-family: Arial; width: 200px;">
+            <b>Site Excluded (Upward Flux)</b><br>
+            <hr style="margin: 5px 0;">
+            Site ID: {row['Lokalitet_ID']}<br>
+            GVFK: {row.get('GVFK', 'N/A')}<br>
+            <br>
+            <i>This site was filtered in Step 5c<br>
+            due to majority upward groundwater flow</i>
+        </div>
+        """
+
+        folium.CircleMarker(
+            location=[row.geometry.centroid.y, row.geometry.centroid.x],
+            radius=6,
+            popup=folium.Popup(popup_html, max_width=250),
+            color='#d32f2f',
+            fillColor='#ef5350',
+            fillOpacity=0.7,
+            weight=2,
+        ).add_to(fmap)
+
+    # Add title
+    title_html = '''
+    <div style="position: fixed;
+                top: 10px; left: 50px; width: 400px; height: 90px;
+                background-color: white; border:2px solid grey; z-index:9999;
+                font-size:14px; padding: 10px;">
+    <h4 style="margin:0;">Step 5c: Upward Flux Zones</h4>
+    <p style="margin:5px 0; font-size:12px;">
+    Sites excluded due to upward groundwater flow (opstrømningszoner)<br>
+    Red markers = Sites NOT included in further analysis
+    </p>
+    </div>
+    '''
+    fmap.get_root().html.add_child(folium.Element(title_html))
+
+    # Save map
+    from config import get_visualization_path
+    output_dir = get_visualization_path("step5c")
+    output_file = output_dir / "upward_flux_excluded_sites.html"
+    fmap.save(str(output_file))
+
+    if verbose:
+        print(f"  ✓ Map created: {output_file.name}")
+        print(f"    Showing {len(unique_sites)} excluded sites")

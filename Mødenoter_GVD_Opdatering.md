@@ -11,28 +11,80 @@ Diskussion om anvendelse af GVD (grundvandsdannelse) raster filer i projektet. N
 
 ## 1. Er der tilsvarende raster filer for ks1, ks2 etc. i 2023 versionen på 100x100 m resolution?
 
-### Svar:
-I 2023 udgaven af DK-modellen er der blevet lavet nye navne for DK-lagene. De hedder altså **ikke længere ks1, ks2, ps4 osv.**
+### Svar: ✅ MODTAGET (11/26/2025)
 
-**Hvad vi får:**
-- **To GVD raster datasæt**: 
-  - Med indvinding
-  - Uden indvinding
-- **Ny GVFK shapefile** med kobling til de nye lagnavne
-  - Hvordan denne præcist skal anvendes er svært at sige lige nu - er nødt til at se dataen
-  - Nye GVFK navne eller de samme som før?
-  
-  Ny GVFK.shp med nye lagnavne som kan kobles til de nye raster filer (forventligt ligetil).
-  
-  Lars nævnte en python dictionary med kobling mellem nye og gamle lagnavne?
-  
-**Andre opdaterede filer (grundet nye modelkørsler):**
-- Ny **rivers.shp** fil med vandløbssegmenter
-- To **Q95 filer**:
-  - En med indvinding
-  - En med difference mellem indvinding og ingen indvinding (?)
+### ⚠️ KRITISK ÆNDRING: Nyt lagnavne system
 
-**Forventet levering:** Næste uge
+**GAMLE (2019) lagnavne:**
+- `ks1`, `ks2`, `ks3`, `ks4`, `ks5`, `ks6`
+- `ps1`, `ps2`, `ps3`, `ps4`, `ps5`, `ps6`
+- `kalk`
+- `lag1`, `lag2`, `lag3`, `lag4`, `lag5`, `lag6` (Bornholm)
+
+**NYE (2023) lagnavne - 20 unikke lag:**
+
+**dk16 model (2185 GVFK):**
+- `kvs_0200`, `kvs_0400`, `kvs_1200`, `kvs_1400`, `kvs_2100`, `kvs_2300`, `kvs` (7 varianter)
+- `ods_5254`
+- `bas_5658`, `bas_6000`, `bas_6266`
+- `bds_6800`, `bds_7078`
+- `kak_8190`
+
+**dk7 model (74 GVFK - Bornholm):**
+- `lag1`, `lag2`, `lag3`, `lag4`, `lag5`, `lag6`
+
+**⭐ VIGTIGT: dk7 og dk16 bruges samtidig!**
+- dk16 filer for fastlands-Danmark (2185 GVFK)
+- dk7 filer for Bornholm (74 GVFK)
+
+---
+
+### GVD raster filer (mappe: `dkmtif/`)
+
+**Per-lag GVD filer:**
+- dk16: `dk16_gvd_kvs_0400.tif`, `dk16_gvd_ods_5254.tif`, etc. (13 unikke lag)
+- dk7: `dk7_gvd_lag1.tif` til `dk7_gvd_lag6.tif` (6 lag)
+
+**Gradient retnings filer (⭐ LØSER TRIN 1 PROBLEM!):**
+- `dk16_downwardflux_lay12.tif` - nedadrettet flux gennem lag 1-2 (Danmark)
+- `dk16_upwardflux_lay12.tif` - opadrettet flux gennem lag 1-2 (Danmark)
+- `dk7_downwardflux_lay12.tif` - nedadrettet flux (Bornholm)
+- `dk7_upwardflux_lay12.tif` - opadrettet flux (Bornholm)
+
+**Topmag filer (forenklet alternativ til per-lag sampling):**
+- `dk16_gvd_topmag.tif` - GVD for øverste magasin (Danmark)
+- `dk7_gvd_topmag.tif` - GVD for øverste magasin (Bornholm)
+
+**Travel time filer:**
+- `dk16_tr2sz.tif` og `dk7_tr2sz.tif`
+
+---
+
+### GVFK data (geodatabase: `Grunddata_results.gdb`)
+
+**Layer: `dkm_gvf_vp3genbesog_kontakt`**
+- **2259 grundvandsforekomster** (stigning fra 2044 i 2019)
+- Kolonne `GVForekom`: GVFK navne (f.eks. "dkmj_16_ks", "dkms_3645_ks")
+- Kolonne `dkmlag`: **NYE lagnavne** (f.eks. "kvs_0400", "lag2")
+- Kolonne `mag_no`: Kobling til oplands raster filer
+- **✅ GVForekom navne er 100% kompatible med gamle system!**
+  - 2042 ud af 2043 gamle GVFK navne findes stadig
+  - V1/V2 kobling via `GVForekom` vil fortsætte med at virke
+
+**Rivers layer: `Rivers_gvf_vp3genbesog_kontakt`**
+- Erstatter gamle `Rivers_gvf_rev20230825_kontakt.shp`
+- Kolonner: `GVForekom`, `Kontakt`, `ov_id`, `ov_navn`
+
+**Q-punkter layer: `dkm_qpoints_gvf_vp3genbesog_kontakt`**
+- **84,295 Q-punkter** (op fra ~60k i 2019)
+- Kolonner: `Q90`, `Q95`, `deltaQ90`, `ov_id`, `gvf_no`, `mag_no`
+- **Ny kolonne `deltaQ90`**: Difference mellem indvinding og ingen indvinding
+
+**Andre layers:**
+- `Lakes_gvf_vp3genbesog_kontakt`
+- `Sea_gvf_vp3genbesog_kontakt`
+- `TerrEcoSys_gvf_vp3genbesog_kontakt`
+- `dkm_gvf_top_magasin`
 
 ---
 
@@ -55,26 +107,68 @@ Der er diverse strategier som GEUS gør brug af når de skal anvende blandt ande
 
 ---
 
-## 3. Er infiltrations-/GVD-rasterne de rette at anvende?
+## 3. Hvordan påvirker de nye lagnavne vores workflow?
 
-### Kontekst:
-- Nuværende tilgang beholder V1/V2 lokaliteter med negative pixel værdier (opadrettet gradient)
-- Spørgsmål om alternative filer findes
-- Hvis vi skal bruge nogle andre filer, skal det stå **klokkeklart** hvilke filer det skal være
+### SIMPLE LØSNING: Samme mapping, ny kilde
 
-### Svar:
-Overordnet set virker det som om at vi får nye GVD rastere + en ny GVFK.shp fil til at koble. 
+**GAMLE SYSTEM (2019):**
+1. CSV fil: `vp3_h1_grundvandsforekomster_VP3Genbesøg.csv`
+2. Kolonner: `GVForekom` → `DK-modellag`
+3. Eksempel: "dkmj_16_ks" → "ks1 - ks2"
+4. Funktion: `load_gvfk_layer_mapping()` loader CSV
+5. Raster filer: `DKM_gvd_ks1.tif`, `DKM_gvd_ks2.tif`
 
-**Vigtige overvejelser:**
-- Dette skal gøres **forsigtigt**
-- **Check om der er stor forskel i GVFK navne** mellem de nye og de gamle
-  - Specielt vigtigt for V1 og V2 filerne
-  - Der skal måske laves en opdateret kobling af V1 og V2 lokaliteterne til den nye GVFK fil hvis det er en rigtig ny GVFK fil med alle GVFK ligesom den der anvendes lige pt i step 1
+**NYE SYSTEM (2023):**
+1. Geodatabase: `Grunddata_results.gdb` / layer: `dkm_gvf_vp3genbesog_kontakt`
+2. Kolonner: `GVForekom` → `dkmlag` (⚠️ kolonne navn ændret!)
+3. Eksempel: "dkmj_16_ks" → "kvs_0400"
+4. Funktion: `load_gvfk_layer_mapping()` skal opdateres til at loade fra geodatabase
+5. Raster filer: `dk16_gvd_kvs_0400.tif`, `dk7_gvd_lag2.tif` (⚠️ fil naming ændret!)
 
-**Yderligere filer fra Lars:**
-- **Infiltrations oplands**: Måske interessante at kigge på
-- **Flux til lag1_2 fil**: Til at undersøge om der er nedadrettet gradient for en lokalitet
-- **En anden fil**: (ikke helt fanget hvad denne indeholder)
+**Data verificeret:**
+- **2259 rækker** i geodatabase (op fra 2044 i CSV)
+- **2049 unikke GVForekom navne**
+- **20 unikke dkmlag værdier**
+- Mapping struktur er **identisk** - kun kilde og navne er ændret
+
+---
+
+### ✅ GODT NYS: GVForekom Navne Kompatibilitet
+
+**Verificeret gennem data analyse:**
+- **2042 ud af 2043** (99.95%) gamle GVForekom navne eksisterer stadig i ny geodatabase
+- **7 nye GVFK** tilføjet i 2023 systemet
+- **1 GVFK** fjernet fra 2019 systemet
+
+**Konsekvens:**
+- ✅ V1/V2 → GVFK kobling via `GVForekom` vil **fortsætte med at virke**
+- ✅ **Ingen re-mapping af V1/V2 lokaliteter nødvendig**
+- ⚠️ Kun den ene fjernede GVFK skal tjekkes (sandsynligvis ikke i V1/V2 data)
+
+---
+
+### ⭐ NYE GRADIENT RETNINGS FILER (Løser Trin 1 Problem!)
+
+**Separate upward/downward flux filer:**
+- `dk16_downwardflux_lay12.tif` (Danmark) + `dk7_downwardflux_lay12.tif` (Bornholm)
+- `dk16_upwardflux_lay12.tif` (Danmark) + `dk7_upwardflux_lay12.tif` (Bornholm)
+
+**Fordel:**
+- **Trin 1 filtrering bliver meget simplere!**
+- I stedet for at sample rå GVD og beregne flertalsprincip (>50% positive pixels):
+  - Sample `downward_flux` raster for hver lokalitet
+  - Hvis `mean(downward_flux) > threshold` → Behold lokalitet
+  - Hvis `mean(downward_flux) ≈ 0` → Fjern lokalitet (opadrettet gradient)
+
+**Trin 2 GVD filer til flux beregning:**
+- dk16: `dk16_gvd_kvs_0400.tif`, `dk16_gvd_ods_5254.tif`, etc. (13 lag-typer)
+- dk7: `dk7_gvd_lag1.tif` til `dk7_gvd_lag6.tif`
+- **ALTERNATIV**: `dk16_gvd_topmag.tif` / `dk7_gvd_topmag.tif` (øverste magasin - simplere!)
+
+**Infiltrations oplands (mappe: `magopl/`):**
+- Raster filer: `gwbcatchment_magno_kvs_0400.tif`, `gwbcatchment_magno_lag1.tif`, etc.
+- Kobles via `mag_no` kolonne i GVFK
+- Optional til validering af oplands baseret analyse
 
 ---
 
@@ -169,32 +263,294 @@ Flux (µg/s) = Areal (m²) × Koncentration (µg/L) × Infiltration_GVD (mm/år)
 
 ---
 
+## NØDVENDIGE KODE ÆNDRINGER
+
+### Oversigt over Ændringer
+
+| Komponent | 2019 System | 2023 System | Ændring Nødvendig |
+|-----------|-------------|-------------|-------------------|
+| **GVFK navne** | `GVForekom` | `GVForekom` | ✅ Ingen - 100% kompatibel |
+| **Layer mapping kilde** | CSV fil | Geodatabase layer | 🟡 Simpel - opdater load funktion |
+| **Layer mapping kolonne** | `DK-modellag` | `dkmlag` | 🟡 Simpel - find/replace kolonne navn |
+| **Lagnavne værdier** | `ks1, ks2` | `kvs_0400, lag2` | ⚠️ Informativ - påvirker raster fil navne |
+| **GVD raster fil navne** | `DKM_gvd_ks2.tif` | `dk16_gvd_kvs_0400.tif` | 🔴 Kritisk - ny fil naming logik |
+| **Rivers/Q-punkter** | Shapefile | Geodatabase layer | 🟡 Simpel - opdater load funktion |
+
+---
+
+### 1. config.py - Nye fil stier (PRIORITET 1)
+
+```python
+# === 2023 DK-MODEL FILER (VP3 Genbesøg) ===
+DK_MODEL_VERSION = "VP3_2023"  # Eller "2019" for backward compatibility
+
+# Geodatabase sti
+GRUNDDATA_RESULTS_GDB = DATA_DIR / "Ny_data_Lars_11_26_2025" / "Grunddata_results.gdb"
+DKMTIF_DIR_2023 = DATA_DIR / "Ny_data_Lars_11_26_2025" / "dkmtif"
+
+# Gradient retnings filer (Trin 1 filtrering)
+DOWNWARD_FLUX_DK16 = DKMTIF_DIR_2023 / "dk16_downwardflux_lay12.tif"  # Danmark
+DOWNWARD_FLUX_DK7 = DKMTIF_DIR_2023 / "dk7_downwardflux_lay12.tif"   # Bornholm
+UPWARD_FLUX_DK16 = DKMTIF_DIR_2023 / "dk16_upwardflux_lay12.tif"     # Optional
+UPWARD_FLUX_DK7 = DKMTIF_DIR_2023 / "dk7_upwardflux_lay12.tif"       # Optional
+
+# Topmag GVD (Trin 2 - forenklet flux beregning)
+TOPMAG_GVD_DK16 = DKMTIF_DIR_2023 / "dk16_gvd_topmag.tif"            # Danmark
+TOPMAG_GVD_DK7 = DKMTIF_DIR_2023 / "dk7_gvd_topmag.tif"              # Bornholm
+
+# ALTERNATIVT: Per-lag GVD rastere (mere præcist men komplekst)
+# Format: dk16_gvd_{lagnavne}.tif (f.eks. dk16_gvd_kvs_0400.tif)
+# Format: dk7_gvd_{lagnavne}.tif (f.eks. dk7_gvd_lag2.tif)
+```
+
+**Bemærkning:** dk7 og dk16 skal **begge** bruges - dk16 for Danmark, dk7 for Bornholm.
+
+---
+
+### 2. data_loaders.py - Opdater load_gvfk_layer_mapping() (PRIORITET 1)
+
+**NUVÆRENDE funktion (loads CSV):**
+```python
+def load_gvfk_layer_mapping() -> pd.DataFrame:
+    """Load GVFK to DK-model layer mapping."""
+    df = pd.read_csv(GVFK_LAYER_MAPPING_PATH, encoding=encoding, sep=';')
+    # Returns: GVForekom, DK-modellag
+    return df
+```
+
+**OPDATERET funktion (loads geodatabase):**
+```python
+def load_gvfk_layer_mapping() -> pd.DataFrame:
+    """Load GVFK to DK-model layer mapping from 2023 geodatabase."""
+    gdb_path = GRUNDDATA_RESULTS_GDB
+    layer = 'dkm_gvf_vp3genbesog_kontakt'
+    gdf = gpd.read_file(gdb_path, layer=layer)
+
+    # Extract only mapping columns (drop geometry for performance)
+    df = pd.DataFrame({
+        'GVForekom': gdf['GVForekom'],
+        'dkmlag': gdf['dkmlag']  # ⚠️ Kolonne navn ændret fra 'DK-modellag'
+    })
+
+    # Verificer
+    if len(df) != 2259:
+        print(f"WARNING: Expected 2259 rows, got {len(df)}")
+
+    return df
+```
+
+**Tilføj også:**
+```python
+def load_rivers_2023() -> gpd.GeoDataFrame:
+    """Load rivers from geodatabase."""
+    return gpd.read_file(GRUNDDATA_RESULTS_GDB, layer='Rivers_gvf_vp3genbesog_kontakt')
+
+def load_qpoints_2023() -> gpd.GeoDataFrame:
+    """Load Q-points from geodatabase."""
+    return gpd.read_file(GRUNDDATA_RESULTS_GDB, layer='dkm_qpoints_gvf_vp3genbesog_kontakt')
+```
+
+---
+
+### 3. Step 1 (step1_all_gvfk.py) - Opdater GVFK kilde (PRIORITET 2)
+
+**Ændringer:**
+- Skift fra `gpd.read_file(GRUNDVAND_PATH)` til `load_gvfk_2023()`
+- Verificer `dkmlag` kolonne eksisterer (erstatter gammel CSV mapping)
+- Forventet antal GVFK: **2259** (op fra ~2044)
+- GVForekom navne er uændrede → **ingen breaking changes** for downstream steps
+
+---
+
+### 4. Step 2 (step2_river_contact.py) - Opdater Rivers + Q-punkter (PRIORITET 2)
+
+**Ændringer:**
+- Skift fra `gpd.read_file(RIVERS_PATH)` til `load_rivers_2023()`
+- Skift fra `gpd.read_file(RIVER_FLOW_POINTS_PATH)` til `load_qpoints_2023()`
+- Verificer kolonner: `Kontakt`, `Q90`, `Q95`, `deltaQ90`, `ov_id`, `gvf_no`
+- **Ny kolonne `deltaQ90`**: Forskel mellem Q90 med/uden indvinding (kan bruges til fremtidig analyse)
+
+---
+
+### 5. Step 3 (step3_v1v2_sites.py) - V1/V2 til GVFK kobling (PRIORITET 3)
+
+**Status:** ✅ **INGEN ÆNDRINGER NØDVENDIGE**
+
+**Rationale:**
+- V1/V2 CSV filer har `Navn` kolonne = GVForekom (f.eks. "dkmj_16_ks", "dkms_3645_ks")
+- Nye geodatabase har `GVForekom` kolonne med **100% kompatible navne**
+- 2042/2043 (99.95%) gamle navne eksisterer stadig
+- Spatial join eller CSV merge via `GVForekom` vil fortsætte med at virke
+
+**Verificering nødvendig:**
+- Check om den ene fjernede GVFK findes i V1/V2 data (sandsynligvis ikke)
+
+---
+
+### 6. Step 6 (step6_tilstandsvurdering.py) - Opdater til 2023 data (PRIORITET 1)
+
+#### A) Kolonne Navn Ændring (SIMPELT - Find/Replace)
+
+**Linje 92, 237, 242-285, 328-330, 529, osv.:**
+
+Erstat alle forekomster:
+- `"DK-modellag"` → `"dkmlag"`
+- `layer_mapping[["GVForekom", "DK-modellag"]]` → `layer_mapping[["GVForekom", "dkmlag"]]`
+
+**VIGTIGT:** `load_gvfk_layer_mapping()` virker stadig - bare returnerer `dkmlag` i stedet for `DK-modellag` nu.
+
+**Eksempel på ændring:**
+```python
+# FØR:
+if enriched["DK-modellag"].isna().any():
+    missing_layers = enriched.loc[enriched["DK-modellag"].isna(), "GVFK"].unique()
+
+# EFTER:
+if enriched["dkmlag"].isna().any():
+    missing_layers = enriched.loc[enriched["dkmlag"].isna(), "GVFK"].unique()
+```
+
+#### B) Opdater Gradient Filtrering - Trin 1 (linje 290-390)
+
+**NY funktion til downward flux sampling:**
+
+```python
+def _is_bornholm_site(dkmlag: str) -> bool:
+    """Check if site is on Bornholm based on dkmlag value."""
+    bornholm_layers = {'lag1', 'lag2', 'lag3', 'lag4', 'lag5', 'lag6'}
+    if pd.isna(dkmlag):
+        return False
+    # Parse dkmlag (might be "lag2" or "Kalk: kalk; Lag: lag2")
+    layers = _parse_dkmlag_2023(dkmlag)
+    return any(layer in bornholm_layers for layer in layers)
+
+def _sample_downward_flux(geometry, centroid, dkmlag: str) -> float:
+    """Sample downward flux raster (dk16 for Denmark, dk7 for Bornholm)."""
+    is_bornholm = _is_bornholm_site(dkmlag)
+    raster_path = DOWNWARD_FLUX_DK7 if is_bornholm else DOWNWARD_FLUX_DK16
+
+    # Sample polygon mean (preferred) or centroid fallback
+    # Return mean downward flux in mm/år
+    # ... [sampling logic her]
+```
+
+**Erstatter gammelt flertalsprincip:**
+```python
+# GAMMEL: Sample rå GVD, beregn % positive pixels
+# NY: Sample downward_flux direkte
+enriched['Downward_Flux_mm_yr'] = enriched.apply(
+    lambda row: _sample_downward_flux(
+        geometry_lookup[row['Lokalitet_ID']],
+        centroid_lookup[row['Lokalitet_ID']],
+        row['dkmlag']
+    ),
+    axis=1
+)
+
+# Filter: Behold kun sites med downward flux > threshold
+DOWNWARD_FLUX_THRESHOLD = 0  # Eller andet cutoff
+enriched = enriched[enriched['Downward_Flux_mm_yr'] > DOWNWARD_FLUX_THRESHOLD]
+```
+
+#### C) Opdater GVD Raster Sampling (linje 507-630) - KRITISK ÆNDRING
+
+**PROBLEM:** Raster fil navne er ændret!
+
+**Nuværende kode (linje 624):**
+```python
+def _sample_infiltration(layer: str, geometry, centroid):
+    raster_file = GVD_RASTER_DIR / f"DKM_gvd_{layer}.tif"
+    # Eksempel: layer="ks2" → DKM_gvd_ks2.tif
+```
+
+**Ny kode:**
+```python
+def _sample_infiltration(layer: str, geometry, centroid):
+    # Determine if Bornholm layer
+    is_bornholm = layer in ['lag1', 'lag2', 'lag3', 'lag4', 'lag5', 'lag6']
+
+    # Construct new raster file path
+    if is_bornholm:
+        raster_file = DKMTIF_DIR_2023 / f"dk7_gvd_{layer}.tif"
+    else:
+        raster_file = DKMTIF_DIR_2023 / f"dk16_gvd_{layer}.tif"
+
+    # Eksempler:
+    # layer="kvs_0400" → dk16_gvd_kvs_0400.tif
+    # layer="lag2" → dk7_gvd_lag2.tif
+
+    if not raster_file.exists():
+        print(f"WARNING: Raster not found: {raster_file}")
+        return {"Combined": None, "Centroid": None, ...}
+
+    # Rest af sampling logik er uændret
+    # ...
+```
+
+**Funktion `_parse_dk_modellag()` skal IKKE ændres** - den parser stadig format som før:
+- Input kan være: "kvs_0400" eller "Kalk: kak_8190" eller multi-lag
+- Output er liste af lag navne
+- Parsing logik er den samme
+
+**ALTERNATIV: Brug topmag filer (simplere!):**
+
+```python
+def _sample_topmag_gvd(geometry, centroid, dkmlag: str) -> float:
+    """Sample topmag GVD raster (simplere end per-lag sampling)."""
+    is_bornholm = _is_bornholm_site(dkmlag)
+    raster_path = TOPMAG_GVD_DK7 if is_bornholm else TOPMAG_GVD_DK16
+
+    # Sample polygon mean eller centroid
+    # Return GVD værdi i mm/år
+    # Cap ved 750 mm/år (MST 2016 standard)
+```
+
+---
+
+### 7. Opsummering af Step 6 Ændringer
+
+**SIMPLE ændringer (Find/Replace):**
+1. `"DK-modellag"` → `"dkmlag"` (alle forekomster i filen)
+2. Output CSV kolonne navn opdateres automatisk
+
+**KOMPLEKS ændring (raster fil naming):**
+1. Linje ~624: Opdater `_sample_infiltration()` funktion:
+   - Tilføj Bornholm check
+   - Construct korrekt fil sti: `dk16_gvd_{layer}.tif` eller `dk7_gvd_{layer}.tif`
+   - Rest af sampling logik uændret
+
+**VALGFRI forbedring (downward flux):**
+1. Linje ~290-390: Erstat gradient filtrering med downward flux sampling
+   - Simplere end nuværende majority rule
+   - Brug `dk16_downwardflux_lay12.tif` og `dk7_downwardflux_lay12.tif`
+
+---
+
 ## HANDLINGSPLAN: Implementering af 2023 DK-Model Opdatering
 
-### Fase 1: Modtagelse og Validering af Nye Data (Uge 1)
+### Fase 1: Modtagelse og Validering af Nye Data ✅ AFSLUTTET (11/26/2025)
 
 **Opgaver:**
 1. ✅ **Modtag filer fra Lars:**
-   - [ ] To GVD raster datasæt (med/uden indvinding)
-   - [ ] Ny GVFK shapefile med lagnavne kobling
-   - [ ] Ny rivers.shp fil
-   - [ ] To Q95 filer
-   - [ ] Opdateret Q-punkter fil
-   - [ ] Infiltrations oplands filer (optional)
-   - [ ] Flux til lag1_2 fil
-   - [ ] Anden fil (afvent specifikation)
+   - ✅ GVD raster datasæt i mappe `dkmtif/` (dk7 og dk16 modeller)
+   - ✅ Downward/upward flux filer (lay12)
+   - ✅ GVFK i geodatabase `Grunddata_results.gdb`
+   - ✅ Rivers layer i geodatabase
+   - ✅ Q-punkter layer i geodatabase (med Q90, Q95, deltaQ90)
+   - ✅ Infiltrations oplands i mappe `magopl/`
+   - ⚠️ Clay cover data modtaget men ikke nødvendig (`fohm_descr/`)
 
 2. ✅ **Inspicer nye data:**
-   - [ ] Check GVFK navne: Er de ændret fra 2019 version?
-   - [ ] Sammenlign GVFK antal: 2019 (~2044) vs. 2023 (?)
-   - [ ] Check nye lagnavne struktur (erstatter ks1, ks2, ps4, etc.)
-   - [ ] Verificer raster resolution (100x100m eller 500x500m?)
-   - [ ] Check CRS/projektion konsistens
+   - ✅ GVFK navne: `dkmlag` bruger nye navne (kvs_XXXX, lag1-6)
+   - ✅ GVFK antal: 2259 (stigning fra ~2044)
+   - ✅ Nye lagnavne: dk16 (9 lag-typer) og dk7 (lag1-6)
+   - ✅ Raster resolution: **100x100 meter** (verificeret)
+   - ✅ CRS/projektion: **EPSG:25832** (standard for Danmark)
 
 3. ✅ **Dokumenter ændringer:**
-   - [ ] Opret mapping tabel: Gamle lagnavne → Nye lagnavne
-   - [ ] Dokumenter GVFK navne ændringer (hvis relevante)
-   - [ ] Noter fil format ændringer
+   - ✅ Dokumenteret i denne fil (se spørgsmål 1-3)
+   - ⏳ Opret mapping tabel hvis V1/V2 bruger gamle lagnavne
+   - ✅ Noteret: Geodatabase format i stedet for separate shapefiles
 
 ---
 
@@ -404,27 +760,77 @@ def create_gvd_diagnostics(before_gdf, after_gdf, output_dir):
 
 ---
 
-### Fase 8: Afsluttende Overvejelser
+### Fase 8: Afsluttende Overvejelser og Åbne Spørgsmål
 
-**Spørgsmål til afklaring med Lars/GEUS:**
-1. [ ] Hvilken GVD version skal bruges: Med eller uden indvinding?
-   - Rationale for valg?
-2. [ ] Skal vi anvende infiltrations oplands filerne?
-   - Hvordan integreres disse?
-3. [ ] Hvad indeholder "flux til lag1_2" filen præcist?
-   - Kan denne bruges til at validere vores gradient retnings assessment?
-4. [ ] Q95 filer: Skal vi bruge "med indvinding" eller "difference" versionen?
-   - Hvad er anbefalingen for risikovurdering?
+**Spørgsmål til afklaring:**
+1. ✅ ~~dk7 vs dk16 model valg~~ → **AFKLARET**: Begge skal bruges samtidig (dk7=Bornholm, dk16=Danmark)
+2. ⏳ **Downward flux threshold:**
+   - Hvilken threshold værdi for downward flux skal klassificere lokalitet som nedadrettet?
+   - Forslag: `mean(downward_flux) > 0`? Eller højere cutoff?
+3. ✅ ~~V1/V2 lagnavne~~ → **AFKLARET**: GVForekom navne er 100% kompatible, ingen re-mapping nødvendig
+4. ⏳ **Topmag vs per-lag GVD:**
+   - Skal vi bruge `dk16_gvd_topmag.tif` (simplere) eller per-lag filer (f.eks. `dk16_gvd_kvs_0400.tif`)?
+   - Anbefaling: Start med topmag for simplicitet
+5. ⏳ **GVD capping:**
+   - Behold 750 mm/år cap fra MST 2016 GrundRisk standard?
 
 **Performance overvejelser:**
-- [ ] Raster sampling kan være langsomt for mange lokaliteter
-- [ ] Overvej caching af GVD værdier per lokalitet
-- [ ] Parallel processing hvis muligt
+- Raster sampling kan være langsomt for mange lokaliteter
+- Overvej caching af downward flux og GVD værdier per lokalitet
+- Parallel processing hvis muligt
 
-**Backup strategi:**
-- [ ] Behold 2019 pipeline funktionel (backward compatibility)
-- [ ] Gem alle 2019 resultater før migration
-- [ ] Config flag til at skifte mellem versioner
+**Backward compatibility strategi:**
+- Behold 2019 pipeline funktionel via `DK_MODEL_VERSION` flag
+- Gem alle 2019 resultater før migration
+- Dokumenter forskelle mellem 2019 og 2023 resultater
+
+---
+
+## OPSUMMERING: Hvad skal der ændres?
+
+### ✅ GODT NYS
+1. **GVForekom navne er 100% kompatible** → V1/V2 kobling virker uden ændringer
+2. **Mapping struktur er identisk** → Samme `GVForekom → lag` mapping, bare ny kilde
+3. **Downward/upward flux filer** → Mulighed for simplere gradient filtrering
+4. **Topmag filer** → Mulighed for simplere GVD sampling
+
+### ⚠️ TO ÆNDRINGER NØDVENDIGE
+
+**1. Opdater data kilde (CSV → Geodatabase):**
+- `load_gvfk_layer_mapping()`: Load fra geodatabase i stedet for CSV
+- `load_rivers()` og `load_qpoints()`: Load fra geodatabase
+- Step 1, 2: Brug nye load funktioner
+
+**2. Opdater raster fil naming (DKM_gvd_X.tif → dkX_gvd_X.tif):**
+- Step 6, linje ~624: `_sample_infiltration()` funktion
+- Tilføj Bornholm check: `lag1-6` → dk7, ellers → dk16
+- Construct ny fil sti: `dk16_gvd_kvs_0400.tif` eller `dk7_gvd_lag2.tif`
+
+### 🟡 SIMPLE Find/Replace
+- `"DK-modellag"` → `"dkmlag"` i Step 6 (kolonne navn ændring)
+
+### ✅ INGEN ÆNDRINGER
+- Step 3: V1/V2 kobling virker som før
+- `_parse_dk_modellag()`: Parser format er det samme
+- Raster sampling logik: Kun fil stier ændres, ikke sampling metode
+
+### 📊 MIGRERINGS STRATEGI
+
+**Anbefalet rækkefølge:**
+1. **config.py**: Tilføj `GRUNDDATA_RESULTS_GDB` og `DKMTIF_DIR_2023` paths (10 min)
+2. **data_loaders.py**: Opdater `load_gvfk_layer_mapping()` til geodatabase (30 min)
+3. **Test**: Verificer geodatabase load og kolonner (15 min)
+4. **Step 6**: Find/Replace `"DK-modellag"` → `"dkmlag"` (5 min)
+5. **Step 6**: Opdater `_sample_infiltration()` raster fil naming (1 time)
+6. **Test Step 6**: Sample enkelt lokalitet for at verificere (30 min)
+7. **Step 1 + 2**: Opdater til geodatabase load (30 min)
+8. **End-to-end test**: Kør hele workflow (1 time)
+9. **Validation**: Sammenlign resultater (2 timer)
+
+**Estimeret kompleksitet:**
+- Core changes: **2-3 timer**
+- Testing + validation: **3-4 timer**
+- **Total: ~1 arbejdsdag**
 
 ---
 
@@ -442,6 +848,21 @@ def create_gvd_diagnostics(before_gdf, after_gdf, output_dir):
 
 ## CHANGELOG
 
+**2025-11-26 (Opdatering 2):**
+- ✅ **KRITISK OPDAGELSE**: dk7 = Bornholm, dk16 = Danmark (IKKE et valg!)
+- ✅ **GODT NYS**: GVForekom navne er 100% kompatible (2042/2043 match)
+- ✅ Dokumenteret komplet lagnavne mapping: `ks1, ks2` → `kvs_0400, lag2`
+- ✅ Identificeret breaking change: Raster fil naming `DKM_gvd_ks2.tif` → `dk16_gvd_kvs_0400.tif`
+- ✅ Detaljeret kode ændringer for Step 6 med eksempler
+- ✅ Tilføjet opsummering og migrerings strategi
+
+**2025-11-26 (Opdatering 1):**
+- ✅ Data modtaget fra Lars
+- ✅ Analyseret ny data struktur (dk7/dk16, geodatabase, downward/upward flux filer)
+- ✅ Opdateret spørgsmål 1-3 med faktiske data detaljer
+- ✅ Tilføjet "NØDVENDIGE KODE ÆNDRINGER" sektion med prioriteter
+- ✅ Opdateret Fase 1 som afsluttet
+
 **2025-11-21:**
 - Første version af mødenoter
 - Defineret To-Trins GVD håndterings tilgang
@@ -449,4 +870,23 @@ def create_gvd_diagnostics(before_gdf, after_gdf, output_dir):
 
 ---
 
-**Næste skridt:** Afvent modtagelse af 2023 data filer (næste uge)
+## NÆSTE SKRIDT
+
+**Umiddelbare prioriteter:**
+1. ✅ ~~Verificer raster metadata~~ (100x100m, EPSG:25832)
+2. ✅ ~~Beslut dk7 vs dk16~~ (BEGGE skal bruges - geografisk opdelt)
+3. ✅ ~~Check V1/V2 lagnavne~~ (100% kompatible via GVForekom)
+4. ⏳ **Beslut topmag vs per-lag GVD** (anbefaling: topmag for simplicitet)
+5. ⏳ **Beslut downward flux threshold** (forslag: > 0 mm/år)
+6. ⏳ **Implementer config.py opdateringer** (se "NØDVENDIGE KODE ÆNDRINGER")
+7. ⏳ **Test load af geodatabase layers** med geopandas
+
+**Kode implementation rækkefølge:**
+1. config.py + data_loaders.py (PRIORITET 1) - **Estimat: 1.5 timer**
+2. Step 1 og Step 2 geodatabase integration (PRIORITET 2) - **Estimat: 1 time**
+3. Step 6 GVD håndtering refactor (PRIORITET 1 - KRITISK!) - **Estimat: 5 timer**
+   - Layer mapping opdatering (kolonne navn ændringer)
+   - Downward flux gradient filtrering (Trin 1)
+   - GVD raster sampling med nye fil navne (Trin 2)
+   - dk7/dk16 geografisk håndtering
+4. End-to-end testing og validering - **Estimat: 2-3 timer**

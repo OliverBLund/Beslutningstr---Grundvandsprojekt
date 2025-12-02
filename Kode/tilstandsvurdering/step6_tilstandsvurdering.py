@@ -108,7 +108,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     segment_flux = _aggregate_flux_by_segment(flux_details)
 
     # Compute Cmix
-    print("[5/6] Computing Cmix (Q95 scenario)...")
+    print("[5/6] Computing Cmix (all flow scenarios: Q05, Q10, Q50, Q90, Q95)...")
     flow_scenarios = load_flow_scenarios()
     cmix_results = _calculate_cmix(segment_flux, flow_scenarios)
     cmix_results = _apply_mkk_thresholds(cmix_results)
@@ -984,28 +984,32 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
 
     Key approach:
     - All compounds in a category use modelstof concentrations (scenarios)
-    - One flux value per scenario per site (NOT per individual substance)
+    - One flux value per scenario per site per river
     - Categories with multiple modelstoffer generate multiple scenarios
+    - Sites affecting multiple GVFK: flux calculated once per river, but tracked for ALL GVFK
 
     Example: Site with 4 different BTXER compounds generates 2 flux rows:
       - BTXER__via_Benzen (400 µg/L)
       - BTXER__via_Olie C10-C25 (3000 µg/L)
     """
     # Group by site + segment + category to aggregate substances
-    # NOTE: Critical design choice - each site should contribute flux to a segment
-    # only ONCE per category, even if the site appears in multiple GVFKs!
-    #
-    # Example: Site 813-00736 appears in GVFK dkmj_968_ks and dkmj_979_ks,
-    # both contributing to DKRIVER115. We should count the site's flux ONCE,
-    # using the minimum distance and taking the first GVFK encountered.
+    # Flux is calculated ONCE per river, but we track ALL GVFK affected
     grouping_cols = ["Lokalitet_ID", "Nearest_River_ov_id", "Qualifying_Category"]
+
+    # BEFORE aggregating: collect ALL GVFK for each (site + river + category) combination
+    gvfk_tracking = (
+        enriched.groupby(grouping_cols, dropna=False)["GVFK"]
+        .apply(list)
+        .reset_index()
+    )
+    gvfk_tracking.columns = ["Lokalitet_ID", "Nearest_River_ov_id", "Qualifying_Category", "All_GVFK"]
 
     # Aggregate all metadata, taking minimum distance and first occurrence of other fields
     grouped = (
         enriched.groupby(grouping_cols, dropna=False)
         .agg(
             {
-                "GVFK": "first",  # Take first GVFK (arbitrary choice when site spans multiple)
+                "GVFK": "first",  # Temporary - used for concentration lookup only
                 "Area_m2": "first",  # Area is constant per site
                 "Infiltration_mm_per_year": "first",  # Infiltration is constant per site
                 "Nearest_River_FID": "first",  # Take first FID
@@ -1072,6 +1076,33 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
                 flux_rows.append(flux_row)
 
     df = pd.DataFrame(flux_rows)
+
+    # Now expand each row to include ALL GVFK that were involved
+    # Merge with gvfk_tracking to get the list of all GVFK
+    df = df.merge(
+        gvfk_tracking,
+        on=["Lokalitet_ID", "Nearest_River_ov_id", "Qualifying_Category"],
+        how="left"
+    )
+
+    # Expand: one row per GVFK
+    expanded_rows = []
+    for _, row in df.iterrows():
+        all_gvfk = row["All_GVFK"]
+        if isinstance(all_gvfk, list) and len(all_gvfk) > 0:
+            for gvfk in all_gvfk:
+                expanded_row = row.copy()
+                expanded_row["GVFK"] = gvfk
+                expanded_rows.append(expanded_row)
+        else:
+            # Fallback: keep original row as-is
+            expanded_rows.append(row)
+
+    df = pd.DataFrame(expanded_rows)
+
+    # Drop the helper column
+    if "All_GVFK" in df.columns:
+        df = df.drop(columns=["All_GVFK"])
 
     # Filter out rows with invalid concentration (-1)
     rows_before = len(df)

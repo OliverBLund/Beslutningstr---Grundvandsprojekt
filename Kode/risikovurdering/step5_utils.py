@@ -23,10 +23,10 @@ from config import (
     WORKFLOW_SETTINGS,
     get_output_path,
 )
-from risikovurdering.compound_matching import (
+from risikovurdering.compound_categories import (
     DEFAULT_DISTANCE,
     categorize_substance,
-    get_default_distance,
+    get_category_distance,
 )
 
 # Global variable to track keyword statistics
@@ -40,7 +40,7 @@ def categorize_contamination_substance(substance_text: str):
 
     category, distance = categorize_substance(substance_text)
     if pd.isna(distance) or distance is None:
-        distance = get_default_distance(category)
+        distance = get_category_distance(category)
 
     return category, float(distance)
 
@@ -93,7 +93,7 @@ def categorize_by_branch_activity(branch_text, activity_text):
         )
 
     if branch_match or activity_match:
-        return "LOSSEPLADS", get_default_distance("LOSSEPLADS")
+        return "LOSSEPLADS", get_category_distance("LOSSEPLADS")
 
     # Default to ANDRE category for non-landfill branch-only sites
     return "ANDRE", DEFAULT_DISTANCE

@@ -35,6 +35,7 @@ from Kode.config import (
     GRUNDVAND_PATH,
     GVD_RASTER_DIR,
     RIVERS_PATH,
+    STEP6_MAP_SETTINGS,
     get_output_path,
     get_visualization_path,
 )
@@ -73,16 +74,23 @@ def analyze_and_visualize_step6(
         print("\nGenerating pixel distribution visualizations...")
         _create_pixel_distribution_plots(pixel_data_records, enriched_results, negative_infiltration)
 
-    # Diagnostics for negative infiltration removals
-    _create_negative_infiltration_map(negative_infiltration, site_geometries)
+    # NOTE: Negative infiltration map moved to Step 5c (upward flux visualization)
+    # Sites with upward flux are now filtered in Step 5c before reaching Step 6
+    # The map in Step 5c shows which sites are excluded BEFORE filtering
 
-    # Create combined impact map (sites + rivers + connection lines)
-    print("\nGenerating combined impact maps...")
-    try:
-        from .step6_combined_map import create_combined_impact_maps
-    except ImportError:
-        from step6_combined_map import create_combined_impact_maps
-    create_combined_impact_maps(site_flux, segment_summary)
+    scenario_flag = STEP6_MAP_SETTINGS.get("generate_combined_maps", True)
+    overall_flag = STEP6_MAP_SETTINGS.get("generate_overall_maps", True)
+    if scenario_flag or overall_flag:
+        print("\nGenerating combined/overall impact maps...")
+        try:
+            from .step6_combined_map import create_combined_impact_maps
+        except ImportError:
+            from step6_combined_map import create_combined_impact_maps
+        create_combined_impact_maps(site_flux, segment_summary, gvfk_exceedances)
+    else:
+        print(
+            "\nSkipping combined impact maps (all Step 6 map flags disabled)."
+        )
 
     # Create analytical plots
     print("\nGenerating analytical plots...")

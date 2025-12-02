@@ -82,7 +82,13 @@ def run_step2():
     # Save GVFK with river contact for visualization and subsequent steps
     output_path = get_output_path('step2_river_gvfk')
     gvf_with_rivers.to_file(output_path, encoding="utf-8")
-    print(f"Saved GVFK with river contact: {len(gvf_with_rivers)} geometries")
+
+    # Report: unique GVFKs vs total polygons (some GVFKs have multiple disconnected areas)
+    num_polygons = len(gvf_with_rivers)
+    num_unique_gvfk = gvf_with_rivers[gvfk_col].nunique()
+    print(f"Saved: {num_unique_gvfk} unique GVFKs ({num_polygons} polygon features)")
+    if num_polygons > num_unique_gvfk:
+        print(f"  Note: {num_polygons - num_unique_gvfk} GVFKs have multiple disconnected areas")
 
     return rivers_gvfk, unique_rivers_gvfk, gvf_with_rivers
 

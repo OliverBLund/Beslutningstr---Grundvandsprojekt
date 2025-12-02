@@ -368,14 +368,28 @@ def plot_gvfk_summary(
 
 
 def plot_flow_scenario_sensitivity(cmix_results: pd.DataFrame, output_dir: Path) -> None:
-    """Box plot showing Cmix/MKK ratio distribution by scenario and category."""
+    """Box plot showing Cmix/MKK ratio distribution across all Q flow scenarios."""
 
     if cmix_results.empty or 'Flow_Scenario' not in cmix_results.columns:
         print("    Warning: No flow scenario data for sensitivity plot")
         return
 
+    # Check what scenarios are present
+    scenario_values = cmix_results['Flow_Scenario'].dropna().map(lambda x: str(x).strip())
+    if scenario_values.empty:
+        print("    Warning: Flow scenario column contains only NaN/blank values")
+        return
+    available_scenarios = sorted(set(s for s in scenario_values if s))
+    if not available_scenarios:
+        print("    Warning: Flow scenario labels missing after cleaning")
+        return
+    print(f"      Available flow scenarios: {', '.join(available_scenarios)}")
+
     # Filter to only exceedances
     exc = cmix_results[cmix_results['Exceedance_Flag'] == True].copy()
+    exc = exc[exc['Flow_Scenario'].notna()].copy()
+    exc['Flow_Scenario'] = exc['Flow_Scenario'].astype(str).str.strip()
+    exc = exc[exc['Flow_Scenario'] != ""]
 
     if exc.empty:
         print("    Warning: No exceedances for flow scenario sensitivity plot")
@@ -383,7 +397,22 @@ def plot_flow_scenario_sensitivity(cmix_results: pd.DataFrame, output_dir: Path)
 
     # Select top 8 categories by exceedance count
     top_cats = exc['Qualifying_Category'].value_counts().head(8).index
-    exc_filtered = exc[exc['Qualifying_Category'].isin(top_cats)]
+    exc_filtered = exc[exc['Qualifying_Category'].isin(top_cats)].copy()
+
+    # Define proper scenario order (low flow to high flow)
+    scenario_order = ['Q95', 'Q90', 'Q50', 'Q10', 'Q05']
+    # Filter to only scenarios present in data
+    scenario_order = [s for s in scenario_order if s in exc_filtered['Flow_Scenario'].unique()]
+    if not scenario_order:
+        print("    Warning: No recognized flow scenarios available for plotting")
+        return
+
+    # Convert to categorical with proper ordering
+    exc_filtered['Flow_Scenario'] = pd.Categorical(
+        exc_filtered['Flow_Scenario'],
+        categories=scenario_order,
+        ordered=True
+    )
 
     fig, ax = plt.subplots(figsize=(16, 10))
 
@@ -395,16 +424,27 @@ def plot_flow_scenario_sensitivity(cmix_results: pd.DataFrame, output_dir: Path)
         x='Qualifying_Category',
         y='Exceedance_Ratio',
         hue='Flow_Scenario',
+        hue_order=scenario_order,  # Explicit ordering
         ax=ax,
-        palette='Set2'
+        palette='RdYlGn_r'  # Red (Q95/low flow) to Green (Q05/high flow)
     )
 
     ax.set_yscale('log')
     ax.set_xlabel('Category', fontsize=12)
     ax.set_ylabel('Exceedance Ratio (Cmix/MKK, log scale)', fontsize=12)
-    ax.set_title('Flow Scenario Sensitivity: Exceedance Ratios by Category', fontsize=14, fontweight='bold')
-    ax.legend(title='Flow Scenario', loc='upper right')
+    ax.set_title(
+        f'Flow Scenario Sensitivity: Impact of River Flow on Exceedances\n'
+        f'Comparing {len(scenario_order)} scenarios (Q95=low flow → Q05=high flow)',
+        fontsize=14, fontweight='bold'
+    )
+    ax.legend(title='Flow Scenario\n(Q95 = lowest flow)', loc='upper right', fontsize=10)
     plt.xticks(rotation=45, ha='right')
+
+    # Add annotation explaining the scenarios
+    note_text = "Lower Q values = higher flow = more dilution = lower Cmix"
+    ax.text(0.02, 0.98, note_text, transform=ax.transAxes,
+            fontsize=9, style='italic', verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
     plt.tight_layout()
     plt.savefig(output_dir / 'flow_scenario_sensitivity.png', dpi=300, bbox_inches='tight')
