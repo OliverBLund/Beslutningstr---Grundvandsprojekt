@@ -48,6 +48,7 @@ from Kode.config import (
     RIVERS_PATH,
     STEP6_MAP_SETTINGS,
     STEP6_PRIMARY_FLOW_SCENARIO,
+    STEP6_FLOW_SELECTION_MODE,
     get_output_path,
     get_visualization_path,
 )
@@ -131,7 +132,7 @@ def create_combined_impact_maps(
 
     # Identify which Q-point to use per river segment (max Q95)
     print("    Identifying max Q95 Q-point per segment...")
-    qpoint_lookup = _build_qpoint_lookup(qpoints_web)
+    qpoint_lookup = _build_qpoint_lookup_v2(qpoints_web)
 
     scenario_enabled = STEP6_MAP_SETTINGS.get("generate_combined_maps", True)
     if scenario_enabled:
@@ -170,35 +171,109 @@ def create_combined_impact_maps(
     print(f"  Maps saved to {get_visualization_path('step6', 'combined')}/")
 
 
-def _build_qpoint_lookup(qpoints_gdf: gpd.GeoDataFrame) -> Dict[str, Tuple]:
-    """
-    Build lookup table: ov_id → (Q95_max, QPoint_geometry).
+# Old _build_qpoint_lookup() removed - superseded by _build_qpoint_lookup_v2()
+# The v2 function supports multiple flow scenarios (Q05-Q95) and has better error handling.
+# Old function only handled Q95 with Dict[str, Tuple] format.
+# New function returns Dict[str, Dict] with both 'by_ov' and 'by_fid' lookups.
 
-    For each river segment, finds the Q-point with maximum Q95 value.
+
+def _build_qpoint_lookup_v2(qpoints_gdf: gpd.GeoDataFrame) -> Dict[str, Dict]:
+    """
+    Flow lookup with mode toggle (STEP6_FLOW_SELECTION_MODE).
 
     Returns:
-        Dict mapping ov_id to (Q95_value, Point geometry)
+      {
+        "by_ov": {(ov_id, scenario): (flow, geom)},
+        "by_fid": {(fid, scenario): (flow, geom)}  # only in nearest mode
+      }
     """
-    # Remove Q-points with None ov_id
-    valid_qpoints = qpoints_gdf[qpoints_gdf["ov_id"].notna()].copy()
+    result: Dict[str, Dict] = {"by_ov": {}, "by_fid": {}}
 
+    valid_qpoints = qpoints_gdf[qpoints_gdf["ov_id"].notna()].copy()
     if valid_qpoints.empty:
         print("      WARNING: No Q-points with valid ov_id found!")
-        return {}
+        return result
 
-    # Find max Q95 per segment
-    idx_max = valid_qpoints.groupby("ov_id")["Q95"].idxmax()
-    max_qpoints = valid_qpoints.loc[idx_max]
+    scenario_cols = [c for c in ["Q05", "Q10", "Q50", "Q90", "Q95"] if c in valid_qpoints.columns]
+    if not scenario_cols:
+        print("      WARNING: No flow scenario columns found in Q-points!")
+        return result
 
-    # Build lookup
-    lookup = {}
-    for _, row in max_qpoints.iterrows():
-        key = str(row["ov_id"])
-        lookup[key] = (row["Q95"], row.geometry)
+    flow_long = valid_qpoints.melt(
+        id_vars=["ov_id", "geometry"],
+        value_vars=scenario_cols,
+        var_name="Scenario",
+        value_name="Flow_m3_s",
+    )
+    flow_long = flow_long[flow_long["Flow_m3_s"].notna() & (flow_long["Flow_m3_s"] > 0)]
 
-    print(f"      Built Q-point lookup for {len(lookup)} river segments")
-    return lookup
+    # Max per ov_id per scenario
+    idx_max = flow_long.groupby(["ov_id", "Scenario"])["Flow_m3_s"].idxmax()
+    max_ov = flow_long.loc[idx_max]
+    for _, row in max_ov.iterrows():
+        key = (str(row["ov_id"]), row["Scenario"])
+        result["by_ov"][key] = (row["Flow_m3_s"], row.geometry)
 
+    if STEP6_FLOW_SELECTION_MODE != "max_near_segment":
+        print(f"      Built Q-point lookup (max_per_ov): {len(result['by_ov'])} keys")
+        return result
+
+    # Nearest-per-segment mode
+    try:
+        rivers = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
+        rivers = rivers.reset_index().rename(columns={"index": "River_FID"})
+    except Exception as exc:
+        print(f"      WARNING: Cannot load rivers for nearest Q-point mode ({exc}); using max_per_ov only.")
+        return result
+
+    if rivers.crs != valid_qpoints.crs:
+        try:
+            rivers = rivers.to_crs(valid_qpoints.crs)
+        except Exception:
+            print("      WARNING: CRS mismatch; nearest Q-point mode skipped.")
+            return result
+
+    buffer_dist = 100  # meters
+    rivers_proj = rivers
+    qpoints_proj = valid_qpoints
+    flow_proj = flow_long
+    try:
+        if rivers_proj.crs.is_geographic:
+            rivers_proj = rivers_proj.to_crs(epsg=25832)
+            qpoints_proj = valid_qpoints.to_crs(epsg=25832)
+            flow_proj = flow_long.copy()
+            flow_proj["geometry"] = qpoints_proj["geometry"].values
+    except Exception:
+        flow_proj = flow_long
+
+    flow_proj = flow_proj.reset_index(drop=True)
+    for _, seg in rivers_proj.iterrows():
+        seg_fid = seg.get("River_FID")
+        if pd.isna(seg_fid) or seg.geometry is None:
+            continue
+        try:
+            seg_fid_int = int(seg_fid)
+        except Exception:
+            continue
+
+        dists = flow_proj.geometry.distance(seg.geometry)
+        nearby_idx = dists <= buffer_dist
+        if not nearby_idx.any():
+            continue
+
+        nearby = flow_proj[nearby_idx]
+        idx_max_near = nearby.groupby("Scenario")["Flow_m3_s"].idxmax()
+        max_near = nearby.loc[idx_max_near]
+        for _, row in max_near.iterrows():
+            key = (seg_fid_int, row["Scenario"])
+            orig_geom = flow_long.loc[row.name, "geometry"] if "geometry" in flow_long.columns else row.geometry
+            result["by_fid"][key] = (row["Flow_m3_s"], orig_geom)
+
+    print(
+        f"      Built Q-point lookup (max_per_ov: {len(result['by_ov'])} keys, "
+        f"max_near_segment: {len(result['by_fid'])} keys within buffer)"
+    )
+    return result
 
 def _create_scenario_map(
     scenario: str,
@@ -235,12 +310,56 @@ def _create_scenario_map(
         control_scale=True,
     )
 
+    # Add CSS to hide segment boundary markers at low zoom levels
+    zoom_css = """
+    <style>
+    /* Hide segment boundary markers at zoom levels < 11 */
+    .leaflet-zoom-hide .segment-boundary-marker {
+        display: none !important;
+    }
+    /* Show them at zoom 11+ */
+    .leaflet-container {
+        --show-boundaries: 0;
+    }
+    </style>
+    <script>
+    // Show/hide boundary markers based on zoom level
+    document.addEventListener('DOMContentLoaded', function() {
+        const map = document.querySelector('.folium-map');
+        if (map && map._leaflet_map) {
+            const leafletMap = map._leaflet_map;
+            leafletMap.on('zoomend', function() {
+                const zoom = leafletMap.getZoom();
+                const markers = document.querySelectorAll('.segment-boundary-marker');
+                markers.forEach(marker => {
+                    if (zoom >= 11) {
+                        marker.style.display = 'block';
+                    } else {
+                        marker.style.display = 'none';
+                    }
+                });
+            });
+            // Initialize visibility
+            const zoom = leafletMap.getZoom();
+            const markers = document.querySelectorAll('.segment-boundary-marker');
+            markers.forEach(marker => {
+                if (zoom >= 11) {
+                    marker.style.display = 'block';
+                } else {
+                    marker.style.display = 'none';
+                }
+            });
+        }
+    });
+    </script>
+    """
+    m.get_root().html.add_child(folium.Element(zoom_css))
+
     # Add rivers (display all for context, color only GVFK segments with data)
     _add_rivers(m, rivers_web, scenario_cmix, rivers_all_web)
 
-    # Add Q-points for affected segments
-    affected_segments = scenario_flux["Nearest_River_ov_id"].unique()
-    _add_qpoints(m, affected_segments, qpoint_lookup)
+    # Add Q-points for affected segments (use selected flow scenario)
+    _add_qpoints(m, scenario_flux, qpoint_lookup, STEP6_PRIMARY_FLOW_SCENARIO)
 
     # Add sites
     _add_sites(m, scenario_flux, sites_web)
@@ -483,6 +602,130 @@ def _create_overall_exceedance_maps(
             control_scale=True,
         )
 
+        # Add zoom-dependent CSS for segment boundaries
+        zoom_css = """
+        <style>
+        .leaflet-zoom-hide .segment-boundary-marker { display: none !important; }
+        </style>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const map = document.querySelector('.folium-map');
+            if (map && map._leaflet_map) {
+                const leafletMap = map._leaflet_map;
+                leafletMap.on('zoomend', function() {
+                    const zoom = leafletMap.getZoom();
+                    document.querySelectorAll('.segment-boundary-marker').forEach(marker => {
+                        marker.style.display = (zoom >= 11) ? 'block' : 'none';
+                    });
+                });
+                const zoom = leafletMap.getZoom();
+                document.querySelectorAll('.segment-boundary-marker').forEach(marker => {
+                    marker.style.display = (zoom >= 11) ? 'block' : 'none';
+                });
+            }
+        });
+        </script>
+        """
+        m.get_root().html.add_child(folium.Element(zoom_css))
+
+        # Add filter slider control
+        min_metric = int(working_gdf["__metric"].min())
+        max_metric = int(working_gdf["__metric"].max())
+        total_gvfk = unique_gvfk_count
+
+        filter_slider_html = f"""
+        <div id="filter-control" style="
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 250px;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+        ">
+            <div style="font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">
+                Filter GVFK
+            </div>
+            <div style="margin-bottom: 5px;">
+                <label for="min-slider">{config["metric_label"]} (min):</label>
+                <input type="number" id="min-slider" min="{min_metric}" max="{max_metric}" value="{min_metric}"
+                       style="width: 60px; margin-left: 5px;">
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label for="max-slider">{config["metric_label"]} (max):</label>
+                <input type="number" id="max-slider" min="{min_metric}" max="{max_metric}" value="{max_metric}"
+                       style="width: 60px; margin-left: 5px;">
+            </div>
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 12px; color: #666;">
+                Showing: <span id="visible-count">{total_gvfk}</span> / {total_gvfk} GVFK
+            </div>
+        </div>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {{
+            const minSlider = document.getElementById('min-slider');
+            const maxSlider = document.getElementById('max-slider');
+            const visibleCount = document.getElementById('visible-count');
+
+            function filterGVFK() {{
+                const minValue = parseInt(minSlider.value);
+                const maxValue = parseInt(maxSlider.value);
+
+                // Ensure min <= max
+                if (minValue > maxValue) {{
+                    minSlider.value = maxValue;
+                    return;
+                }}
+                if (maxValue < minValue) {{
+                    maxSlider.value = minValue;
+                    return;
+                }}
+
+                // Wait for gvfkFeatures to be populated
+                if (typeof gvfkFeatures === 'undefined' || gvfkFeatures.length === 0) {{
+                    console.log('Waiting for features...');
+                    setTimeout(filterGVFK, 500);
+                    return;
+                }}
+
+                console.log('Filtering with min:', minValue, 'max:', maxValue, 'features:', gvfkFeatures.length);
+
+                let visibleGVFK = new Set();
+                if (!leafletMap) {{
+                    console.log('Map not found');
+                    return;
+                }}
+
+                // Filter features by setting opacity to 0 instead of removing from map
+                gvfkFeatures.forEach(function(layer) {{
+                    const metric = layer.feature.properties.__metric;
+                    const gvfkId = layer.feature.properties.__gvfk_norm;
+
+                    if (metric >= minValue && metric <= maxValue) {{
+                        layer.setStyle({{fillOpacity: 0.6, opacity: 1.0}});
+                        visibleGVFK.add(gvfkId);
+                    }} else {{
+                        layer.setStyle({{fillOpacity: 0, opacity: 0}});
+                    }}
+                }});
+
+                console.log('Visible GVFK:', visibleGVFK.size);
+                visibleCount.textContent = visibleGVFK.size;
+            }}
+
+            minSlider.addEventListener('input', filterGVFK);
+            maxSlider.addEventListener('input', filterGVFK);
+
+            // Initial filter after features are loaded
+            setTimeout(filterGVFK, 1500);
+        }});
+        </script>
+        """
+        m.get_root().html.add_child(folium.Element(filter_slider_html))
+
         def style_fn(feature: dict) -> dict:
             value = feature["properties"].get("__metric", 0)
             return {
@@ -493,7 +736,7 @@ def _create_overall_exceedance_maps(
             }
 
         # Layer 1 (bottom): GVFK polygons
-        folium.GeoJson(
+        gvfk_layer = folium.GeoJson(
             working_gdf,
             style_function=style_fn,
             tooltip=folium.GeoJsonTooltip(
@@ -509,7 +752,79 @@ def _create_overall_exceedance_maps(
                 max_width=400,
             ),
             name="GVFK impact",
-        ).add_to(m)
+        )
+        gvfk_layer.add_to(m)
+
+        # Get the layer variable name for JavaScript filtering
+        gvfk_layer_var_name = gvfk_layer.get_name()
+
+        # Add script to enable filtering via Leaflet layer API
+        filter_script = f"""
+        <script>
+        var gvfkLayerRef = null;
+        var gvfkFeatures = [];
+        var leafletMap = null;
+
+        function findMapAndFeatures() {{
+            console.log('Starting feature search...');
+
+            // Find the Leaflet map from window object
+            for (let key in window) {{
+                if (key.startsWith('map_') && window[key] && window[key].eachLayer) {{
+                    leafletMap = window[key];
+                    console.log('Found map:', key);
+                    break;
+                }}
+            }}
+
+            if (!leafletMap) {{
+                console.log('Map not found yet, retrying...');
+                setTimeout(findMapAndFeatures, 500);
+                return;
+            }}
+
+            console.log('Map found, searching layers...');
+            let layerCount = 0;
+
+            // Find our GVFK layer
+            leafletMap.eachLayer(function(layer) {{
+                layerCount++;
+                if (layer.feature || (layer.getLayers && layer.getLayers().length > 0)) {{
+                    // This is likely our GeoJson layer
+                    if (!gvfkLayerRef && layer.eachLayer) {{
+                        // Check if this layer has our metric property
+                        let hasMetric = false;
+                        let subLayerCount = 0;
+                        layer.eachLayer(function(subLayer) {{
+                            subLayerCount++;
+                            if (subLayer.feature && subLayer.feature.properties &&
+                                '__metric' in subLayer.feature.properties) {{
+                                hasMetric = true;
+                                gvfkFeatures.push(subLayer);
+                            }}
+                        }});
+                        console.log('Checked layer with', subLayerCount, 'sublayers, hasMetric:', hasMetric);
+                        if (hasMetric) {{
+                            gvfkLayerRef = layer;
+                        }}
+                    }}
+                }}
+            }});
+
+            console.log('Searched', layerCount, 'layers. Found GVFK layer with', gvfkFeatures.length, 'features');
+        }}
+
+        // Start searching when DOM is ready
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', function() {{
+                setTimeout(findMapAndFeatures, 1000);
+            }});
+        }} else {{
+            setTimeout(findMapAndFeatures, 1000);
+        }}
+        </script>
+        """
+        m.get_root().html.add_child(folium.Element(filter_script))
 
         # Layer 2: River basemap (all segments, faint)
         _add_river_basemap(m)
@@ -584,11 +899,8 @@ def _create_overall_exceedance_maps(
 
         # Layer 4: Q-points
         if not overall_flux.empty and sites_web is not None and not sites_web.empty:
-            affected_segments = (
-                overall_flux["Nearest_River_ov_id"].dropna().astype(str).unique()
-            )
-            if len(affected_segments) > 0:
-                _add_qpoints(m, affected_segments, qpoint_lookup)
+            if len(overall_flux) > 0:
+                _add_qpoints(m, overall_flux, qpoint_lookup, STEP6_PRIMARY_FLOW_SCENARIO)
 
             # Layer 5: Sites (V1/V2 polygons)
             _add_sites(m, overall_flux, sites_web)
@@ -947,40 +1259,113 @@ def _add_rivers(
             popup=folium.Popup(popup_html, max_width=300),
         ).add_to(m)
 
+        # Add subtle segment boundary markers (visible only when zoomed in)
+        # Extract endpoints of the river geometry
+        if river.geometry is not None and hasattr(river.geometry, 'coords'):
+            try:
+                coords = list(river.geometry.coords)
+                if len(coords) >= 2:
+                    # Start point
+                    start_point = coords[0]
+                    # End point
+                    end_point = coords[-1]
+
+                    # Add small circles at endpoints (only visible at zoom >= 11)
+                    for point in [start_point, end_point]:
+                        folium.CircleMarker(
+                            location=[point[1], point[0]],  # lat, lon
+                            radius=2,
+                            color='white',
+                            fillColor='white',
+                            fillOpacity=0.8,
+                            weight=1,
+                            popup=folium.Popup(
+                                f"<b>Segment boundary</b><br>ID: {river.get('ov_id', 'N/A')}",
+                                max_width=200
+                            ),
+                            # Use custom CSS to hide at low zoom levels
+                            className='segment-boundary-marker'
+                        ).add_to(m)
+            except Exception:
+                pass  # Skip if geometry doesn't have standard coords
+
+
+def _get_qpoint(
+    flow_scenario: str,
+    seg_fid: object,
+    seg_ov_id: object,
+    qpoint_lookup: Dict[str, Dict],
+) -> Tuple[object, object]:
+    # Resolve Q-point (flow value, geometry) with per-segment fallback
+    scenario = flow_scenario or STEP6_PRIMARY_FLOW_SCENARIO
+    by_fid = qpoint_lookup.get('by_fid', {})
+    by_ov = qpoint_lookup.get('by_ov', {})
+
+    if seg_fid is not None and not pd.isna(seg_fid):
+        try:
+            fid_key = (int(seg_fid), scenario)
+            if fid_key in by_fid:
+                return by_fid[fid_key]
+        except Exception:
+            pass
+
+    if seg_ov_id is not None and not pd.isna(seg_ov_id):
+        ov_key = (str(seg_ov_id), scenario)
+        if ov_key in by_ov:
+            return by_ov[ov_key]
+
+    return None, None
+
 
 def _add_qpoints(
-    m: folium.Map, affected_segments: np.ndarray, qpoint_lookup: Dict[str, Tuple]
+    m: folium.Map,
+    flux_df: pd.DataFrame,
+    qpoint_lookup: Dict[str, Dict],
+    flow_scenario: str | None = None,
 ) -> None:
-    """Add Q-point markers for affected river segments."""
+    # Add Q-point markers for affected river segments
+
+    scenario = flow_scenario or STEP6_PRIMARY_FLOW_SCENARIO
 
     # Create a single FeatureGroup for all Q-points to prevent legend clutter
-    qpoint_group = folium.FeatureGroup(name="Q-points (flow measurement)", show=True)
+    qpoint_group = folium.FeatureGroup(name=f"Q-points (flow {scenario})", show=True)
 
-    for ov_id in affected_segments:
-        key = str(ov_id)
-        if key not in qpoint_lookup:
+    if flux_df is None or flux_df.empty:
+        return
+
+    cols = [c for c in ['Nearest_River_FID', 'Nearest_River_ov_id'] if c in flux_df.columns]
+    if not cols:
+        return
+
+    segment_pairs = (
+        flux_df[cols]
+        .dropna(how='all')
+        .drop_duplicates()
+    )
+
+    for _, pair in segment_pairs.iterrows():
+        seg_fid = pair.get('Nearest_River_FID')
+        seg_ov = pair.get('Nearest_River_ov_id')
+        flow_val, qpoint_geom = _get_qpoint(scenario, seg_fid, seg_ov, qpoint_lookup)
+        if qpoint_geom is None or flow_val is None:
             continue
 
-        q95_value, qpoint_geom = qpoint_lookup[key]
-
-        # Create circular marker at Q-point location
         folium.CircleMarker(
             location=[qpoint_geom.y, qpoint_geom.x],
             radius=6,
-            color="#FFFFFF",  # White outline
+            color="#FFFFFF",
             weight=2,
             fill=True,
-            fillColor="#00BFFF",  # Deep sky blue
+            fillColor="#00BFFF",
             fillOpacity=0.9,
             popup=folium.Popup(
-                f"<b>Q-point</b><br>River: {ov_id}<br>Q95: {q95_value:.4f} m³/s",
-                max_width=200,
+                f"<b>Q-point</b><br>Segment: {seg_ov if pd.notna(seg_ov) else 'N/A'}<br>{scenario}: {flow_val:.4f} m3/s",
+                max_width=220,
             ),
-            tooltip=f"Q95: {q95_value:.4f} m³/s",
+            tooltip=f"{scenario}: {flow_val:.4f} m3/s",
         ).add_to(qpoint_group)
 
     qpoint_group.add_to(m)
-
 
 def _add_sites(
     m: folium.Map, scenario_flux: pd.DataFrame, sites_web: gpd.GeoDataFrame
@@ -1037,7 +1422,7 @@ def _add_connections(
     m: folium.Map,
     scenario_flux: pd.DataFrame,
     sites_web: gpd.GeoDataFrame,
-    qpoint_lookup: Dict[str, Tuple],
+    qpoint_lookup: Dict[str, Dict],
     rivers_web: gpd.GeoDataFrame,
 ) -> None:
     """Add two types of connection lines:
@@ -1048,13 +1433,22 @@ def _add_connections(
     """
 
     # Deduplicate: One connection per (Site + GVFK) combination
-    unique_connections = scenario_flux[['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id']].drop_duplicates()
+    unique_connections = scenario_flux[
+        ['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id', 'Nearest_River_FID']
+    ].drop_duplicates()
 
     # For flux display, aggregate total flux per connection
-    flux_agg = scenario_flux.groupby(['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id'], dropna=False)['Pollution_Flux_kg_per_year'].sum().reset_index()
+    flux_agg = scenario_flux.groupby(
+        ['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id', 'Nearest_River_FID'],
+        dropna=False,
+    )['Pollution_Flux_kg_per_year'].sum().reset_index()
 
     # Merge to get both unique connections and aggregated flux
-    connections = unique_connections.merge(flux_agg, on=['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id'], how='left')
+    connections = unique_connections.merge(
+        flux_agg,
+        on=['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id', 'Nearest_River_FID'],
+        how='left',
+    )
 
     for _, row in connections.iterrows():
         site_id = row["Lokalitet_ID"]
@@ -1098,12 +1492,14 @@ def _add_connections(
         # Determine line style based on flux
         line_color, line_weight = _get_connection_style(flux_kg)
 
-        # Get Q-point info for popup
-        q95_value = "N/A"
-        qpoint_geom = None
-        if river_id in qpoint_lookup:
-            q95_value = f"{qpoint_lookup[river_id][0]:.4f}"
-            qpoint_geom = qpoint_lookup[river_id][1]
+        # Get Q-point info for popup (fid-aware)
+        flow_val, qpoint_geom = _get_qpoint(
+            STEP6_PRIMARY_FLOW_SCENARIO,
+            row.get("Nearest_River_FID", None),
+            river_id,
+            qpoint_lookup,
+        )
+        flow_str = f"{flow_val:.4f}" if flow_val is not None else "N/A"
 
         popup_html = f"""
         <b>Contamination Pathway</b><br>
@@ -1111,7 +1507,7 @@ def _add_connections(
         GVFK: {row.get('GVFK', 'N/A')}<br>
         → River: {river_id}<br>
         Total Flux: {flux_kg:.2f} kg/year<br>
-        Q95: {q95_value} m³/s
+        Flow ({STEP6_PRIMARY_FLOW_SCENARIO}): {flow_str} m³/s
         """
 
         # Add outline for visibility
@@ -1144,7 +1540,7 @@ def _add_connections(
             <b>Q-point Measurement Link</b><br>
             Site: {site_id}<br>
             → Q-point on: {river_id}<br>
-            Q95 flow: {q95_value} m³/s
+            Flow ({STEP6_PRIMARY_FLOW_SCENARIO}): {flow_str} m³/s
             """
 
             # Add dashed cyan line to Q-point
@@ -1178,7 +1574,7 @@ def _add_connections_basic(
     m: folium.Map,
     scenario_flux: pd.DataFrame,
     sites_web: gpd.GeoDataFrame,
-    qpoint_lookup: Dict[str, Tuple],
+    qpoint_lookup: Dict[str, Dict],
     rivers_web: gpd.GeoDataFrame,
 ) -> None:
     """Add two types of simplified connection lines for overview maps:
@@ -1193,11 +1589,14 @@ def _add_connections_basic(
     qpoint_connections_group = folium.FeatureGroup(name="Site → Q-point (measurement)", show=True)
 
     # Deduplicate: One connection per (Site + GVFK) combination
-    unique_connections = scenario_flux[['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id']].drop_duplicates()
+    unique_connections = scenario_flux[
+        ['Lokalitet_ID', 'GVFK', 'Nearest_River_ov_id', 'Nearest_River_FID']
+    ].drop_duplicates()
 
     for _, row in unique_connections.iterrows():
         site_id = row["Lokalitet_ID"]
         river_id = row["Nearest_River_ov_id"]
+        river_fid = row.get("Nearest_River_FID")
         gvfk_id = row["GVFK"]
 
         site_geom = sites_web[sites_web["Lokalitet_"] == site_id]
@@ -1240,9 +1639,10 @@ def _add_connections_basic(
         ).add_to(river_connections_group)
 
         # CONNECTION 2: Site → Q-point
-        lookup_key = str(river_id)
-        if lookup_key in qpoint_lookup:
-            qpoint_geom = qpoint_lookup[lookup_key][1]
+        flow_val, qpoint_geom = _get_qpoint(
+            STEP6_PRIMARY_FLOW_SCENARIO, river_fid, river_id, qpoint_lookup
+        )
+        if qpoint_geom is not None:
 
             closest_point_on_site_qpoint, _ = nearest_points(site_polygon, qpoint_geom)
 

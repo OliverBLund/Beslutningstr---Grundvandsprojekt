@@ -42,6 +42,9 @@ from config import (
     COLUMN_MAPPINGS,
     GRUNDVAND_LAYER_NAME,
     GVD_RASTER_DIR,
+    FLOW_SCENARIO_COLUMNS,
+    STEP6_FLOW_SELECTION_MODE,
+    STEP6_PRIMARY_FLOW_SCENARIO,
     MKK_THRESHOLDS,
     MODELSTOFFER,
     RESULTS_DIR,
@@ -54,6 +57,7 @@ from config import (
 # Import data loaders
 from data_loaders import (
     load_flow_scenarios,
+    load_flow_scenarios_extended,
     load_gvfk_layer_mapping,
     load_river_segments,
     load_site_geometries,
@@ -109,8 +113,10 @@ def run_step6() -> Dict[str, pd.DataFrame]:
 
     # Compute Cmix
     print("[5/6] Computing Cmix (all flow scenarios: Q05, Q10, Q50, Q90, Q95)...")
-    flow_scenarios = load_flow_scenarios()
-    cmix_results = _calculate_cmix(segment_flux, flow_scenarios)
+    # Load flows (ov_id max) and raw Q-points (for nearest-per-segment mode)
+    flow_scenarios, qpoints_gdf = load_flow_scenarios_extended()
+
+    cmix_results = _calculate_cmix(segment_flux, flow_scenarios, qpoints_gdf)
     cmix_results = _apply_mkk_thresholds(cmix_results)
 
     # Build summaries
@@ -234,8 +240,22 @@ def _prepare_flux_inputs(
         )
 
     # Attach modellag information
-    layer_info = layer_mapping[["GVForekom", "dkmlag", "dknr"]].rename(
-        columns={"dkmlag": "DK-modellag", "dknr": "Model_Region"}
+    # Deduplicate GVFK→modellag mapping to avoid row explosion.
+    # Some GVFK polygons appear multiple times; we collapse to one row per GVFK
+    # and, if multiple modellag values exist, join them with "/".
+    layer_info = (
+        layer_mapping[["GVForekom", "dkmlag", "dknr"]]
+        .dropna(subset=["GVForekom"])
+        .groupby("GVForekom", as_index=False)
+        .agg(
+            {
+                "dkmlag": lambda s: "/".join(
+                    sorted({str(v).strip() for v in s if pd.notna(v) and str(v).strip()})
+                ),
+                "dknr": lambda s: next((v for v in s if pd.notna(v)), None),
+            }
+        )
+        .rename(columns={"dkmlag": "DK-modellag", "dknr": "Model_Region"})
     )
     enriched = enriched.merge(
         layer_info,
@@ -681,13 +701,27 @@ def _calculate_infiltration(
 
 
 def _parse_dk_modellag(dk_modellag: str) -> List[str]:
-    """Parse DK-modellag string to list of layer codes."""
+    """Parse DK-modellag string to list of layer codes.
+
+    Handles multiple separator formats:
+    - Semicolon: "Kalk: kalk; Ks2: ks2"
+    - Slash: "kvs_0200/kvs_0400"
+    - Single value: "ks2"
+    """
     if pd.isna(dk_modellag) or not dk_modellag:
         return []
 
-    # Handle format like "Kalk: kalk; ..." or just "ks2"
+    # Handle format like "Kalk: kalk; ..." or "kvs_0200/kvs_0400" or just "ks2"
     layers = []
-    parts = [p.strip() for p in str(dk_modellag).split(";")]
+
+    # First try splitting on semicolon, then slash, then treat as single value
+    dk_modellag_str = str(dk_modellag).strip()
+    if ";" in dk_modellag_str:
+        parts = [p.strip() for p in dk_modellag_str.split(";")]
+    elif "/" in dk_modellag_str:
+        parts = [p.strip() for p in dk_modellag_str.split("/")]
+    else:
+        parts = [dk_modellag_str]
 
     for part in parts:
         if ":" in part:
@@ -1185,6 +1219,7 @@ def _aggregate_flux_by_segment(flux_details: pd.DataFrame) -> pd.DataFrame:
 def _calculate_cmix(
     segment_flux: pd.DataFrame,
     flow_scenarios: pd.DataFrame,
+    qpoints_gdf: gpd.GeoDataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Combine aggregated flux with flow scenarios to compute Cmix.
@@ -1197,6 +1232,73 @@ def _calculate_cmix(
             print("NOTE: Flow scenarios missing. Cmix calculation skipped.")
         return pd.DataFrame()
 
+    # Build flow lookup by ov_id (baseline)
+    flow_by_ov = {
+        (str(row["ov_id"]), row["Scenario"]): row["Flow_m3_s"]
+        for _, row in flow_scenarios.iterrows()
+        if pd.notna(row["Flow_m3_s"])
+    }
+
+    # Optional: build flow lookup by River_FID (nearest-per-segment)
+    flow_by_fid = {}
+    if (
+        qpoints_gdf is not None
+        and STEP6_FLOW_SELECTION_MODE == "max_near_segment"
+        and "geometry" in qpoints_gdf.columns
+    ):
+        try:
+            rivers = load_river_segments()
+            if rivers.crs != qpoints_gdf.crs:
+                rivers = rivers.to_crs(qpoints_gdf.crs)
+
+            scenario_cols = [c for c in FLOW_SCENARIO_COLUMNS if c in qpoints_gdf.columns]
+            if scenario_cols:
+                flow_long = qpoints_gdf.melt(
+                    id_vars=["ov_id", "geometry"],
+                    value_vars=scenario_cols,
+                    var_name="Scenario_raw",
+                    value_name="Flow_m3_s",
+                )
+                flow_long["Scenario"] = flow_long["Scenario_raw"].map(FLOW_SCENARIO_COLUMNS)
+                flow_long = flow_long.drop(columns=["Scenario_raw"])
+                flow_long = flow_long[
+                    flow_long["Flow_m3_s"].notna() & (flow_long["Flow_m3_s"] > 0)
+                ].reset_index(drop=True)
+
+                # Project to metric CRS for distance if needed
+                rivers_proj = rivers
+                flow_proj = flow_long
+                try:
+                    if rivers_proj.crs.is_geographic:
+                        rivers_proj = rivers_proj.to_crs(epsg=25832)
+                        flow_proj = flow_long.copy()
+                        flow_proj["geometry"] = flow_long["geometry"].to_crs(epsg=25832).values
+                except Exception:
+                    flow_proj = flow_long
+
+                buffer_dist = 100.0
+                for _, seg in rivers_proj.iterrows():
+                    seg_fid = seg.get("River_FID")
+                    if pd.isna(seg_fid) or seg.geometry is None:
+                        continue
+                    try:
+                        seg_fid_int = int(seg_fid)
+                    except Exception:
+                        continue
+                    dists = flow_proj.geometry.distance(seg.geometry)
+                    nearby_idx = dists <= buffer_dist
+                    if not nearby_idx.any():
+                        continue
+                    nearby = flow_proj[nearby_idx]
+                    idx_max_near = nearby.groupby("Scenario")["Flow_m3_s"].idxmax()
+                    max_near = nearby.loc[idx_max_near]
+                    for _, row in max_near.iterrows():
+                        flow_by_fid[(seg_fid_int, row["Scenario"])] = row["Flow_m3_s"]
+            else:
+                print("NOTE: No scenario columns in Q-point data for nearest-per-segment flow.")
+        except Exception as exc:
+            print(f"NOTE: Nearest-per-segment flow lookup failed; using ov_id max only. ({exc})")
+
     merged = segment_flux.merge(
         flow_scenarios,
         left_on="Nearest_River_ov_id",
@@ -1205,6 +1307,16 @@ def _calculate_cmix(
     ).drop(columns=["ov_id"])
 
     merged = merged.rename(columns={"Scenario": "Flow_Scenario"})
+
+    # Override Flow_m3_s using FID-based lookup if available (nearest mode), else ov_id max
+    def _flow_lookup(row):
+        key_fid = (row.get("Nearest_River_FID"), row.get("Flow_Scenario"))
+        if key_fid in flow_by_fid:
+            return flow_by_fid[key_fid]
+        key_ov = (str(row.get("Nearest_River_ov_id")), row.get("Flow_Scenario"))
+        return flow_by_ov.get(key_ov, np.nan)
+
+    merged["Flow_m3_s"] = merged.apply(_flow_lookup, axis=1)
     valid_flow = merged["Flow_m3_s"].notna() & (merged["Flow_m3_s"] > 0)
     merged["Has_Flow_Data"] = valid_flow
     merged["Flux_ug_per_second"] = merged["Total_Flux_ug_per_year"] / SECONDS_PER_YEAR

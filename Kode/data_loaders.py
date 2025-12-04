@@ -236,3 +236,64 @@ __all__ = [
     "load_river_segments",
     "load_flow_scenarios",
 ]
+
+
+# ------------------------------------------------------------------
+# Extended flow loader (ov_id max + raw qpoints for nearest-per-segment)
+# ------------------------------------------------------------------
+
+def load_flow_scenarios_extended() -> tuple[pd.DataFrame, gpd.GeoDataFrame]:
+    """Load Q-point discharge data and prepare flow scenarios (extended).
+
+    Returns:
+        (flow_max_df, qpoints_gdf)
+        flow_max_df: ov_id, Scenario, Flow_m3_s (max per ov_id per scenario)
+        qpoints_gdf: raw Q-point geometries (for nearest-per-segment mode)
+    """
+    if not RIVER_FLOW_POINTS_PATH.exists():
+        raise FileNotFoundError(f"Flow data not found: {RIVER_FLOW_POINTS_PATH}")
+
+    qpoints = gpd.read_file(RIVER_FLOW_POINTS_PATH, layer=RIVER_FLOW_POINTS_LAYER)
+
+    river_id_col = COLUMN_MAPPINGS["flow_points"]["river_id"]
+
+    available = [col for col in FLOW_SCENARIO_COLUMNS if col in qpoints.columns]
+    missing = [col for col in FLOW_SCENARIO_COLUMNS if col not in qpoints.columns]
+    if not available:
+        raise ValueError(
+            "Q-point data missing all configured flow columns "
+            f"({', '.join(FLOW_SCENARIO_COLUMNS.keys())})"
+        )
+    if missing:
+        print(
+            "Warning: Q-point data missing columns: "
+            + ", ".join(missing)
+            + ". Skipping those scenarios."
+        )
+
+    scenario_map = {col: FLOW_SCENARIO_COLUMNS[col] for col in available}
+
+    id_vars = [river_id_col]
+    if "geometry" in qpoints.columns:
+        id_vars.append("geometry")
+    value_vars = list(scenario_map.keys())
+
+    flow_long = qpoints[id_vars + value_vars].melt(
+        id_vars=id_vars,
+        value_vars=value_vars,
+        var_name="Scenario_raw",
+        value_name="Flow_m3_s",
+    )
+
+    flow_long["Scenario"] = flow_long["Scenario_raw"].map(scenario_map)
+    flow_long = flow_long.drop(columns=["Scenario_raw"])
+
+    flow_max = (
+        flow_long.groupby([river_id_col, "Scenario"], dropna=False)["Flow_m3_s"]
+        .max()
+        .reset_index()
+    )
+
+    return flow_max, qpoints
+
+__all__.append("load_flow_scenarios_extended")

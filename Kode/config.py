@@ -160,7 +160,10 @@ STEP6_MAP_SETTINGS = {
 
 # Primary flow scenario to use for overall map / reporting context
 STEP6_PRIMARY_FLOW_SCENARIO = "Q95"
-
+# Flow selection mode for Step 6 (Q-point choice per segment)
+# - "max_per_ov": current behavior, max Q per ov_id per scenario
+# - "max_near_segment": for each River_FID, pick max Q per scenario from Q-points near that segment (fallback to max_per_ov)
+STEP6_FLOW_SELECTION_MODE = "max_per_ov"
 # -------------------------------------------------------------------
 # Input Data Column Mappings
 # -------------------------------------------------------------------

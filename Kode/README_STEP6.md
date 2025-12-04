@@ -267,6 +267,26 @@ The Trichlorethylen scenario is completely independent from the Chloroform scena
 - **Negative infiltration filtering (opstrømningszoner)**
   78% of filtered rows (1,919 out of 2,457 total filtered rows) are removed due to negative infiltration values, representing 672 unique sites out of 1,743 total input sites. These sites are located in groundwater discharge zones (opstrømningszoner) where the flux formula J = A × C × I does not apply scientifically. Many of these sites are at 0m distance from rivers. Example: Site 151-00001 with infiltration values of -75.1 and -89.2 mm/yr across different layers. This filtering is scientifically correct and necessary. The `step6_filtering_audit_detailed.csv` output provides complete transparency showing exact reasons for each filtered site across three filter stages: (1) missing modellag mapping, (2) negative infiltration, and (3) missing infiltration data.
 
+- **BUGFIX (2025-01-03): Missing infiltration parser bug [RESOLVED]**
+  **Problem:** 101 sites (10%) were incorrectly dropped for "missing infiltration" despite being inside raster extents and having valid data.
+  
+  **Root Cause:** Parser bug in `_parse_dk_modellag()` (line 703). The function only split on semicolons (`;`), but many GVFKs have slash-separated (`/`) layer assignments like `kvs_0200/kvs_0400`. The parser treated `"kvs_0200/kvs_0400"` as ONE invalid layer name instead of TWO separate layers, attempting to open non-existent file `dk16_gvd_kvs_0200/kvs_0400.tif`.
+  
+  **The Fix:** Updated parser to detect and handle both semicolon and slash separators (priority: semicolon → slash → single value). Now correctly parses `"kvs_0200/kvs_0400"` → `['kvs_0200', 'kvs_0400']`.
+  
+  **Results:**
+  - ✅ **95 sites recovered** (94% success rate)
+  - ✅ Only **6 sites** remain filtered (genuinely outside model coverage: 741-00032, 741-00033, 741-00043, 741-00070, 741-00114, 825-00401)
+  - ✅ Data completeness improved from **90% to 99.4%**
+  - Filter 3 now removes only 8 rows (0.4%) vs 210 rows (9.4%) before fix
+  
+  **Diagnostic Tools Created:**
+  - `Kode/tools/diagnose_raster_nodata_holes.py` - Tests buffer sampling strategies, confirmed no small nodata gaps
+  - `Kode/tools/propose_nodata_fallback_strategy.py` - Tests alternative layers, revealed parser bug
+  - Output files: `nodata_buffer_recovery_analysis.csv`, `nodata_spatial_coverage_map.html`, `nodata_fallback_proposals.csv`
+  
+  **Validation:** Manually verified site 509-30007 (dkmj_2_ks) now correctly samples both kvs_0200 (240.39 mm/year) and kvs_0400 (240.39 mm/year), averaging to valid infiltration value.
+
 ---
 
 Keep this sheet close when validating Step 6 outputs or explaining the workflow to collaborators. It ties each dataset and visual back to a concrete example and highlights known edge cases.
