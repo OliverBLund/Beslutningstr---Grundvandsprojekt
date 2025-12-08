@@ -56,22 +56,31 @@ def analyze_and_visualize_step6(
 ) -> None:
     """Print compact diagnostics covering the main Step 6 deliverables."""
 
-    print("\nSTEP 6: TILSTANDSVURDERING – SUMMARY")
-    print("=" * 60)
+    print("\n" + "─" * 60)
+    print("Step 6 Summary")
+    print("─" * 60)
 
-    _print_site_level_overview(site_flux)
-    _print_segment_overview(segment_flux)
-    _print_cmix_overview(cmix_results)
-    _print_segment_summary(segment_summary)
-    _print_exceedance_focus(site_exceedances, gvfk_exceedances)
+    # Quick summary of key results
+    sites = site_flux["Lokalitet_ID"].nunique() if "Lokalitet_ID" in site_flux.columns else 0
+    segments = segment_summary["River_FID"].nunique() if "River_FID" in segment_summary.columns else len(segment_summary)
+    exc_sites = site_exceedances["Lokalitet_ID"].nunique() if site_exceedances is not None and not site_exceedances.empty and "Lokalitet_ID" in site_exceedances.columns else 0
+    exc_segments = (segment_summary["Max_Exceedance_Factor"] > 1).sum() if "Max_Exceedance_Factor" in segment_summary.columns else 0
+    exc_gvfk = gvfk_exceedances["GVFK"].nunique() if gvfk_exceedances is not None and not gvfk_exceedances.empty and "GVFK" in gvfk_exceedances.columns else 0
 
-    print("=" * 60)
-    print("End of Step 6 summary")
-    print("=" * 60)
+    max_exceedance = segment_summary["Max_Exceedance_Factor"].max() if "Max_Exceedance_Factor" in segment_summary.columns else 0
+
+    print(f"  Sites analyzed: {sites:,}")
+    print(f"  River segments affected: {segments:,}")
+    print(f"  MKK exceedances: {exc_sites:,} sites in {exc_gvfk:,} GVFKs affecting {exc_segments:,} segments")
+    if max_exceedance > 1:
+        print(f"  Worst exceedance: {max_exceedance:,.0f}x MKK")
+    print("─" * 60)
+
+    # Skip verbose text output, but continue to generate visualizations below
+    # (Verbose output functions commented out to keep console clean)
 
     # Create pixel distribution visualizations FIRST (before any map issues)
     if pixel_data_records is not None and enriched_results is not None:
-        print("\nGenerating pixel distribution visualizations...")
         _create_pixel_distribution_plots(pixel_data_records, enriched_results, negative_infiltration)
 
     # NOTE: Negative infiltration map moved to Step 5c (upward flux visualization)
@@ -80,8 +89,6 @@ def analyze_and_visualize_step6(
 
     scenario_flag = STEP6_MAP_SETTINGS.get("generate_combined_maps", True)
     overall_flag = STEP6_MAP_SETTINGS.get("generate_overall_maps", True)
-    if scenario_flag or overall_flag:
-        print("\nGenerating combined/overall impact maps...")
     try:
         from .step6_combined_map import create_combined_impact_maps
         create_combined_impact_maps(site_flux, segment_summary, cmix_results, gvfk_exceedances)
@@ -89,19 +96,14 @@ def analyze_and_visualize_step6(
         from step6_combined_map import create_combined_impact_maps
         create_combined_impact_maps(site_flux, segment_summary, cmix_results, gvfk_exceedances)
     else:
-        print(
-            "\nSkipping combined impact maps (all Step 6 map flags disabled)."
-        )
+        pass
 
     # Create analytical plots
-    print("\nGenerating analytical plots...")
     try:
         from .step6_analytical_plots import create_analytical_plots
     except ImportError:
         from step6_analytical_plots import create_analytical_plots
     create_analytical_plots(site_flux, segment_flux, cmix_results, segment_summary)
-
-    print("All visualizations saved to Resultater/step6_tilstandsvurdering/figures/")
 
 
 # ---------------------------------------------------------------------------
@@ -1300,7 +1302,7 @@ def _create_pixel_distribution_plots(
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-    print(f"  Pixel distribution plots saved to: {plot_path}")
+
 
     # Export statistics to CSV
     stats_df = pd.DataFrame({
@@ -1345,4 +1347,3 @@ def _create_pixel_distribution_plots(
 
     stats_path = output_dir / "step6_pixel_distribution_statistics.csv"
     stats_df.to_csv(stats_path, index=False)
-    print(f"  Pixel distribution statistics saved to: {stats_path}")

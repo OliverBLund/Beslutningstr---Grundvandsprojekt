@@ -197,11 +197,21 @@ def print_comprehensive_summary(
         compound_combinations: All site-GVFK-substance combinations from compound assessment
         parked_sites: Sites without substance or landfill data
     """
-    print("\n" + "=" * 70)
-    print("STEP 5: COMPREHENSIVE WORKFLOW SUMMARY")
-    print("=" * 70)
+    # Simplified summary - just key results
+    general_unique_sites = general_sites["Lokalitet_ID"].nunique() if not general_sites.empty else 0
+    general_unique_gvfks = general_sites["GVFK"].nunique() if not general_sites.empty else 0
+    compound_unique_sites = compound_combinations["Lokalitet_ID"].nunique() if not compound_combinations.empty else 0
+    compound_unique_gvfks = compound_combinations["GVFK"].nunique() if not compound_combinations.empty else 0
 
-    # INPUT FROM STEP 4
+    print("\n" + "─" * 60)
+    print("Step 5 Summary")
+    print("─" * 60)
+    print(f"  5a - General (≤500m): {general_unique_sites:,} sites in {general_unique_gvfks:,} GVFKs")
+    print(f"  5b - Compound-specific: {compound_unique_sites:,} sites in {compound_unique_gvfks:,} GVFKs")
+    print("─" * 60)
+    return  # Exit early - skip the verbose details below
+
+    # OLD VERBOSE OUTPUT (skipped)
     total_combinations = len(all_distance_results)
     total_unique_sites = all_distance_results["Lokalitet_ID"].nunique()
     total_unique_gvfks = all_distance_results["GVFK"].nunique()

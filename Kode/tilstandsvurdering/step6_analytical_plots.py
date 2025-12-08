@@ -39,41 +39,33 @@ def create_analytical_plots(
     output_dir = get_visualization_path("step6", "analytical")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("  Creating analytical plots...")
+
 
     # Plot 1: Category Impact Overview
-    print("    - Category impact overview...")
     plot_category_impact_overview(site_flux, segment_flux, cmix_results, output_dir)
 
     # Plot 2: Top Polluters - Sites
-    print("    - Top polluting sites...")
     plot_top_polluting_sites(site_flux, output_dir)
 
     # Plot 3: Top Affected Rivers
-    print("    - Top affected rivers...")
     plot_top_affected_rivers(segment_flux, output_dir)
 
     # Plot 4: Exceedance Analysis
-    print("    - Exceedance analysis...")
     plot_exceedance_analysis(cmix_results, output_dir)
 
     # Plot 5: GVFK Summary
-    print("    - GVFK summary...")
     plot_gvfk_summary(site_flux, segment_summary, cmix_results, output_dir)
 
     # Plot 6: Flow Scenario Sensitivity
-    print("    - Flow scenario sensitivity...")
     plot_flow_scenario_sensitivity(cmix_results, output_dir)
 
     # Plot 7: Multi-scenario category breakdown
-    print("    - Category scenario breakdown...")
     plot_multi_scenario_breakdown(segment_flux, cmix_results, output_dir)
 
     # Plot 7: Substance Detail Treemap
-    print("    - Substance contribution treemap...")
     plot_substance_treemap(segment_flux, output_dir)
 
-    print(f"  Analytical plots saved to {output_dir}/")
+
 
 
 def plot_category_impact_overview(

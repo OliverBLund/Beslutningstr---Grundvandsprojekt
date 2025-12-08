@@ -89,6 +89,13 @@ def main():
     print("GROUNDWATER CONTAMINATION ASSESSMENT - COMPLETE WORKFLOW (Steps 1-6)")
     print("=" * 80)
 
+    # Show sampling mode if enabled
+    from config import WORKFLOW_SETTINGS
+    sample_fraction = WORKFLOW_SETTINGS.get('sample_fraction')
+    if sample_fraction and sample_fraction < 1.0:
+        print(f"\n⚠️  TESTING MODE: Using {sample_fraction*100:.0f}% sample of data")
+        print("   (Set sample_fraction=None in config.py for full production run)\n")
+
     # Validate input files before starting
     if not validate_input_files():
         print("\nERROR: Missing required input files - check config.py")
@@ -132,7 +139,8 @@ def main():
     if distance_results is None:
         print("✗ Step 4 failed - distance calculation unsuccessful")
         return False
-    results["step4"] = {"distance_results": distance_results}
+    # Store all results from step 4 (includes distance_results, unique_distances for plotting)
+    results["step4"] = distance_results
 
     # STEP 5
     step5_results = run_step5()
@@ -218,37 +226,120 @@ def main():
     # Create visualizations if available
     create_visualizations_if_available(results)
 
+    # Print final consolidated summary
+    print_final_summary(results)
+
+    return True
+
+def _safe_nunique(df, col_name):
+    """Safely get nunique with error handling."""
+    try:
+        if df is not None and not df.empty and col_name in df.columns:
+            return df[col_name].nunique()
+    except:
+        pass
+    return 0
+
+
+def print_final_summary(results):
+    """Print consolidated workflow summary with key metrics from all steps."""
+    print("\n" + "=" * 80)
+    print("WORKFLOW SUMMARY")
+    print("=" * 80)
+
+    # Step 1-2
+    total_gvfk = results.get("step1", {}).get("total_gvfk", 0)
+    river_gvfk = results.get("step2", {}).get("river_contact_count", 0)
+
+    # Step 3 - try both possible column names (Lokalitetsnr is from shapefile, Lokalitet_ID is created by step4)
+    v1v2_sites = results.get("step3", {}).get("v1v2_sites")
+    sites_count = _safe_nunique(v1v2_sites, "Lokalitetsnr") or _safe_nunique(v1v2_sites, "Lokalitet_ID")
+    gvfk_with_sites = len(results.get("step3", {}).get("gvfk_with_v1v2_names", []))
+
+    # Step 5
+    step5 = results.get("step5", {})
+    general_sites = step5.get("general_high_risk_sites")
+    compound_sites = step5.get("compound_high_risk_sites")
+    general_sites_count = _safe_nunique(general_sites, "Lokalitet_ID")
+    general_gvfk_count = _safe_nunique(general_sites, "GVFK")
+    compound_sites_count = _safe_nunique(compound_sites, "Lokalitet_ID")
+    compound_gvfk_count = _safe_nunique(compound_sites, "GVFK")
+
+    # Step 5c
+    step5c = results.get("step5c", {})
+    filtered_sites_count = step5c.get("filtered_sites_count", 0) if step5c.get("success") else compound_sites_count
+    removed_sites_count = step5c.get("removed_sites_count", 0)
+
+    # Step 6
+    step6 = results.get("step6", {})
+    exc_sites = exc_gvfk = exc_segments = max_exc = 0
+    if step6.get("success"):
+        site_exc = step6.get("site_exceedances")
+        gvfk_exc = step6.get("gvfk_exceedances")
+        segment_summary = step6.get("segment_summary")
+
+        exc_sites = _safe_nunique(site_exc, "Lokalitet_ID")
+        exc_gvfk = _safe_nunique(gvfk_exc, "GVFK")
+        if segment_summary is not None and not segment_summary.empty:
+            try:
+                if "Max_Exceedance_Ratio" in segment_summary.columns:
+                    exc_segments = int((segment_summary["Max_Exceedance_Ratio"] > 1).sum())
+                    max_exc = float(segment_summary["Max_Exceedance_Ratio"].max())
+            except Exception as e:
+                # Gracefully handle any calculation errors
+                pass
+
+    # Print summary
+    print(f"\nStep 1: Total GVFKs in Denmark: {total_gvfk:,}")
+    print(f"Step 2: GVFKs with river contact: {river_gvfk:,} ({river_gvfk/total_gvfk*100:.1f}%)" if total_gvfk > 0 else f"Step 2: GVFKs with river contact: {river_gvfk:,}")
+    print(f"Step 3: GVFKs with contaminated sites: {gvfk_with_sites:,} ({gvfk_with_sites/river_gvfk*100:.1f}% of river-contact)" if river_gvfk > 0 else f"Step 3: GVFKs with contaminated sites: {gvfk_with_sites:,}")
+    print(f"        Contaminated sites identified: {sites_count:,}")
+    print(f"Step 5a: High-risk sites (≤500m): {general_sites_count:,} sites in {general_gvfk_count:,} GVFKs")
+    print(f"Step 5b: Compound-specific risk: {compound_sites_count:,} sites in {compound_gvfk_count:,} GVFKs")
+    if step5c.get("success"):
+        print(f"Step 5c: After infiltration filter: {filtered_sites_count:,} sites ({removed_sites_count:,} removed - upward flow)")
+
+    # Step 6 - always show if completed, even if no exceedances
+    if step6.get("success"):
+        print(f"Step 6: MKK exceedances: {exc_sites:,} sites in {exc_gvfk:,} GVFKs affecting {exc_segments:,} river segments")
+        if max_exc > 1:
+            print(f"        Worst exceedance: {max_exc:,.0f}x MKK")
+
     print("\n" + "=" * 80)
     print("WORKFLOW COMPLETED")
     print("=" * 80)
-    print(f"\nResults: Resultater/")
-    return True
+    print(f"\nResults saved to: Resultater/\n")
+
 
 def create_visualizations_if_available(results):
-    """Create core workflow visualizations (suppressed output for clean console)."""
+    """Create core workflow visualizations."""
     try:
         from risikovurdering.optional_analysis.selected_visualizations import (
             create_distance_histogram_with_thresholds,
             create_progression_plot,
         )
 
-        if results["step4"]["distance_results"] is not None:
+        # Create Step 4 distance histograms if data available
+        if results.get("step4") and results["step4"].get("distance_results") is not None:
             try:
                 # Extract dataframes from results dictionary (in-memory)
                 unique_df = results["step4"].get("unique_distances")
                 all_combos_df = results["step4"].get("distance_results")
-                
-                # Pass dataframes directly to plotting function
-                create_distance_histogram_with_thresholds(
-                    unique_df=unique_df,
-                    all_combinations_df=all_combos_df
-                )
+
+                if unique_df is not None and all_combos_df is not None:
+                    # Pass dataframes directly to plotting function
+                    create_distance_histogram_with_thresholds(
+                        unique_df=unique_df,
+                        all_combinations_df=all_combos_df
+                    )
             except Exception as e:
-                print(f"Warning: Step 4 plotting failed: {e}")
+                # Optional visualization - skip if fails
                 pass
 
         try:
             from config import GRUNDVAND_PATH, WORKFLOW_SUMMARY_DIR
+            from risikovurdering.optional_analysis.selected_visualizations import create_sites_progression_plot
+
             required_files = {
                 "all_gvfk": GRUNDVAND_PATH,
                 "river_gvfk": get_output_path("step2_river_gvfk"),
@@ -257,6 +348,7 @@ def create_visualizations_if_available(results):
             }
             WORKFLOW_SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
             create_progression_plot(str(WORKFLOW_SUMMARY_DIR), required_files)
+            create_sites_progression_plot(str(WORKFLOW_SUMMARY_DIR))
         except:
             pass
     except:
@@ -268,14 +360,10 @@ def create_visualizations_if_available(results):
 if __name__ == "__main__":
     try:
         success = main()
-        if success:
-            print(
-                "\nWorkflow completed successfully! Check the 'Resultater' directory for output files."
-            )
-        else:
-            print("\nWorkflow failed. Check error messages above.")
+        if not success:
+            print("\n✗ Workflow failed. Check error messages above.")
     except Exception as e:
-        print(f"\nWorkflow failed with error: {e}")
+        print(f"\n✗ Workflow failed with error: {e}")
         import traceback
 
         traceback.print_exc()

@@ -24,6 +24,7 @@ from config import (
     V2_CSV_PATH,
     V2_DISSOLVED_CACHE,
     V2_SHP_PATH,
+    apply_sampling,
     ensure_cache_directory,
     ensure_results_directory,
     get_output_path,
@@ -78,6 +79,10 @@ def run_step3(rivers_gvfk):
     v1_csv_raw = pd.read_csv(V1_CSV_PATH)
     v2_csv_raw = pd.read_csv(V2_CSV_PATH)
 
+    # Apply sampling if enabled
+    v1_csv_raw = apply_sampling(v1_csv_raw, id_column=site_id_col)
+    v2_csv_raw = apply_sampling(v2_csv_raw, id_column=site_id_col)
+
     v1_unique_initial = v1_csv_raw[site_id_col].nunique()
     v2_unique_initial = v2_csv_raw[site_id_col].nunique()
     overlap_initial = len(set(v1_csv_raw[site_id_col]) & set(v2_csv_raw[site_id_col]))
@@ -109,12 +114,10 @@ def run_step3(rivers_gvfk):
     v1_qualified = v1_substance_only + v1_branch_only + v1_both
 
     print(f"  V1: {v1_qualified:,} sites qualified ({v1_qualified/len(v1_localities)*100:.1f}%)")
-    report_breakdown("", {
-        "Substance only": (v1_substance_only, v1_substance_only/len(v1_localities)*100),
-        "Branch only": (v1_branch_only, v1_branch_only/len(v1_localities)*100),
-        "Both": (v1_both, v1_both/len(v1_localities)*100),
-        "Neither (filtered)": (v1_neither, v1_neither/len(v1_localities)*100),
-    }, indent=2)
+    print(f"    ├─ Substance only: {v1_substance_only} ({v1_substance_only/len(v1_localities)*100:.1f}%)")
+    print(f"    ├─ Branch only: {v1_branch_only} ({v1_branch_only/len(v1_localities)*100:.1f}%)")
+    print(f"    ├─ Both: {v1_both} ({v1_both/len(v1_localities)*100:.1f}%)")
+    print(f"    └─ Neither (filtered): {v1_neither} ({v1_neither/len(v1_localities)*100:.1f}%)")
 
     # Analyze V2
     v2_has_substances = (v2_csv_raw[substances_col].notna() &
@@ -134,12 +137,10 @@ def run_step3(rivers_gvfk):
     v2_qualified = v2_substance_only + v2_branch_only + v2_both
 
     print(f"\n  V2: {v2_qualified:,} sites qualified ({v2_qualified/len(v2_localities)*100:.1f}%)")
-    report_breakdown("", {
-        "Substance only": (v2_substance_only, v2_substance_only/len(v2_localities)*100),
-        "Branch only": (v2_branch_only, v2_branch_only/len(v2_localities)*100),
-        "Both": (v2_both, v2_both/len(v2_localities)*100),
-        "Neither (filtered)": (v2_neither, v2_neither/len(v2_localities)*100),
-    }, indent=2)
+    print(f"    ├─ Substance only: {v2_substance_only} ({v2_substance_only/len(v2_localities)*100:.1f}%)")
+    print(f"    ├─ Branch only: {v2_branch_only} ({v2_branch_only/len(v2_localities)*100:.1f}%)")
+    print(f"    ├─ Both: {v2_both} ({v2_both/len(v2_localities)*100:.1f}%)")
+    print(f"    └─ Neither (filtered): {v2_neither} ({v2_neither/len(v2_localities)*100:.1f}%)")
 
     # Filter to qualified sites
     v1_csv = v1_csv_raw[v1_has_substances | v1_has_branch]
@@ -341,7 +342,7 @@ def _save_step3_results(v1v2_combined, gvfk_with_v1v2_names, site_id_shp_col,
     total_combinations = len(v1v2_combined)
     output_gvfk_count = len(gvfk_with_v1v2_names)
 
-    report_counts("", sites=unique_sites, gvfks=output_gvfk_count,
+    report_counts("Final results", sites=unique_sites, gvfks=output_gvfk_count,
                  combinations=total_combinations, indent=1)
 
     # Site type breakdown

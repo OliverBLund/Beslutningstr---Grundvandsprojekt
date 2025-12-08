@@ -426,13 +426,11 @@ def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFra
 
     filtered_results.to_csv(step5_path, index=False, encoding="utf-8")
 
-    # Save removed sites for reference
-    removed_path = get_output_path("step5_infiltration_removed_sites")
-    removed_sites.to_csv(removed_path, index=False, encoding="utf-8")
+    # Note: Removed sites are not saved to file (considered dead-end data)
+    # They are returned for in-memory analysis if needed
 
     if verbose:
-        print(f"  - Updated: {step5_path.name}")
-        print(f"  - Saved removed sites: {removed_path.name}")
+        print(f"  - Saved: {step5_path.name}")
 
     # Create visualization of removed sites (upward flux zones)
     if not removed_sites.empty:

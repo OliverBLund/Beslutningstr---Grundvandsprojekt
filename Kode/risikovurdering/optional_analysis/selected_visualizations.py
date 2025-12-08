@@ -84,16 +84,16 @@ def create_html_table(data, headers, title, filename, output_dir):
 def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_df=None):
     """
     Create specialized histograms with distance thresholds highlighted.
-    
+
     Args:
         unique_df (pd.DataFrame, optional): Pre-loaded unique distances dataframe.
         all_combinations_df (pd.DataFrame, optional): Pre-loaded all combinations dataframe.
-        
+
     Creates TWO versions:
     1. Unique lokaliteter (minimum distance per site)
     2. All lokalitet-GVFK combinations
     """
-    print("Creating distance histograms with thresholds...")
+
 
     # Use config-based path for Step 4 visualizations
     from config import get_visualization_path, get_output_path
@@ -117,7 +117,7 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
             try:
                 datasets_to_process.append({
                     "data": pd.read_csv(unique_distance_file),
-                    "type": "unikke lokaliteter", 
+                    "type": "unikke lokaliteter",
                     "suffix": "unique",
                     "description": "Unique Lokaliteter (minimum distance per site)",
                 })
@@ -130,7 +130,7 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
         datasets_to_process.append({
             "data": all_combinations_df,
             "type": "lokalitet-GVFK kombinationer",
-            "suffix": "all_combinations", 
+            "suffix": "all_combinations",
             "description": "All Lokalitet-GVFK Combinations",
         })
     else:
@@ -154,10 +154,6 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
 
     # Process each dataset
     for dataset_info in datasets_to_process:
-        print(f"\n{'=' * 60}")
-        print(f"Processing: {dataset_info['description']}")
-        print(f"{'=' * 60}")
-
         try:
             # Load the data
             distance_df = dataset_info["data"].copy()
@@ -167,19 +163,11 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
             # Cap distances at 20,000m - anything above gets grouped into 20000+ category
             original_max_distance = distance_df["Distance_to_River_m"].max()
             distances_over_20k = (distance_df["Distance_to_River_m"] > 20000).sum()
-            print(f"Original max distance: {original_max_distance:.1f}m")
-            print(
-                f"Entries with distances > 20,000m: {distances_over_20k} ({distances_over_20k / len(distance_df) * 100:.1f}%)"
-            )
 
             # Cap the distances at 20,000m
             distance_df["Distance_to_River_m"] = distance_df[
                 "Distance_to_River_m"
             ].clip(upper=20000)
-
-            print(
-                f"Analyzing {len(distance_df)} {analysis_type} for threshold visualization"
-            )
 
             if "Distance_to_River_m" in distance_df.columns:
                 # Prepare the data
@@ -216,7 +204,6 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
                     within = (distance_df["Distance_to_River_m"] <= t).sum()
                     pct = within / len(distance_df) * 100
                     percentages.append(pct)
-                    print(f"Lokaliteter indenfor {t}m: {within} ({pct:.1f}%)")
 
                 # Create a more beautiful histogram with thresholds
                 plt.figure(figsize=(15, 10))
@@ -484,7 +471,7 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
                 )
                 plt.close()
 
-                print(f"[OK] Created threshold histogram: {histogram_filename}")
+
 
                 # Also create a cumulative distribution function (CDF) with thresholds
                 plt.figure(figsize=(15, 10))
@@ -584,7 +571,7 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
                 )
                 plt.close()
 
-                print(f"[OK] Created CDF with thresholds: {cdf_filename}")
+
             else:
                 print(
                     "No 'Distance_to_River_m' column found in the distance analysis file."
@@ -596,63 +583,69 @@ def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_d
 
             traceback.print_exc()
 
-    print(f"\n{'=' * 60}")
-    print(f"Completed: Created histograms for {len(datasets_to_process)} dataset(s)")
-    print(f"{'=' * 60}")
+
 
 
 def create_progression_plot(figures_path, required_files):
-    """Create a comprehensive GVFK progression plot showing both Step 5 assessments."""
+    """Create comprehensive GVFK progression plot showing all workflow steps."""
     try:
         # Create a bar chart showing the complete GVFK progression
         stages = [
             "Alle GVFK\n(Danmark)",
             "Vandløbskontakt\n(Trin 2)",
             "V1/V2 lokaliteter\n(Trin 3)",
-            "Generel risiko\n(Trin 5a: <= 500m)",
+            "Generel risiko\n(Trin 5a: ≤500m)",
             "Stofspecifik risiko\n(Trin 5b: Variabel)",
+            "Infiltrationsfilter\n(Trin 5c)",
+            "MKK overskridelser\n(Trin 6)",
         ]
 
         # Load actual counts from data files - NO FALLBACKS!
         import pandas as pd
         from config import get_output_path
 
-        # Step 1: Total GVFK (from original file)
+        # Step 1: Total GVFK (from original file) - count UNIQUE GVFKs
         if "all_gvfk" in required_files and os.path.exists(required_files["all_gvfk"]):
             import geopandas as gpd
+            from config import COLUMN_MAPPINGS
 
             all_path = required_files["all_gvfk"]
             if Path(all_path).suffix.lower() == ".gdb" or Path(all_path) == GRUNDVAND_PATH:
                 all_gvfk_df = gpd.read_file(all_path, layer=GRUNDVAND_LAYER_NAME)
             else:
                 all_gvfk_df = gpd.read_file(all_path)
-            total_gvfks = len(all_gvfk_df)
+
+            # Count unique GVFKs, not rows (GVFKs can have multiple polygon parts)
+            gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
+            total_gvfks = all_gvfk_df[gvfk_col].nunique()
         else:
             raise FileNotFoundError(
                 "Cannot find all_gvfk file - required for progression plot"
             )
 
-        # Step 2: River contact GVFKs
+        # Step 2: River contact GVFKs - count UNIQUE GVFKs
         if "river_gvfk" in required_files and os.path.exists(
             required_files["river_gvfk"]
         ):
             import geopandas as gpd
 
             river_df = gpd.read_file(required_files["river_gvfk"])
-            river_gvfks = len(river_df)
+            # Count unique GVFKs, not polygon rows
+            river_gvfks = river_df[gvfk_col].nunique() if gvfk_col in river_df.columns else river_df['GVForekom'].nunique()
         else:
             raise FileNotFoundError(
                 "Cannot find river_gvfk file - required for progression plot"
             )
 
-        # Step 3: V1/V2 GVFKs
+        # Step 3: V1/V2 GVFKs - count UNIQUE GVFKs
         if "v1v2_gvfk" in required_files and os.path.exists(
             required_files["v1v2_gvfk"]
         ):
             import geopandas as gpd
 
             v1v2_df = gpd.read_file(required_files["v1v2_gvfk"])
-            v1v2_gvfks = len(v1v2_df)
+            # Count unique GVFKs, not polygon rows
+            v1v2_gvfks = v1v2_df[gvfk_col].nunique() if gvfk_col in v1v2_df.columns else v1v2_df['GVForekom'].nunique()
         else:
             raise FileNotFoundError(
                 "Cannot find v1v2_gvfk file - required for progression plot"
@@ -674,11 +667,27 @@ def create_progression_plot(figures_path, required_files):
         else:
             raise FileNotFoundError(f"Cannot find Step 5b file: {step5b_path}")
 
-        counts = [total_gvfks, river_gvfks, v1v2_gvfks, step5a_gvfks, step5b_gvfks]
-        print(
-            f"Loaded actual counts: Total={total_gvfks}, River={river_gvfks}, V1V2={v1v2_gvfks}, Step5a={step5a_gvfks}, Step5b={step5b_gvfks}"
-        )
-        colors = ["#E6E6E6", "#66B3FF", "#FF6666", "#FF8C42", "#FF3333"]
+        # Step 5c: Infiltration filtering (optional - may not exist)
+        step5c_gvfks = step5b_gvfks  # Default to Step 5b if Step 5c not run
+        try:
+            # Step 5c uses the same file as 5b but filtered
+            # We can use the filtered version if it exists, otherwise use 5b count
+            step5c_gvfks = step5b_gvfks  # For now, use same as 5b (Step 5c doesn't change GVFK count, just filters sites)
+        except:
+            pass
+
+        # Step 6: MKK exceedances (optional - may not exist)
+        step6_gvfks = 0
+        try:
+            step6_path = get_output_path("step6_gvfk_mkk_exceedances")
+            if os.path.exists(step6_path):
+                step6_df = pd.read_csv(step6_path)
+                step6_gvfks = step6_df["GVFK"].nunique() if "GVFK" in step6_df.columns else 0
+        except:
+            pass
+
+        counts = [total_gvfks, river_gvfks, v1v2_gvfks, step5a_gvfks, step5b_gvfks, step5c_gvfks, step6_gvfks]
+        colors = ["#E6E6E6", "#66B3FF", "#FF6666", "#FF8C42", "#FF3333", "#CC2266", "#880000"]
 
         fig, ax = plt.subplots(figsize=(14, 8))
 
@@ -762,13 +771,104 @@ def create_progression_plot(figures_path, required_files):
         )
         plt.close()
 
-        print("Updated GVFK progression plot created successfully")
-        print(
-            f"  Shows both Step 5a (General: {step5a_gvfks} GVFK) and Step 5b (Compound-specific: {step5b_gvfks} GVFK)"
-        )
+
 
     except Exception as e:
         print(f"Error creating progression plot: {e}")
+
+
+def create_sites_progression_plot(figures_path):
+    """Create sites progression plot showing filtering through workflow steps."""
+    try:
+        import pandas as pd
+        from config import get_output_path, COLUMN_MAPPINGS
+
+        # Load data from workflow steps
+        step3_path = get_output_path("step3_v1v2_sites")
+        step5a_path = get_output_path("step5_high_risk_sites")
+        step5b_path = get_output_path("step5_compound_detailed_combinations")
+        step6_site_path = get_output_path("step6_site_mkk_exceedances")
+
+        # Try to load each step
+        sites_counts = []
+        stages = []
+
+        # Step 3: V1/V2 sites
+        if os.path.exists(step3_path):
+            import geopandas as gpd
+            step3_df = gpd.read_file(step3_path)
+            # Step 3 uses shapefile column name from COLUMN_MAPPINGS
+            site_id_col = COLUMN_MAPPINGS['contamination_shp']['site_id']
+            if site_id_col in step3_df.columns:
+                step3_sites = step3_df[site_id_col].nunique()
+            else:
+                # Fallback: try common alternatives
+                step3_sites = step3_df["Lokalitetsnr"].nunique() if "Lokalitetsnr" in step3_df.columns else 0
+            sites_counts.append(step3_sites)
+            stages.append("V1/V2 lokaliteter\n(Trin 3)")
+
+        # Step 5a: High-risk sites
+        if os.path.exists(step5a_path):
+            step5a_df = pd.read_csv(step5a_path)
+            step5a_sites = step5a_df["Lokalitet_ID"].nunique()
+            sites_counts.append(step5a_sites)
+            stages.append("Generel risiko\n(Trin 5a: ≤500m)")
+
+        # Step 5b: Compound-specific
+        if os.path.exists(step5b_path):
+            step5b_df = pd.read_csv(step5b_path)
+            step5b_sites = step5b_df["Lokalitet_ID"].nunique()
+            sites_counts.append(step5b_sites)
+            stages.append("Stofspecifik risiko\n(Trin 5b)")
+
+        # Step 6: MKK exceedances
+        if os.path.exists(step6_site_path):
+            step6_df = pd.read_csv(step6_site_path)
+            step6_sites = step6_df["Lokalitet_ID"].nunique() if "Lokalitet_ID" in step6_df.columns else 0
+            sites_counts.append(step6_sites)
+            stages.append("MKK overskridelser\n(Trin 6)")
+
+        if len(sites_counts) < 2:
+            print("Not enough data for sites progression plot")
+            return
+
+        # Create plot
+        colors = ["#66B3FF", "#FF8C42", "#FF3333", "#880000"][:len(stages)]
+
+        fig, ax = plt.subplots(figsize=(12, 8))
+        bars = ax.bar(range(len(stages)), sites_counts, color=colors, alpha=0.8,
+                      edgecolor="black", linewidth=1.5)
+
+        # Add count labels
+        for i, (bar, count) in enumerate(zip(bars, sites_counts)):
+            height = bar.get_height()
+            percentage = (count / sites_counts[0]) * 100 if sites_counts[0] > 0 else 0
+
+            ax.text(bar.get_x() + bar.get_width() / 2.0, height - height * 0.15,
+                   f"{count:,}", ha="center", va="center", fontsize=14,
+                   fontweight="bold", color="white")
+
+            ax.text(bar.get_x() + bar.get_width() / 2.0, height - height * 0.4,
+                   f"{percentage:.1f}%", ha="center", va="center", fontsize=13,
+                   fontweight="bold", color="white")
+
+        ax.set_xticks(range(len(stages)))
+        ax.set_xticklabels(stages, fontsize=12, fontweight="bold")
+        ax.set_ylabel("Antal Lokaliteter", fontsize=14, fontweight="bold")
+        ax.set_title("Lokalitets Analyse Progression\nFra V1/V2 lokaliteter til MKK overskridelser",
+                    fontsize=16, fontweight="bold", pad=20)
+        ax.set_ylim(0, max(sites_counts) * 1.1)
+        ax.grid(True, axis="y", alpha=0.3, linestyle="--")
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(figures_path, "sites_progression.png"),
+                   dpi=300, bbox_inches="tight")
+        plt.close()
+
+        print(f"Sites progression plot created successfully (showing {len(stages)} steps)")
+
+    except Exception as e:
+        print(f"Error creating sites progression plot: {e}")
 
 
 def create_gvfk_cascade_table_from_data():

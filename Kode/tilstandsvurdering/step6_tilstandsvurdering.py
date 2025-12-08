@@ -107,7 +107,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     enriched_results, negative_infiltration, filtering_audit, pixel_data_records = _prepare_flux_inputs(
         step5_results, site_geometries, layer_mapping, river_segments
     )
-    
+
     # Report filtering results
     initial_count = len(step5_results)
     report_step6_filtering(filtering_audit, initial_count)
@@ -159,7 +159,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
         flux_output_count=flux_stats["output_count"],
         dropped_concentration_summary=flux_stats["dropped_concentration_summary"]
     )
-    
+
     # Visualize
     analyze_and_visualize_step6(
         flux_details,
@@ -173,10 +173,11 @@ def run_step6() -> Dict[str, pd.DataFrame]:
         pixel_data_records=pixel_data_records,
         enriched_results=enriched_results,
     )
-    
+
     report_completion(6)
 
     return {
+        "success": True,
         "site_flux": flux_details,
         "segment_flux": segment_flux,
         "cmix_results": cmix_results,

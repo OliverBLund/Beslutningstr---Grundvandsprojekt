@@ -69,10 +69,9 @@ def create_combined_impact_maps(
         gvfk_exceedances: DataFrame from step6_gvfk_exceedances.csv (site-level GVFK)
     """
 
-    print("  Creating combined impact maps (sites + Q-points + rivers)...")
+
 
     # Load geometries
-    print("    Loading geometries...")
     sites_gdf = gpd.read_file(get_output_path("step3_v1v2_sites"), encoding="utf-8")
     sites_web = sites_gdf.to_crs("EPSG:4326")
 
@@ -98,7 +97,7 @@ def create_combined_impact_maps(
         # New Grunddata format: GVFK presence IS the contact indicator
         rivers = rivers_all[valid_gvfk_mask]
 
-    print(f"      Filtered to {len(rivers)} river segments with GVFK contact (from {len(rivers_all)} total)")
+
 
     rivers_web = rivers.to_crs("EPSG:4326")
 
@@ -117,7 +116,7 @@ def create_combined_impact_maps(
     qpoints_web = qpoints.to_crs("EPSG:4326")
 
     # Load Cmix results for Q95 scenario
-    print("    Loading Cmix data (Q95 scenario)...")
+
     cmix_path = get_output_path("step6_cmix_results")
     cmix_results = pd.read_csv(cmix_path, encoding="utf-8")
     cmix_q95 = cmix_results[cmix_results["Flow_Scenario"] == "Q95"].copy()
@@ -131,7 +130,7 @@ def create_combined_impact_maps(
         )
 
     # Identify which Q-point to use per river segment (max Q95)
-    print("    Identifying max Q95 Q-point per segment...")
+
     qpoint_lookup = _build_qpoint_lookup_v2(qpoints_web)
 
     scenario_enabled = STEP6_MAP_SETTINGS.get("generate_combined_maps", True)
@@ -150,11 +149,8 @@ def create_combined_impact_maps(
                 qpoint_lookup,
                 cmix_q95,
             )
-    else:
-        print("    Skipping per-scenario maps (disabled in config).")
 
     if STEP6_MAP_SETTINGS.get("generate_overall_maps", True):
-        print("    Generating overall GVFK exceedance maps...")
         _create_overall_exceedance_maps(
             rivers_web,
             segment_summary,
@@ -168,7 +164,7 @@ def create_combined_impact_maps(
     else:
         print("    Skipping overall GVFK exceedance maps (disabled in config).")
 
-    print(f"  Maps saved to {get_visualization_path('step6', 'combined')}/")
+
 
 
 # Old _build_qpoint_lookup() removed - superseded by _build_qpoint_lookup_v2()
@@ -215,7 +211,7 @@ def _build_qpoint_lookup_v2(qpoints_gdf: gpd.GeoDataFrame) -> Dict[str, Dict]:
         result["by_ov"][key] = (row["Flow_m3_s"], row.geometry)
 
     if STEP6_FLOW_SELECTION_MODE != "max_near_segment":
-        print(f"      Built Q-point lookup (max_per_ov): {len(result['by_ov'])} keys")
+
         return result
 
     # Nearest-per-segment mode
@@ -569,7 +565,7 @@ def _create_overall_exceedance_maps(
         # Count UNIQUE GVFK, not polygon features (some GVFK have multiple disconnected areas)
         unique_gvfk_count = working_gdf["__gvfk_norm"].nunique()
         polygon_count = len(working_gdf)
-        print(f"      Showing {unique_gvfk_count} GVFK with exceedances on map ({polygon_count} polygon features)")
+
 
         max_value = working_gdf["__metric"].max()
         if not np.isfinite(max_value) or max_value <= 0:
@@ -924,7 +920,7 @@ def _create_overall_exceedance_maps(
         with open(str(output_path), "w", encoding="utf-8") as f:
             f.write(html_str)
 
-        print(f"      Saved overall GVFK map ({method}) to {output_path}")
+
 
 
 

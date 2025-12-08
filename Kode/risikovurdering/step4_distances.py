@@ -205,7 +205,7 @@ def run_step4(v1v2_combined):
 
     # Create unique distances dataframe (in memory) - one row per site
     min_distance_entries = valid_results[valid_results["Is_Min_Distance"] == True].copy()
-    
+
     # Sort and take first
     unique_distances = (
         min_distance_entries.sort_values(["Lokalitet_ID", "GVFK"])
@@ -238,7 +238,7 @@ def run_step4(v1v2_combined):
     ]
     available_step5_columns = [col for col in step5_columns if col in valid_results.columns]
     output_columns = base_columns + available_step5_columns
-    
+
     # Ensure columns exist before selecting
     viz_columns = [col for col in output_columns if col in unique_distances.columns]
     unique_distances_viz = unique_distances[viz_columns].copy()
@@ -271,7 +271,7 @@ def run_step4(v1v2_combined):
 
     # Return BOTH the full results (for Step 5) AND unique distances (for visualization)
     return {
-        "results_df": results_df, 
+        "results_df": results_df,
         "distance_results": valid_results,
         "unique_distances": unique_distances_viz
     }
@@ -318,7 +318,7 @@ def _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col
         get_output_path("step4_final_distances_for_risk_assessment"), index=False, encoding="utf-8"
     )
 
-    # NOTE: Intermediate files (valid_distances, unique_lokalitet_distances) 
+    # NOTE: Intermediate files (valid_distances, unique_lokalitet_distances)
     # are no longer saved to disk. They are passed in memory for visualization.
     print("  Saved Step 5 input file: step4_final_distances_for_risk_assessment")
 
@@ -388,12 +388,9 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
                 relevant_gvfk_polygons,
             )
             print(
-                f"  Interactive map: {get_output_path('interactive_distance_map')}"
+                f"  Interactive map saved: {get_output_path('interactive_distance_map').name}"
             )
         except ImportError:
-            pass  # Skip silently if map module unavailable
+            print("  Note: Interactive map module not available")
         except Exception as e:
-            import warnings
-            warnings.filterwarnings(
-                "ignore", category=UserWarning, module="pyogrio.raw"
-            )
+            print(f"  Note: Interactive map creation failed - {type(e).__name__}: {e}")

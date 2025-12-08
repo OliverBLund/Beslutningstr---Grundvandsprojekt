@@ -102,6 +102,11 @@ WORKFLOW_SUMMARY_DIR = RESULTS_DIR / "workflow_summary"
 # Modify these values to adjust thresholds and behavior.
 
 WORKFLOW_SETTINGS = {
+    # TESTING MODE: Set to a value between 0.0-1.0 to sample that fraction of data
+    # Example: 0.1 = 10% of sites, 0.25 = 25% of sites, 1.0 = full data (production)
+    # Set to None or 1.0 to disable sampling
+    "sample_fraction": 0.25,  # Change to 0.1 for quick testing with 10% of data
+
     # Distance threshold for risk assessment (meters)
     "risk_threshold_m": 500,
 
@@ -410,6 +415,41 @@ def get_visualization_path(*parts: str) -> Path:
 
     viz_path.mkdir(parents=True, exist_ok=True)
     return viz_path
+
+
+def apply_sampling(df, id_column: str = 'Lokalitet_ID', seed: int = 42):
+    """
+    Sample a fraction of the data based on WORKFLOW_SETTINGS['sample_fraction'].
+
+    Args:
+        df: DataFrame to sample
+        id_column: Column name to use for sampling (samples unique IDs, not rows)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Sampled DataFrame (or original if sampling is disabled)
+    """
+    sample_fraction = WORKFLOW_SETTINGS.get('sample_fraction')
+
+    # If sampling disabled or invalid, return full data
+    if sample_fraction is None or sample_fraction >= 1.0:
+        return df
+
+    if sample_fraction <= 0.0:
+        raise ValueError("sample_fraction must be > 0.0")
+
+    # Sample unique IDs
+    import pandas as pd
+    unique_ids = df[id_column].unique()
+    n_sample = max(1, int(len(unique_ids) * sample_fraction))
+    sampled_ids = pd.Series(unique_ids).sample(n=n_sample, random_state=seed).values
+
+    # Filter dataframe to sampled IDs
+    sampled_df = df[df[id_column].isin(sampled_ids)].copy()
+
+    print(f"  [SAMPLING MODE] Using {sample_fraction*100:.0f}% of data: {len(sampled_ids):,} / {len(unique_ids):,} unique {id_column}")
+
+    return sampled_df
 
 
 def validate_input_files() -> bool:
