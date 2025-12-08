@@ -9,6 +9,7 @@ import geopandas as gpd
 import warnings
 from shapely.errors import ShapelyDeprecationWarning
 from config import GRUNDVAND_PATH, GRUNDVAND_LAYER_NAME, COLUMN_MAPPINGS
+from step_reporter import report_step_header, report_counts
 
 # Suppress shapely deprecation warnings
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -16,12 +17,12 @@ warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 def run_step1():
     """
     Execute Step 1: Count total unique groundwater aquifers (GVFK).
-    
+
     Returns:
         tuple: (gvf_geodataframe, unique_gvfk_count)
     """
-    print("Step 1: Counting total unique groundwater aquifers (GVFK)")
-    
+    report_step_header(1, "Load Groundwater Aquifers")
+
     # Read the base shapefile
     gvf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
 
@@ -31,8 +32,8 @@ def run_step1():
         raise ValueError(f"'{gvfk_col}' column not found in groundwater file")
 
     unique_gvfk = gvf[gvfk_col].nunique()
-    print(f"Total unique GVFK: {unique_gvfk}")
-    
+    report_counts("Total GVFKs in Denmark", gvfks=unique_gvfk)
+
     return gvf, unique_gvfk
 
 if __name__ == "__main__":
@@ -43,4 +44,4 @@ if __name__ == "__main__":
         print(f"Step 1 completed: {count} unique GVFK found.")
         print("#######################")
     else:
-        print("Step 1 failed.") 
+        print("Step 1 failed.")

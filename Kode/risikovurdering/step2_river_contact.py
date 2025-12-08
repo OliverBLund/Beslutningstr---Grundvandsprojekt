@@ -18,6 +18,7 @@ from config import (
     ensure_results_directory,
     get_output_path,
 )
+from step_reporter import report_step_header, report_counts
 
 # Suppress shapely deprecation warnings
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -29,9 +30,8 @@ def run_step2():
     Returns:
         tuple: (rivers_gvfk_list, unique_rivers_gvfk_count, gvf_with_rivers_geodataframe)
     """
-    print("Step 2: Counting GVFK in contact with targeted rivers")
+    report_step_header(2, "Filter to GVFKs with River Contact")
 
-    # Ensure output directory exists
     ensure_results_directory()
 
     # Read the rivers contact dataset
@@ -42,8 +42,6 @@ def run_step2():
     river_gvfk_col = COLUMN_MAPPINGS['rivers']['gvfk_id']
 
     # Filter to rivers with GVFK contact
-    # New Grunddata format: GVFK presence indicates contact
-    # Legacy format: Explicit 'Kontakt' column (if present, use for backward compatibility)
     contact_value = WORKFLOW_SETTINGS['contact_filter_value']
     rivers[river_gvfk_col] = rivers[river_gvfk_col].astype(str).str.strip()
     valid_gvfk_mask = rivers[river_gvfk_col] != ""
@@ -67,26 +65,25 @@ def run_step2():
         if gvf is not None and isinstance(gvf, str)
     ]
     unique_rivers_gvfk = len(rivers_gvfk)
-    print(f"GVFK with river contact: {unique_rivers_gvfk}")
 
     # Load base GVFK file and filter to those with river contact
     gvf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
 
-    # Filter GVFK to only those with river contact
     gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
     if gvfk_col not in gvf.columns:
         raise ValueError(f"'{gvfk_col}' column not found in GVFK file")
 
     gvf_with_rivers = gvf[gvf[gvfk_col].isin(rivers_gvfk)]
 
-    # Save GVFK with river contact for visualization and subsequent steps
+    # Save GVFK with river contact
     output_path = get_output_path('step2_river_gvfk')
     gvf_with_rivers.to_file(output_path, encoding="utf-8")
 
-    # Report: unique GVFKs vs total polygons (some GVFKs have multiple disconnected areas)
+    # Report results
     num_polygons = len(gvf_with_rivers)
     num_unique_gvfk = gvf_with_rivers[gvfk_col].nunique()
-    print(f"Saved: {num_unique_gvfk} unique GVFKs ({num_polygons} polygon features)")
+    report_counts("GVFKs with river contact", gvfks=num_unique_gvfk)
+
     if num_polygons > num_unique_gvfk:
         print(f"  Note: {num_polygons - num_unique_gvfk} GVFKs have multiple disconnected areas")
 

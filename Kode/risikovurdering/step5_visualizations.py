@@ -60,13 +60,6 @@ def create_step5_visualizations():
     else:
         print(f"  ⚠ Compound combinations file not found: {compound_file}")
 
-    # Plot 3: GVFK progression through workflow
-    try:
-        create_gvfk_progression_chart(figures_path)
-        print(f"  ✓ GVFK progression chart created")
-    except Exception as e:
-        print(f"  ⚠ Could not create GVFK progression: {e}")
-
     print(f"\n[OK] Essential visualizations saved to: {figures_path}")
 
 
@@ -156,98 +149,4 @@ def create_category_breakdown(compound_combinations, figures_path):
     plt.close()
 
 
-def create_gvfk_progression_chart(figures_path):
-    """
-    Create bar chart showing GVFK count progression through workflow steps.
-    Verifies that filtering logic is working correctly at each step.
-    Note: Counts UNIQUE GVFKs, not polygon features (some GVFKs have multiple polygons).
-    """
-    from config import GRUNDVAND_LAYER_NAME, GRUNDVAND_PATH, get_output_path, COLUMN_MAPPINGS
-    import geopandas as gpd
 
-    gvfk_col = COLUMN_MAPPINGS['grundvand']['gvfk_id']
-    steps = []
-    counts = []
-
-    # Step 1: All Denmark
-    try:
-        all_gvfk = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
-        steps.append('Step 1:\nAll GVFKs')
-        counts.append(all_gvfk[gvfk_col].nunique())  # Count unique GVFKs, not polygons
-    except:
-        pass
-
-    # Step 2: River contact
-    step2_file = get_output_path('step2_river_gvfk')
-    if os.path.exists(step2_file):
-        try:
-            river_gvfk = gpd.read_file(step2_file)
-            steps.append('Step 2:\nRiver Contact')
-            counts.append(river_gvfk[gvfk_col].nunique())  # Count unique GVFKs, not polygons
-        except:
-            pass
-
-    # Step 3: V1/V2 sites
-    step3_file = get_output_path('step3_gvfk_polygons')
-    if os.path.exists(step3_file):
-        try:
-            v1v2_gvfk = gpd.read_file(step3_file)
-            steps.append('Step 3:\nV1/V2 Sites')
-            counts.append(v1v2_gvfk[gvfk_col].nunique())  # Count unique GVFKs, not polygons
-        except:
-            pass
-
-    # Step 5a: General assessment (500m)
-    step5a_file = get_output_path('step5_high_risk_sites')
-    if os.path.exists(step5a_file):
-        try:
-            step5a_sites = pd.read_csv(step5a_file)
-            gvfk_count = step5a_sites['GVFK'].nunique() if 'GVFK' in step5a_sites.columns else 0
-            steps.append('Step 5a:\nGeneral\n(≤500m)')
-            counts.append(gvfk_count)
-        except:
-            pass
-
-    # Step 5b: Compound-specific
-    step5b_file = get_output_path('step5_compound_detailed_combinations')
-    if os.path.exists(step5b_file):
-        try:
-            step5b_combinations = pd.read_csv(step5b_file)
-            gvfk_col = 'GVFK' if 'GVFK' in step5b_combinations.columns else 'Closest_GVFK'
-            gvfk_count = step5b_combinations[gvfk_col].nunique() if gvfk_col in step5b_combinations.columns else 0
-            steps.append('Step 5b:\nCompound-\nSpecific')
-            counts.append(gvfk_count)
-        except:
-            pass
-
-    if not steps:
-        print("  Warning: No step data found for progression chart")
-        return
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    # Create bar chart with gradient colors
-    colors = ['#90CAF9', '#64B5F6', '#42A5F5', '#2196F3', '#1976D2']
-    bars = ax.bar(steps, counts, color=colors[:len(steps)], edgecolor='black', linewidth=1)
-
-    # Add value labels on bars
-    for bar, count in zip(bars, counts):
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width() / 2., height,
-                f'{count:,}',
-                ha='center', va='bottom', fontweight='bold')
-
-    # Labels and title
-    ax.set_ylabel('Number of GVFKs', fontweight='bold')
-    ax.set_title('GVFK Progression Through Workflow', fontweight='bold', fontsize=14, pad=15)
-    ax.grid(axis='y', alpha=0.3)
-    ax.set_axisbelow(True)
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(figures_path, 'workflow_gvfk_progression.png'))
-    plt.close()
-
-
-if __name__ == "__main__":
-    # Allow running this module independently
-    create_step5_visualizations()

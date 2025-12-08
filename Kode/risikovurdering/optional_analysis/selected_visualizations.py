@@ -81,9 +81,14 @@ def create_html_table(data, headers, title, filename, output_dir):
     return filepath
 
 
-def create_distance_histogram_with_thresholds(results_path):
+def create_distance_histogram_with_thresholds(unique_df=None, all_combinations_df=None):
     """
     Create specialized histograms with distance thresholds highlighted.
+    
+    Args:
+        unique_df (pd.DataFrame, optional): Pre-loaded unique distances dataframe.
+        all_combinations_df (pd.DataFrame, optional): Pre-loaded all combinations dataframe.
+        
     Creates TWO versions:
     1. Unique lokaliteter (minimum distance per site)
     2. All lokalitet-GVFK combinations
@@ -95,43 +100,57 @@ def create_distance_histogram_with_thresholds(results_path):
 
     figures_path = get_visualization_path("step4")
 
-    # Define paths for both unique locations and all combinations files
-    unique_distance_file = get_output_path("unique_lokalitet_distances")
-    all_combinations_file = get_output_path("step4_valid_distances")
-
-    # Check which files exist
-    has_unique = os.path.exists(unique_distance_file)
-    has_all_combinations = os.path.exists(all_combinations_file)
-
-    if not has_unique and not has_all_combinations:
-        print("Required files for distance analysis not found.")
-        print("Run the step4_calculate_distances() function in workflow.py first.")
-        return
-
-    # We'll create histograms for both datasets
     datasets_to_process = []
 
-    if has_unique:
-        datasets_to_process.append(
-            {
-                "path": unique_distance_file,
-                "type": "unikke lokaliteter",
-                "suffix": "unique",
-                "description": "Unique Lokaliteter (minimum distance per site)",
-            }
-        )
-        print(f"[OK] Found unique lokaliteter file: {unique_distance_file}")
+    # 1. Process Unique Locs
+    if unique_df is not None:
+        datasets_to_process.append({
+            "data": unique_df,
+            "type": "unikke lokaliteter",
+            "suffix": "unique",
+            "description": "Unique Lokaliteter (minimum distance per site)",
+        })
+    else:
+        # Fallback to file load if no DF provided (legacy/standalone support)
+        unique_distance_file = get_output_path("unique_lokalitet_distances")
+        if os.path.exists(unique_distance_file):
+            try:
+                datasets_to_process.append({
+                    "data": pd.read_csv(unique_distance_file),
+                    "type": "unikke lokaliteter", 
+                    "suffix": "unique",
+                    "description": "Unique Lokaliteter (minimum distance per site)",
+                })
+                print(f"[OK] Found unique lokaliteter file: {unique_distance_file}")
+            except Exception as e:
+                print(f"Warning: Could not read unique distances file: {e}")
 
-    if has_all_combinations:
-        datasets_to_process.append(
-            {
-                "path": all_combinations_file,
-                "type": "lokalitet-GVFK kombinationer",
-                "suffix": "all_combinations",
-                "description": "All Lokalitet-GVFK Combinations",
-            }
-        )
-        print(f"[OK] Found all combinations file: {all_combinations_file}")
+    # 2. Process All Combinations
+    if all_combinations_df is not None:
+        datasets_to_process.append({
+            "data": all_combinations_df,
+            "type": "lokalitet-GVFK kombinationer",
+            "suffix": "all_combinations", 
+            "description": "All Lokalitet-GVFK Combinations",
+        })
+    else:
+        # Fallback to file load
+        all_combinations_file = get_output_path("step4_valid_distances")
+        if os.path.exists(all_combinations_file):
+            try:
+                datasets_to_process.append({
+                    "data": pd.read_csv(all_combinations_file),
+                    "type": "lokalitet-GVFK kombinationer",
+                    "suffix": "all_combinations",
+                    "description": "All Lokalitet-GVFK Combinations",
+                })
+                print(f"[OK] Found all combinations file: {all_combinations_file}")
+            except Exception as e:
+                 print(f"Warning: Could not read all combinations file: {e}")
+
+    if not datasets_to_process:
+        print("Required data for distance analysis not found (neither in memory nor on disk).")
+        return
 
     # Process each dataset
     for dataset_info in datasets_to_process:
@@ -141,7 +160,7 @@ def create_distance_histogram_with_thresholds(results_path):
 
         try:
             # Load the data
-            distance_df = pd.read_csv(dataset_info["path"])
+            distance_df = dataset_info["data"].copy()
             analysis_type = dataset_info["type"]
             filename_suffix = dataset_info["suffix"]
 

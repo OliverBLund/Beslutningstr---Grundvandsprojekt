@@ -383,11 +383,9 @@ def handle_unknown_substance_sites(sites_without_substances):
     print(f"\nUnknown Substance Sites Analysis:")
     print(f"  Total sites without substance data: {len(sites_without_substances)}")
 
-    # Save these sites separately
+    # NOTE: These sites are now kept in memory only (not saved to disk)
+    # They are filtered out in Step 5b compound assessment
     if len(sites_without_substances) > 0:
-        unknown_path = get_output_path("step5_unknown_substance_sites")
-        sites_without_substances.to_csv(unknown_path, index=False, encoding="utf-8")
-        print(f"  Saved to: {unknown_path}")
 
         # Basic statistics
         if "Distance_to_River_m" in sites_without_substances.columns:

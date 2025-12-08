@@ -93,7 +93,7 @@ STEP6_FIGURES_DIAGNOSTICS_DIR = STEP6_FIGURES_DIR / "diagnostics"
 WORKFLOW_SUMMARY_DIR = RESULTS_DIR / "workflow_summary"
 
 # Legacy FIGURES_DIR for backward compatibility (can be removed after full migration)
-FIGURES_DIR = RESULTS_DIR / "Figures"
+# FIGURES_DIR removed to enforce strict structure
 
 # -------------------------------------------------------------------
 # Workflow Settings
@@ -265,9 +265,9 @@ CORE_OUTPUTS = {
     # Step 4: Distance calculations
     "step4_final_distances_for_risk_assessment": STEP4_DATA_DIR
     / "step4_final_distances.csv",
-    "step4_valid_distances": STEP4_DATA_DIR / "step4_valid_distances.csv",
-    "unique_lokalitet_distances": STEP4_DATA_DIR / "unique_lokalitet_distances.csv",
-    "unique_lokalitet_distances_shp": STEP4_DATA_DIR / "unique_lokalitet_distances.shp",
+    # "step4_valid_distances": STEP4_DATA_DIR / "step4_valid_distances.csv",  # Removed: Passed in-memory
+    # "unique_lokalitet_distances": STEP4_DATA_DIR / "unique_lokalitet_distances.csv",  # Removed: Passed in-memory
+    # "unique_lokalitet_distances_shp": STEP4_DATA_DIR / "unique_lokalitet_distances.shp",  # Removed: Unused
     # Step 5a: General assessment (500m universal threshold)
     "step5_high_risk_sites": STEP5_DATA_DIR
     / f"step5_high_risk_sites_{WORKFLOW_SETTINGS['risk_threshold_m']}m.csv",
@@ -279,9 +279,9 @@ CORE_OUTPUTS = {
     "step5_compound_specific_sites": STEP5_DATA_DIR / "step5_compound_specific_sites.csv",
     "step5_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5_compound_gvfk_high_risk.shp",
     # Step 5: Sites without substance data (parked for later analysis)
-    "step5_unknown_substance_sites": STEP5_DATA_DIR / "step5_unknown_substance_sites.csv",
+    # "step5_unknown_substance_sites": STEP5_DATA_DIR / "step5_unknown_substance_sites.csv",  # Removed: Dead end
     # Step 5b: Infiltration filtering removed sites
-    "step5_infiltration_removed_sites": STEP5_DATA_DIR / "step5_infiltration_removed_sites.csv",
+    # "step5_infiltration_removed_sites": STEP5_DATA_DIR / "step5_infiltration_removed_sites.csv",  # Removed: Dead end
     # Step 6: Tilstandsvurdering outputs
     "step6_flux_site_segment": STEP6_DATA_DIR / "step6_flux_site_segment.csv",
     # Per-segment scenario rows with Cmix/MKK flags (one row per segment/substance/scenario)
@@ -390,8 +390,8 @@ def get_visualization_path(*parts: str) -> Path:
         pieces = [str(part) for part in parts if part]
 
     if not pieces:
-        # Default to legacy FIGURES_DIR if no path specified
-        viz_path = FIGURES_DIR
+        # Default to workflow_summary if no path specified
+        viz_path = WORKFLOW_SUMMARY_DIR
     elif pieces[0] == "step2":
         viz_path = STEP2_FIGURES_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else STEP2_FIGURES_DIR
     elif pieces[0] == "step3":
@@ -405,8 +405,8 @@ def get_visualization_path(*parts: str) -> Path:
     elif pieces[0] == "workflow_summary":
         viz_path = WORKFLOW_SUMMARY_DIR.joinpath(*pieces[1:]) if len(pieces) > 1 else WORKFLOW_SUMMARY_DIR
     else:
-        # Legacy path for unrecognized step identifiers
-        viz_path = FIGURES_DIR.joinpath(*pieces)
+        # Sort unknowns into workflow_summary/other to prevent "Figures" recreation
+        viz_path = WORKFLOW_SUMMARY_DIR / "other" / Path(*pieces)
 
     viz_path.mkdir(parents=True, exist_ok=True)
     return viz_path

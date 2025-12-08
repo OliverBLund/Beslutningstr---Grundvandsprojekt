@@ -63,6 +63,13 @@ from data_loaders import (
     load_site_geometries,
     load_step5_results,
 )
+from step_reporter import (
+    report_step_header,
+    report_step6_filtering,
+    report_step6_flux_stats,
+    report_step6_summary,
+    report_completion,
+)
 
 # Import visualizations
 try:
@@ -86,9 +93,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     """
     ensure_results_directory()
 
-    print("\n" + "=" * 60)
-    print("STEP 6: TILSTANDSVURDERING")
-    print("=" * 60)
+    report_step_header(6, "TILSTANDSVURDERING")
 
     # Load data
     print("\n[1/6] Loading data...")
@@ -98,14 +103,18 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     river_segments = load_river_segments()
 
     # Prepare flux inputs (filtering + infiltration)
-    print("[2/6] Preparing flux inputs (filtering + infiltration)...")
+    print("\n[2/6] Preparing flux inputs (filtering + infiltration)...")
     enriched_results, negative_infiltration, filtering_audit, pixel_data_records = _prepare_flux_inputs(
         step5_results, site_geometries, layer_mapping, river_segments
     )
+    
+    # Report filtering results
+    initial_count = len(step5_results)
+    report_step6_filtering(filtering_audit, initial_count)
 
     # Calculate flux
-    print("[3/6] Calculating flux (scenario-based approach)...")
-    flux_details = _calculate_flux(enriched_results)
+    print("\n[3/6] Calculating flux (scenario-based approach)...")
+    flux_details, flux_stats = _calculate_flux(enriched_results)
 
     # Aggregate by segment
     print("[4/6] Aggregating flux by segment...")
@@ -120,7 +129,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     cmix_results = _apply_mkk_thresholds(cmix_results)
 
     # Build summaries
-    print("[6/6] Building summaries & exporting...")
+    print("\n[6/6] Building summaries & exporting...")
     segment_summary = _build_segment_summary(flux_details, segment_flux, cmix_results)
     site_exceedances, gvfk_exceedances = _extract_exceedance_views(
         flux_details, cmix_results
@@ -138,20 +147,19 @@ def run_step6() -> Dict[str, pd.DataFrame]:
     if not filtering_audit.empty:
         audit_path = get_output_path("step6_filtering_audit")
         filtering_audit.to_csv(audit_path, index=False, encoding="utf-8")
-        print(f"\n{'=' * 60}")
-        print(f"Filtering audit exported: {audit_path.name}")
-        print(f"Total filtered entries: {len(filtering_audit)}")
-        print(
-            f"  Filter 1 (Missing modellag): {(filtering_audit['Filter_Stage'] == 'Filter_1_Missing_Modellag').sum()}"
-        )
-        print(
-            f"  Filter 2 (Negative infiltration): {(filtering_audit['Filter_Stage'] == 'Filter_2_Negative_Infiltration').sum()}"
-        )
-        print(
-            f"  Filter 3 (Missing infiltration): {(filtering_audit['Filter_Stage'] == 'Filter_3_Missing_Infiltration').sum()}"
-        )
-        print(f"{'=' * 60}\n")
 
+    # Report summary
+    report_step6_summary(
+        flux_details,
+        cmix_results,
+        segment_summary,
+        site_exceedances,
+        gvfk_exceedances,
+        flux_input_count=flux_stats["input_count"],
+        flux_output_count=flux_stats["output_count"],
+        dropped_concentration_summary=flux_stats["dropped_concentration_summary"]
+    )
+    
     # Visualize
     analyze_and_visualize_step6(
         flux_details,
@@ -165,10 +173,8 @@ def run_step6() -> Dict[str, pd.DataFrame]:
         pixel_data_records=pixel_data_records,
         enriched_results=enriched_results,
     )
-
-    print("\n" + "=" * 60)
-    print("Step 6 completed successfully!")
-    print("=" * 60 + "\n")
+    
+    report_completion(6)
 
     return {
         "site_flux": flux_details,
@@ -205,14 +211,6 @@ def _prepare_flux_inputs(
     initial_total_rows = len(step5_results)
     initial_total_sites = step5_results["Lokalitet_ID"].nunique()
     initial_total_gvfk = step5_results["GVFK"].nunique()
-
-    print("\n" + "=" * 80)
-    print("FILTERING CASCADE – Step 6 Data Preparation")
-    print("=" * 80)
-    print(
-        f"INPUT from Step 5: {initial_total_rows} rows, {initial_total_sites} sites, {initial_total_gvfk} GVFK"
-    )
-    print("=" * 80 + "\n")
 
     enriched = step5_results.copy()
     negative_rows = pd.DataFrame(columns=enriched.columns)
@@ -274,22 +272,6 @@ def _prepare_flux_inputs(
             enriched["DK-modellag"].isna(), "Lokalitet_ID"
         ].unique()
 
-        print(f"FILTER 1: Missing modellag mapping")
-        print(
-            f"   GVFKs affected: {len(missing_layers)} ({', '.join(sorted(missing_layers))})"
-        )
-        print(
-            f"   Rows removed: {missing_count} ({missing_count / initial_total_rows * 100:.1f}%)"
-        )
-        print(f"   Sites removed: {missing_sites_count}")
-        print(
-            f"   Example sites: {', '.join(sorted(missing_sites_list)[:5])}{' ...' if len(missing_sites_list) > 5 else ''}"
-        )
-        print(
-            "   -> TODO: Add these GVFKs to the Grunddata layer "
-            f"'{GRUNDVAND_LAYER_NAME}' with a valid dkmlag assignment.\n"
-        )
-
         # Track filtered rows in audit
         filtered = enriched[enriched["DK-modellag"].isna()]
         for _, row in filtered.iterrows():
@@ -309,13 +291,6 @@ def _prepare_flux_inputs(
 
         # Filter out rows with missing modellag
         enriched = enriched[enriched["DK-modellag"].notna()].copy()
-
-        after_filter1_rows = len(enriched)
-        after_filter1_sites = enriched["Lokalitet_ID"].nunique()
-        after_filter1_gvfk = enriched["GVFK"].nunique()
-        print(
-            f"   AFTER FILTER 1: {after_filter1_rows} rows, {after_filter1_sites} sites, {after_filter1_gvfk} GVFK\n"
-        )
 
     enriched = enriched.drop(columns=["GVForekom"])
 
@@ -419,18 +394,6 @@ def _prepare_flux_inputs(
             enriched["Infiltration_mm_per_year"].isna(), "Lokalitet_ID"
         ].unique()
 
-        print(f"FILTER 3: Missing infiltration data (outside raster coverage)")
-        print(
-            f"   Rows removed: {missing_infiltration} ({missing_infiltration / before_filter3_rows * 100:.1f}%)"
-        )
-        print(f"   Sites removed: {len(missing_sites)}")
-        print(
-            f"   Example sites: {', '.join(sorted(missing_sites)[:10])}{' ...' if len(missing_sites) > 10 else ''}"
-        )
-        print(
-            f"   Reason: Site polygon/centroid fall outside infiltration raster coverage.\n"
-        )
-
         # Track filtered rows in audit
         filtered = enriched[enriched["Infiltration_mm_per_year"].isna()]
         for _, row in filtered.iterrows():
@@ -449,13 +412,6 @@ def _prepare_flux_inputs(
             )
 
         enriched = enriched[enriched["Infiltration_mm_per_year"].notna()].copy()
-
-        after_filter3_rows = len(enriched)
-        after_filter3_sites = enriched["Lokalitet_ID"].nunique()
-        after_filter3_gvfk = enriched["GVFK"].nunique()
-        print(
-            f"   AFTER FILTER 3: {after_filter3_rows} rows, {after_filter3_sites} sites, {after_filter3_gvfk} GVFK\n"
-        )
 
     # Attach river metadata
     river_length_col = COLUMN_MAPPINGS["rivers"]["length"]
@@ -507,18 +463,6 @@ def _prepare_flux_inputs(
     final_rows = len(enriched)
     final_sites = enriched["Lokalitet_ID"].nunique()
     final_gvfk = enriched["GVFK"].nunique()
-
-    print("=" * 80)
-    print("FILTERING CASCADE SUMMARY")
-    print("=" * 80)
-    print(
-        f"INPUT:  {initial_total_rows} rows, {initial_total_sites} sites, {initial_total_gvfk} GVFK"
-    )
-    print(f"OUTPUT: {final_rows} rows, {final_sites} sites, {final_gvfk} GVFK")
-    print(
-        f"TOTAL REMOVED: {initial_total_rows - final_rows} rows ({(initial_total_rows - final_rows) / initial_total_rows * 100:.1f}%), {initial_total_sites - final_sites} sites ({(initial_total_sites - final_sites) / initial_total_sites * 100:.1f}%)"
-    )
-    print("=" * 80 + "\n")
 
     # Convert audit to DataFrame
     audit_df = pd.DataFrame(filtering_audit)
@@ -1144,25 +1088,14 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
     df = df[df["Standard_Concentration_ug_L"] != -1].copy()
     rows_after = len(df)
 
-    print(f"  Input rows (substances): {len(enriched)}")
-    print(f"  Output rows (scenarios): {rows_after}")
-    if rows_before > rows_after:
-        removed = rows_before - rows_after
-        print(
-            f"  Filtered out {removed} rows where STANDARD_CONCENTRATIONS returned -1 "
-            f"(no valid concentration defined for those categories in config)."
-        )
-        # Show which categories were filtered (e.g., LOSSEPLADS, ANDRE, PFAS)
-        filtered_categories = invalid_rows["Qualifying_Category"].value_counts()
-        for cat, count in filtered_categories.items():
-            print(f"    - {cat}: {count} rows")
+    # Collect stats for reporting
+    flux_stats = {
+        "input_count": len(enriched),
+        "output_count": rows_after,
+        "dropped_concentration_summary": invalid_rows["Qualifying_Category"].value_counts().to_dict() if not invalid_rows.empty else {}
+    }
 
-    if not df.empty:
-        print(
-            f"  Concentration range: {df['Standard_Concentration_ug_L'].min():.1f} - {df['Standard_Concentration_ug_L'].max():.1f} µg/L"
-        )
-
-    return df
+    return df, flux_stats
 
 
 def _aggregate_flux_by_segment(flux_details: pd.DataFrame) -> pd.DataFrame:

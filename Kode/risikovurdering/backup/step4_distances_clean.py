@@ -10,7 +10,6 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import os
-from tqdm import tqdm
 from config import (
     COLUMN_MAPPINGS,
     GRUNDVAND_LAYER_NAME,
@@ -20,7 +19,7 @@ from config import (
     WORKFLOW_SETTINGS,
     get_output_path,
 )
-from step_reporter import report_step_header, report_counts, report_subsection
+from .step_reporter import report_step_header, report_counts, report_subsection
 
 
 def run_step4(v1v2_combined):
@@ -86,8 +85,7 @@ def run_step4(v1v2_combined):
     results_data = []
     total_combinations = len(v1v2_combined)
 
-    print(f"  Calculating distances for {total_combinations:,} combinations...")
-    for idx, row in tqdm(v1v2_combined.iterrows(), total=total_combinations, desc="  Computing distances", unit="combo"):
+    for idx, row in v1v2_combined.iterrows():
         # Get row properties
         lokalitet_id = row[site_id_col]
         gvfk_name = row[gvfk_name_col]
@@ -203,47 +201,6 @@ def run_step4(v1v2_combined):
     # Update valid_results with the new columns
     valid_results = results_df[results_df["Distance_to_River_m"].notna()].copy()
 
-    # Create unique distances dataframe (in memory) - one row per site
-    min_distance_entries = valid_results[valid_results["Is_Min_Distance"] == True].copy()
-    
-    # Sort and take first
-    unique_distances = (
-        min_distance_entries.sort_values(["Lokalitet_ID", "GVFK"])
-        .groupby("Lokalitet_ID")
-        .first()
-        .reset_index()
-    )
-
-    # Preserve essential columns for visualization
-    base_columns = [
-        "Lokalitet_ID",
-        "GVFK",
-        "Site_Type",
-        "Distance_to_River_m",
-        "Nearest_River_FID",
-        "Nearest_River_ov_id",
-        "Nearest_River_ov_navn",
-        "River_Segment_Count",
-        "River_Segment_FIDs",
-        "River_Segment_ov_ids",
-    ]
-    step5_columns = [
-        "Lokalitetensbranche",
-        "Lokalitetensaktivitet",
-        "Lokalitetensstoffer",
-        "Lokalitetsnavn",
-        "Lokalitetetsforureningsstatus",
-        "Regionsnavn",
-        "Kommunenavn",
-    ]
-    available_step5_columns = [col for col in step5_columns if col in valid_results.columns]
-    output_columns = base_columns + available_step5_columns
-    
-    # Ensure columns exist before selecting
-    viz_columns = [col for col in output_columns if col in unique_distances.columns]
-    unique_distances_viz = unique_distances[viz_columns].copy()
-    unique_distances_viz = unique_distances_viz.rename(columns={"Lokalitet_ID": "Lokalitetsnr"})
-
     # Output summary
     report_subsection("OUTPUT")
     unique_sites_with_distances = valid_results["Lokalitet_ID"].nunique()
@@ -262,19 +219,14 @@ def run_step4(v1v2_combined):
             f"  Distance stats (min per site): mean={min_distances_only.mean():.0f}m, median={min_distances_only.median():.0f}m"
         )
 
-    # Save results (Modified to ONLY save critical Step 5 input)
+    # Save results
     _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col)
 
     # Create interactive map
     if len(valid_results) > 0:
         _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results)
 
-    # Return BOTH the full results (for Step 5) AND unique distances (for visualization)
-    return {
-        "results_df": results_df, 
-        "distance_results": valid_results,
-        "unique_distances": unique_distances_viz
-    }
+    return results_df
 
 
 def _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col):
@@ -283,8 +235,10 @@ def _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col
     if len(valid_results) == 0:
         return
 
+    # Save valid distances (used by visualizations)
+    valid_results.to_csv(get_output_path("step4_valid_distances"), index=False, encoding="utf-8")
+
     # Prepare ALL lokalitet-GVFK combinations for risk assessment (no aggregation)
-    # THIS is the only critical output for Step 5
     base_columns = [
         "Lokalitet_ID",
         "GVFK",
@@ -313,14 +267,41 @@ def _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col
     output_columns = base_columns + available_step5_columns
     all_combinations = valid_results[output_columns].copy()
 
-    # Save ALL combinations for Step 5
+    # Save ALL combinations for Step 5 (no minimum filtering, no aggregation)
     all_combinations.to_csv(
         get_output_path("step4_final_distances_for_risk_assessment"), index=False, encoding="utf-8"
     )
 
-    # NOTE: Intermediate files (valid_distances, unique_lokalitet_distances) 
-    # are no longer saved to disk. They are passed in memory for visualization.
-    print("  Saved Step 5 input file: step4_final_distances_for_risk_assessment")
+    # Create unique distances file (used by visualizations - one row per site)
+    min_distance_entries = valid_results[valid_results["Is_Min_Distance"] == True].copy()
+    unique_distances = (
+        min_distance_entries.sort_values(["Lokalitet_ID", "GVFK"])
+        .groupby("Lokalitet_ID")
+        .first()
+        .reset_index()
+    )
+
+    # Prepare unique distances with renamed columns for visualization compatibility
+    unique_distances = unique_distances[output_columns].copy()
+    unique_distances = unique_distances.rename(columns={"Lokalitet_ID": "Lokalitetsnr"})
+    unique_distances.to_csv(get_output_path("unique_lokalitet_distances"), index=False, encoding="utf-8")
+
+    # Create shapefile version with geometry (for visualizations that need geometries)
+    if not v1v2_combined.empty:
+        # Get geometry for each unique lokalitet (take first occurrence)
+        site_geometries = v1v2_combined.drop_duplicates(site_id_col)[
+            [site_id_col, "geometry"]
+        ]
+        site_geometries = site_geometries.rename(columns={site_id_col: "Lokalitetsnr"})
+
+        # Merge with unique distances
+        unique_distances_with_geom = unique_distances.merge(
+            site_geometries, on="Lokalitetsnr", how="left"
+        )
+
+        # Create GeoDataFrame and save shapefile
+        unique_gdf = gpd.GeoDataFrame(unique_distances_with_geom, crs=v1v2_combined.crs)
+        unique_gdf.to_file(get_output_path("unique_lokalitet_distances_shp"), encoding="utf-8")
 
 
 def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):

@@ -36,7 +36,7 @@ from .step5_analysis import (
     generate_gvfk_risk_summary,
     handle_unknown_substance_sites,
 )
-from step_reporter import report_step_header, report_counts, report_subsection, report_breakdown
+from .step_reporter import report_step_header, report_counts, report_subsection, report_breakdown
 
 # Landfill-specific thresholds for compound categories
 LANDFILL_THRESHOLDS = {
