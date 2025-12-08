@@ -66,16 +66,21 @@ COMPOUND_CATEGORIES = {
             '1,1,1-tca', 'tce', 'tetrachlorethylen', 'trichlorethylen', 'trichlor',
             'tetrachlor', 'vinylchlorid', 'dichlorethylen', 'dichlorethan',
             'chlorerede', 'opl.midl', 'opløsningsmidl', 'cis-1,2-dichlorethyl',
-            'trans-1,2-dichloreth', 'chlorethan'
+            'trans-1,2-dichloreth', 'chlorethan', 'dichlormethan', 'pcb',
+            'polychloreret', 'polykloreret'
         ],
-        'description': 'Chlorinated solvents (very high groundwater mobility)',
+        'description': 'Chlorinated solvents and PCBs (very high groundwater mobility)',
     },
 
     # 3. Polar compounds - 300m
     'POLARE_FORBINDELSER': {
         'distance_m': 300,
-        'keywords': ['mtbe', 'methyl tert-butyl ether', 'acetone', 'keton'],
-        'description': 'Polar compounds (MTBE, acetone)',
+        'keywords': [
+            'mtbe', 'methyl tert-butyl ether', 'acetone', 'keton',
+            'methanol', 'ethanol', 'alkohol', 'phthalat', 'dehp',
+            'diethylphthalat', 'formaldehyd'
+        ],
+        'description': 'Polar compounds (MTBE, alcohols, phthalates)',
     },
 
     # 4. Phenolic compounds - 100m
@@ -107,9 +112,9 @@ COMPOUND_CATEGORIES = {
         'distance_m': 30,
         'keywords': [
             'pah', 'fluoranthen', 'benzo', 'naftalen', 'naphtalen', 'naphthalen',
-            'pyren', 'anthracen', 'antracen', 'tjære', 'tar', 'phenanthren',
-            'fluoren', 'acenaphthen', 'acenaphthylen', 'chrysen', 'chrysene',
-            'benzfluranthen', 'methylnaphthalen', 'benz(ghi)perylen'
+            'naphthacen', 'pyren', 'anthracen', 'antracen', 'tjære', 'tar',
+            'phenanthren', 'fluoren', 'acenaphthen', 'acenaphthylen', 'chrysen',
+            'chrysene', 'benzfluranthen', 'methylnaphthalen', 'benz(ghi)perylen'
         ],
         'description': 'Polycyclic Aromatic Hydrocarbons (low mobility, high sorption)',
     },
@@ -174,8 +179,11 @@ COMPOUND_CATEGORIES = {
     # 11. Landfill leachate compounds - 100m
     'LOSSEPLADS': {
         'distance_m': 100,
-        'keywords': ['lossepladsperkolat', 'perkolat'],
-        'description': 'Landfill leachate (perkolat)',
+        'keywords': [
+            'lossepladsperkolat', 'perkolat', 'lossepladsgas', 'methan',
+            'deponigas', 'biogas'
+        ],
+        'description': 'Landfill leachate and landfill gas (perkolat, methan)',
     },
 }
 
@@ -245,21 +253,23 @@ def categorize_substance(substance_text: str) -> tuple[str, float]:
                 normalized.startswith('benzen;')):
                 # Find which category it belongs to
                 for category, info in COMPOUND_CATEGORIES.items():
-                    if any(kw in normalized for kw in info['keywords']):
+                    if any(_normalize(kw) in normalized for kw in info['keywords']):
                         return category, float(specific_distance)
         else:
             # For other compounds, simple substring matching
             if compound in normalized:
                 for category, info in COMPOUND_CATEGORIES.items():
-                    if any(kw in normalized for kw in info['keywords']):
+                    if any(_normalize(kw) in normalized for kw in info['keywords']):
                         return category, float(specific_distance)
 
     # Step 2: Check general category keywords (longest keyword match wins)
     matches = []
     for category, info in COMPOUND_CATEGORIES.items():
         for keyword in info['keywords']:
-            if keyword and keyword in normalized:
-                matches.append((len(keyword), category, info['distance_m']))
+            # Normalize keyword to match normalized input (handles Danish æøå)
+            normalized_keyword = _normalize(keyword)
+            if normalized_keyword and normalized_keyword in normalized:
+                matches.append((len(normalized_keyword), category, info['distance_m']))
 
     if matches:
         # Sort by keyword length (longest match = most specific)

@@ -335,9 +335,9 @@ def apply_compound_filtering(distance_results):
 
                 effective_threshold = compound_threshold
                 if is_landfill_site and category in LANDFILL_THRESHOLDS:
-                    effective_threshold = max(
-                        effective_threshold, LANDFILL_THRESHOLDS[category]
-                    )
+                    # For landfill sites, use landfill-specific threshold directly
+                    # (overrides category default regardless of which is larger)
+                    effective_threshold = LANDFILL_THRESHOLDS[category]
 
                 # Check if site is within this compound's threshold
                 if site_distance <= effective_threshold:
@@ -399,6 +399,9 @@ def apply_compound_filtering(distance_results):
     combinations_df["Original_Category"] = None
     combinations_df["Landfill_Override_Applied"] = False
 
+    # Collect indices to drop (don't modify DataFrame during iteration)
+    indices_to_drop = []
+
     # Process each site-substance combination for potential landfill override
     for idx, row in combinations_df.iterrows():
         override_stats["total_checked"] += 1
@@ -449,14 +452,18 @@ def apply_compound_filtering(distance_results):
                         override_stats["by_category"][original_category] = 0
                     override_stats["by_category"][original_category] += 1
                 else:
-                    # Site no longer qualifies under landfill threshold - remove it
-                    combinations_df.drop(idx, inplace=True)
+                    # Site no longer qualifies under landfill threshold - mark for removal
+                    indices_to_drop.append(idx)
             else:
                 # Category not in LANDFILL_THRESHOLDS - don't override, keep original classification
                 if original_category not in override_stats["skipped_no_threshold"]:
                     override_stats["skipped_no_threshold"][original_category] = 0
                 override_stats["skipped_no_threshold"][original_category] += 1
         # Note: Non-overridden rows already have Landfill_Override_Applied = False from initialization
+
+    # Drop rows that no longer qualify under landfill thresholds (after iteration completes)
+    if indices_to_drop:
+        combinations_df = combinations_df.drop(indices_to_drop)
 
     # Print override statistics
     print(f"Landfill override results:")

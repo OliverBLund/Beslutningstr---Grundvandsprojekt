@@ -235,6 +235,10 @@ V1_SHP_PATH = SHAPE_DIR / "V1FLADER.shp"
 V2_SHP_PATH = SHAPE_DIR / "V2FLADER.shp"
 
 # Tilstandsvurdering specific inputs (optional - for advanced analysis)
+# GVD (Grundvandsdannelse) rasters contain net recharge values per groundwater layer.
+# IMPORTANT: Values are LAYER-SPECIFIC, not surface totals. Each GVFK layer receives
+# its own infiltration - this is correct for sites overlapping multiple GVFKs.
+# (A site in 3 GVFKs contributes to 3 different aquifer layers independently.)
 GVD_RASTER_DIR = GRUNDVAND_DATA_DIR / "dkmtif"
 GVFK_AREA_VOLUME_PATH = DATA_DIR / "volumen areal_genbesøg.csv"
 RIVER_FLOW_POINTS_PATH = (
@@ -537,9 +541,12 @@ STANDARD_CONCENTRATIONS = {
         "UORGANISKE_FORBINDELSER__via_Arsen": 100.0,
         "UORGANISKE_FORBINDELSER__via_Cyanid": 3500.0,
         # Categories without modelstof basis (use -1 to indicate no valid concentration)
-        "LOSSEPLADS": -1,  # Only use specific losseplads overrides (e.g., losseplads["BTXER"])
-        "ANDRE": -1,  # No valid concentration available
-        "PFAS": -1,  # Not from D3 - requires validation
+        # NOTE: Rows with -1 concentration are FILTERED OUT in Step 6 flux calculation.
+        # This is intentional: these categories lack validated concentrations from Delprojekt 3.
+        # Sites with these categories will appear in Step 5 risk assessment but not in Step 6 flux/Cmix.
+        "LOSSEPLADS": -1,  # Use specific losseplads overrides above (e.g., losseplads["BTXER"])
+        "ANDRE": -1,  # Uncategorized substances - no validated concentration available
+        "PFAS": -1,  # Not from D3 - requires future validation with new data
     },
 }
 
