@@ -312,47 +312,30 @@ def print_final_summary(results):
 
 
 def create_visualizations_if_available(results):
-    """Create core workflow visualizations."""
+    """
+    Create core workflow visualizations.
+    
+    Calls:
+    - risikovurdering_plots: Step 4 distance histograms, Step 5 category plots
+    - workflow_summary_plots: GVFK and sites progression charts (all steps)
+    
+    Optional (not called by default):
+    - risikovurdering/optional_analysis/step5_branch_analysis.py: Branch analysis for sites without substances
+    """
+    # Create Step 4-5 risikovurdering plots
     try:
-        from risikovurdering.optional_analysis.selected_visualizations import (
-            create_distance_histogram_with_thresholds,
-            create_progression_plot,
-        )
+        from risikovurdering.risikovurdering_plots import create_all_risikovurdering_plots
+        create_all_risikovurdering_plots()
+    except Exception as e:
+        print(f"  ⚠ Risikovurdering plots failed: {e}")
 
-        # Create Step 4 distance histograms if data available
-        if results.get("step4") and results["step4"].get("distance_results") is not None:
-            try:
-                # Extract dataframes from results dictionary (in-memory)
-                unique_df = results["step4"].get("unique_distances")
-                all_combos_df = results["step4"].get("distance_results")
+    # Create workflow summary plots (progression through all steps)
+    try:
+        from workflow_summary_plots import create_workflow_summary_plots
+        create_workflow_summary_plots()
+    except Exception as e:
+        print(f"  ⚠ Workflow summary plots failed: {e}")
 
-                if unique_df is not None and all_combos_df is not None:
-                    # Pass dataframes directly to plotting function
-                    create_distance_histogram_with_thresholds(
-                        unique_df=unique_df,
-                        all_combinations_df=all_combos_df
-                    )
-            except Exception as e:
-                # Optional visualization - skip if fails
-                pass
-
-        try:
-            from config import GRUNDVAND_PATH, WORKFLOW_SUMMARY_DIR
-            from risikovurdering.optional_analysis.selected_visualizations import create_sites_progression_plot
-
-            required_files = {
-                "all_gvfk": GRUNDVAND_PATH,
-                "river_gvfk": get_output_path("step2_river_gvfk"),
-                "v1v2_gvfk": get_output_path("step3_gvfk_polygons"),
-                "high_risk_gvfk": get_output_path("step5_gvfk_high_risk"),
-            }
-            WORKFLOW_SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
-            create_progression_plot(str(WORKFLOW_SUMMARY_DIR), required_files)
-            create_sites_progression_plot(str(WORKFLOW_SUMMARY_DIR))
-        except:
-            pass
-    except:
-        pass
 
 
 

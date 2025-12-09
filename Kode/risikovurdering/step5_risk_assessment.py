@@ -396,11 +396,12 @@ def create_gvfk_shapefile_with_validation(
 
 
 def save_compound_results(compound_combinations):
-    """Save compound-specific assessment results."""
-    detailed_path = get_output_path("step5_compound_detailed_combinations")
+    """Save Step 5b compound-specific assessment results (PRE-infiltration filter)."""
+    # Save to Step 5b output file (will NOT be overwritten by Step 5c)
+    detailed_path = get_output_path("step5b_compound_combinations")
     compound_combinations.to_csv(detailed_path, index=False, encoding="utf-8")
 
-    create_gvfk_shapefile(compound_combinations, "step5_compound_gvfk_high_risk")
+    create_gvfk_shapefile(compound_combinations, "step5b_compound_gvfk_high_risk")
 
 
 if __name__ == "__main__":

@@ -105,7 +105,7 @@ WORKFLOW_SETTINGS = {
     # TESTING MODE: Set to a value between 0.0-1.0 to sample that fraction of data
     # Example: 0.1 = 10% of sites, 0.25 = 25% of sites, 1.0 = full data (production)
     # Set to None or 1.0 to disable sampling
-    "sample_fraction": 0.25,  # Change to 0.1 for quick testing with 10% of data
+    "sample_fraction": None,  # Change to 0.1 for quick testing with 10% of data
 
     # Distance threshold for risk assessment (meters)
     "risk_threshold_m": 500,
@@ -278,15 +278,17 @@ CORE_OUTPUTS = {
     / f"step5_high_risk_sites_{WORKFLOW_SETTINGS['risk_threshold_m']}m.csv",
     "step5_gvfk_high_risk": STEP5_DATA_DIR
     / f"step5_gvfk_high_risk_{WORKFLOW_SETTINGS['risk_threshold_m']}m.shp",
-    # Step 5b: Compound-specific assessment
-    "step5_compound_detailed_combinations": STEP5_DATA_DIR
-    / "step5_compound_detailed_combinations.csv",
+    # Step 5b: Compound-specific assessment (PRE-infiltration filter)
+    "step5b_compound_combinations": STEP5_DATA_DIR / "step5b_compound_combinations.csv",
+    "step5b_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5b_compound_gvfk_high_risk.shp",
+    # Step 5c: After infiltration filter (POST-filter - used by Step 6)
+    "step5c_filtered_combinations": STEP5_DATA_DIR / "step5c_filtered_combinations.csv",
+    # Legacy key for backward compatibility (points to 5c output)
+    "step5_compound_detailed_combinations": STEP5_DATA_DIR / "step5c_filtered_combinations.csv",
     "step5_compound_specific_sites": STEP5_DATA_DIR / "step5_compound_specific_sites.csv",
-    "step5_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5_compound_gvfk_high_risk.shp",
+    "step5_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5b_compound_gvfk_high_risk.shp",
     # Step 5: Sites without substance data (parked for later analysis)
     # "step5_unknown_substance_sites": STEP5_DATA_DIR / "step5_unknown_substance_sites.csv",  # Removed: Dead end
-    # Step 5b: Infiltration filtering removed sites
-    # "step5_infiltration_removed_sites": STEP5_DATA_DIR / "step5_infiltration_removed_sites.csv",  # Removed: Dead end
     # Step 6: Tilstandsvurdering outputs
     "step6_flux_site_segment": STEP6_DATA_DIR / "step6_flux_site_segment.csv",
     # Per-segment scenario rows with Cmix/MKK flags (one row per segment/substance/scenario)

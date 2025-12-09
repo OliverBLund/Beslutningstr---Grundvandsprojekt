@@ -963,40 +963,35 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
 
     Key approach:
     - All compounds in a category use modelstof concentrations (scenarios)
-    - One flux value per scenario per site per river
+    - One flux value per scenario per site per river SEGMENT (FID)
     - Categories with multiple modelstoffer generate multiple scenarios
-    - Sites affecting multiple GVFK: flux calculated once per river, but tracked for ALL GVFK
+    - Each (Site, GVFK, FID) combination is treated separately to avoid double-counting
 
     Example: Site with 4 different BTXER compounds generates 2 flux rows:
       - BTXER__via_Benzen (400 µg/L)
       - BTXER__via_Olie C10-C25 (3000 µg/L)
+
+    Note: A site in multiple GVFKs will have separate flux rows for each GVFK's
+    nearest river segment - this is correct as they affect different physical segments.
     """
-    # Group by site + segment + category to aggregate substances
-    # Flux is calculated ONCE per river, but we track ALL GVFK affected
-    grouping_cols = ["Lokalitet_ID", "Nearest_River_ov_id", "Qualifying_Category"]
+    # Group by site + GVFK + segment (FID) + category to keep each combination separate
+    # This prevents double-counting when a site spans multiple GVFKs that border
+    # different segments of the same river (same ov_id, different FIDs)
+    grouping_cols = ["Lokalitet_ID", "GVFK", "Nearest_River_FID", "Qualifying_Category"]
 
-    # BEFORE aggregating: collect ALL GVFK for each (site + river + category) combination
-    gvfk_tracking = (
-        enriched.groupby(grouping_cols, dropna=False)["GVFK"]
-        .apply(list)
-        .reset_index()
-    )
-    gvfk_tracking.columns = ["Lokalitet_ID", "Nearest_River_ov_id", "Qualifying_Category", "All_GVFK"]
-
-    # Aggregate all metadata, taking minimum distance and first occurrence of other fields
+    # Aggregate all metadata for each unique (site, GVFK, segment, category) combination
     grouped = (
         enriched.groupby(grouping_cols, dropna=False)
         .agg(
             {
-                "GVFK": "first",  # Temporary - used for concentration lookup only
                 "Area_m2": "first",  # Area is constant per site
-                "Infiltration_mm_per_year": "first",  # Infiltration is constant per site
-                "Nearest_River_FID": "first",  # Take first FID
+                "Infiltration_mm_per_year": "first",  # Infiltration per site-GVFK
+                "Nearest_River_ov_id": "first",  # River ID for this segment
                 "River_Segment_Name": "first",
                 "River_Segment_Length_m": "first",
                 "River_Segment_GVFK": "first",
-                "Distance_to_River_m": "min",  # Use MINIMUM distance across all GVFKs
-                "River_Segment_Count": "max",  # Use maximum count
+                "Distance_to_River_m": "first",  # Distance for this specific GVFK
+                "River_Segment_Count": "first",
             }
         )
         .reset_index()
@@ -1055,33 +1050,6 @@ def _calculate_flux(enriched: pd.DataFrame) -> pd.DataFrame:
                 flux_rows.append(flux_row)
 
     df = pd.DataFrame(flux_rows)
-
-    # Now expand each row to include ALL GVFK that were involved
-    # Merge with gvfk_tracking to get the list of all GVFK
-    df = df.merge(
-        gvfk_tracking,
-        on=["Lokalitet_ID", "Nearest_River_ov_id", "Qualifying_Category"],
-        how="left"
-    )
-
-    # Expand: one row per GVFK
-    expanded_rows = []
-    for _, row in df.iterrows():
-        all_gvfk = row["All_GVFK"]
-        if isinstance(all_gvfk, list) and len(all_gvfk) > 0:
-            for gvfk in all_gvfk:
-                expanded_row = row.copy()
-                expanded_row["GVFK"] = gvfk
-                expanded_rows.append(expanded_row)
-        else:
-            # Fallback: keep original row as-is
-            expanded_rows.append(row)
-
-    df = pd.DataFrame(expanded_rows)
-
-    # Drop the helper column
-    if "All_GVFK" in df.columns:
-        df = df.drop(columns=["All_GVFK"])
 
     # Filter out rows with invalid concentration (-1)
     rows_before = len(df)

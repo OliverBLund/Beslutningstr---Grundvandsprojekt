@@ -3,7 +3,14 @@ Step 6 – Analytical Plots
 ==========================
 
 Information-rich static plots for Step 6 analysis.
-Focus: Clear, single-purpose plots that convey multiple dimensions of data.
+Focus: Clear, single-purpose plots that convey key insights.
+
+Plots:
+1. Category Impact Overview - Multi-metric category comparison
+2. Exceedance Analysis - Frequency and severity by category
+3. GVFK Summary - Aquifer-level impact scatter plot
+4. Flow Scenario Sensitivity - Impact of river flow on exceedances
+5. Exceedance Severity Distribution - Histogram of exceedance magnitudes
 """
 
 from __future__ import annotations
@@ -14,7 +21,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict
 
 # Ensure repository root is importable
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -23,9 +29,23 @@ if str(REPO_ROOT) not in sys.path:
 
 from Kode.config import get_visualization_path
 
-# Set style
-plt.style.use('seaborn-v0_8-darkgrid')
-sns.set_palette("husl")
+# Reset and apply professional PowerPoint-ready styling
+plt.style.use('default')
+plt.rcParams.update({
+    'font.family': ['Arial', 'DejaVu Sans', 'sans-serif'],
+    'font.size': 14,
+    'axes.titlesize': 18,
+    'axes.labelsize': 16,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
+    'figure.dpi': 100,
+    'savefig.dpi': 300,
+    'savefig.bbox': 'tight',
+    'savefig.facecolor': 'white',
+    'figure.facecolor': 'white',
+    'axes.facecolor': 'white',
+    'axes.grid': False,
+})
 
 
 def create_analytical_plots(
@@ -39,33 +59,26 @@ def create_analytical_plots(
     output_dir = get_visualization_path("step6", "analytical")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-
-
     # Plot 1: Category Impact Overview
     plot_category_impact_overview(site_flux, segment_flux, cmix_results, output_dir)
 
-    # Plot 2: Top Polluters - Sites
-    plot_top_polluting_sites(site_flux, output_dir)
-
-    # Plot 3: Top Affected Rivers
-    plot_top_affected_rivers(segment_flux, output_dir)
-
-    # Plot 4: Exceedance Analysis
+    # Plot 2: Exceedance Analysis
     plot_exceedance_analysis(cmix_results, output_dir)
 
-    # Plot 5: GVFK Summary
+    # Plot 3: GVFK Summary
     plot_gvfk_summary(site_flux, segment_summary, cmix_results, output_dir)
 
-    # Plot 6: Flow Scenario Sensitivity
+    # Plot 4: Flow Scenario Sensitivity
     plot_flow_scenario_sensitivity(cmix_results, output_dir)
 
-    # Plot 7: Multi-scenario category breakdown
-    plot_multi_scenario_breakdown(segment_flux, cmix_results, output_dir)
+    # Plot 5: Exceedance Severity Distribution (NEW)
+    plot_exceedance_severity_distribution(cmix_results, output_dir)
 
-    # Plot 7: Substance Detail Treemap
-    plot_substance_treemap(segment_flux, output_dir)
+    # Plot 6: Site-River Impact Summary (NEW)
+    plot_site_river_impact(site_flux, cmix_results, output_dir)
 
-
+    # Plot 7: Category Contribution to Exceedances (NEW)
+    plot_category_exceedance_contribution(site_flux, cmix_results, output_dir)
 
 
 def plot_category_impact_overview(
@@ -74,7 +87,7 @@ def plot_category_impact_overview(
     cmix_results: pd.DataFrame,
     output_dir: Path,
 ) -> None:
-    """Multi-metric category comparison."""
+    """Multi-metric category comparison with professional styling."""
 
     # Aggregate metrics by category
     category_metrics = []
@@ -97,139 +110,45 @@ def plot_category_impact_overview(
 
     # Create figure with 2x2 subplots
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-    fig.suptitle('Category Impact Overview - Multiple Metrics', fontsize=16, fontweight='bold')
+    fig.suptitle('Category Impact Overview', fontsize=20, fontweight='bold', y=1.02)
 
     categories = df['Category'].values
+    
+    # Professional colors
+    colors = ['#4A90D9', '#5BA55B', '#D14545', '#F5A623']
 
     # Plot 1: Affected Rivers
     ax1 = axes[0, 0]
-    ax1.barh(categories, df['Affected_Rivers'], color='steelblue')
-    ax1.set_xlabel('Number of Affected River Segments')
-    ax1.set_title('River Segment Impact')
+    ax1.barh(categories, df['Affected_Rivers'], color=colors[0], edgecolor='white')
+    ax1.set_xlabel('Number of Affected River Segments', fontweight='bold')
+    ax1.set_title('River Segment Impact', fontweight='bold')
     ax1.invert_yaxis()
 
     # Plot 2: Total Flux (log scale)
     ax2 = axes[0, 1]
-    ax2.barh(categories, df['Total_Flux_kg'], color='darkgreen')
-    ax2.set_xlabel('Total Flux (kg/year, log scale)')
+    ax2.barh(categories, df['Total_Flux_kg'], color=colors[1], edgecolor='white')
+    ax2.set_xlabel('Total Flux (kg/year)', fontweight='bold')
     ax2.set_xscale('log')
-    ax2.set_title('Pollution Flux')
+    ax2.set_title('Pollution Flux', fontweight='bold')
     ax2.invert_yaxis()
 
     # Plot 3: Exceedance Count
     ax3 = axes[1, 0]
-    ax3.barh(categories, df['Exceedance_Count'], color='darkred')
-    ax3.set_xlabel('Number of MKK Exceedances')
-    ax3.set_title('Regulatory Exceedances')
+    ax3.barh(categories, df['Exceedance_Count'], color=colors[2], edgecolor='white')
+    ax3.set_xlabel('Number of MKK Exceedances', fontweight='bold')
+    ax3.set_title('Regulatory Exceedances', fontweight='bold')
     ax3.invert_yaxis()
 
     # Plot 4: Median Exceedance Ratio
     ax4 = axes[1, 1]
-    ax4.barh(categories, df['Median_Exceedance_Ratio'], color='darkorange')
-    ax4.set_xlabel('Median Exceedance Ratio (Cmix/MKK)')
+    ax4.barh(categories, df['Median_Exceedance_Ratio'], color=colors[3], edgecolor='white')
+    ax4.set_xlabel('Median Exceedance Ratio (Cmix/MKK)', fontweight='bold')
     ax4.set_xscale('log')
-    ax4.set_title('Exceedance Severity')
+    ax4.set_title('Exceedance Severity', fontweight='bold')
     ax4.invert_yaxis()
 
     plt.tight_layout()
-    plt.savefig(output_dir / 'category_impact_overview.png', dpi=300, bbox_inches='tight')
-    plt.close()
-
-
-def plot_top_polluting_sites(site_flux: pd.DataFrame, output_dir: Path) -> None:
-    """Top 20 sites by total flux."""
-
-    site_totals = site_flux.groupby(['Lokalitet_ID', 'Qualifying_Category']).agg({
-        'Pollution_Flux_kg_per_year': 'sum',
-        'Nearest_River_ov_id': 'nunique'
-    }).reset_index()
-
-    site_totals = site_totals.rename(columns={'Nearest_River_ov_id': 'Affected_Rivers'})
-    top_sites = site_totals.nlargest(20, 'Pollution_Flux_kg_per_year')
-
-    fig, ax = plt.subplots(figsize=(12, 10))
-
-    # Create bars colored by category
-    categories = top_sites['Qualifying_Category'].unique()
-    colors = plt.cm.tab20(np.linspace(0, 1, len(categories)))
-    color_map = dict(zip(categories, colors))
-
-    bars = ax.barh(
-        range(len(top_sites)),
-        top_sites['Pollution_Flux_kg_per_year'],
-        color=[color_map[cat] for cat in top_sites['Qualifying_Category']]
-    )
-
-    ax.set_yticks(range(len(top_sites)))
-    ax.set_yticklabels(top_sites['Lokalitet_ID'])
-    ax.set_xlabel('Total Pollution Flux (kg/year, log scale)')
-    ax.set_xscale('log')
-    ax.set_title('Top 20 Polluting Sites', fontsize=14, fontweight='bold')
-    ax.invert_yaxis()
-
-    # Add annotations
-    for i, (idx, row) in enumerate(top_sites.iterrows()):
-        ax.text(
-            row['Pollution_Flux_kg_per_year'] * 1.1,
-            i,
-            f"{row['Affected_Rivers']} rivers",
-            va='center',
-            fontsize=8,
-            color='gray'
-        )
-
-    # Add legend
-    handles = [plt.Rectangle((0,0),1,1, color=color_map[cat]) for cat in categories[:10]]  # Limit legend
-    ax.legend(handles, categories[:10], loc='lower right', fontsize=8, title='Category')
-
-    plt.tight_layout()
-    plt.savefig(output_dir / 'top_polluting_sites.png', dpi=300, bbox_inches='tight')
-    plt.close()
-
-
-def plot_top_affected_rivers(segment_flux: pd.DataFrame, output_dir: Path) -> None:
-    """Top 20 river segments by total flux, stacked by category."""
-
-    river_totals = segment_flux.groupby(['Nearest_River_ov_id', 'River_Segment_Name']).agg({
-        'Total_Flux_kg_per_year': 'sum'
-    }).reset_index()
-
-    top_rivers = river_totals.nlargest(20, 'Total_Flux_kg_per_year')
-
-    # Get category breakdown for these rivers
-    top_river_ids = top_rivers['Nearest_River_ov_id'].values
-    category_breakdown = segment_flux[segment_flux['Nearest_River_ov_id'].isin(top_river_ids)]
-
-    # Pivot for stacked bar
-    pivot = category_breakdown.pivot_table(
-        index=['Nearest_River_ov_id', 'River_Segment_Name'],
-        columns='Qualifying_Category',
-        values='Total_Flux_kg_per_year',
-        aggfunc='sum',
-        fill_value=0
-    )
-
-    # Sort by total
-    pivot['_total'] = pivot.sum(axis=1)
-    pivot = pivot.sort_values('_total', ascending=True).tail(20)
-    pivot = pivot.drop('_total', axis=1)
-
-    fig, ax = plt.subplots(figsize=(12, 10))
-
-    pivot.plot(kind='barh', stacked=True, ax=ax, width=0.8)
-
-    ax.set_xlabel('Total Pollution Flux (kg/year, log scale)')
-    ax.set_xscale('log')
-    ax.set_ylabel('River Segment')
-    ax.set_title('Top 20 Most Affected River Segments', fontsize=14, fontweight='bold')
-    ax.legend(title='Category', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-
-    # Use river names for labels
-    labels = [f"{idx[1][:30]}..." if len(idx[1]) > 30 else idx[1] for idx in pivot.index]
-    ax.set_yticklabels(labels)
-
-    plt.tight_layout()
-    plt.savefig(output_dir / 'top_affected_rivers.png', dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / 'category_impact_overview.png', facecolor='white')
     plt.close()
 
 
@@ -255,31 +174,31 @@ def plot_exceedance_analysis(cmix_results: pd.DataFrame, output_dir: Path) -> No
 
     # Bar plot for counts
     x = np.arange(len(category_exc))
-    bars = ax1.bar(x, category_exc['Count'], color='darkred', alpha=0.7, label='Exceedance Count')
-    ax1.set_xlabel('Category', fontsize=12)
-    ax1.set_ylabel('Number of Exceedances', fontsize=12, color='darkred')
-    ax1.tick_params(axis='y', labelcolor='darkred')
+    bars = ax1.bar(x, category_exc['Count'], color='#D14545', edgecolor='white', label='Exceedance Count')
+    ax1.set_xlabel('Category', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Number of Exceedances', fontsize=14, fontweight='bold', color='#D14545')
+    ax1.tick_params(axis='y', labelcolor='#D14545')
     ax1.set_xticks(x)
     ax1.set_xticklabels(category_exc['Category'], rotation=45, ha='right')
 
     # Line plot for mean ratio
     ax2 = ax1.twinx()
-    line = ax2.plot(x, category_exc['Mean_Ratio'], color='darkorange', marker='o',
-                    linewidth=2, markersize=8, label='Mean Exceedance Ratio')
-    ax2.set_ylabel('Mean Exceedance Ratio (Cmix/MKK, log scale)', fontsize=12, color='darkorange')
-    ax2.tick_params(axis='y', labelcolor='darkorange')
+    line = ax2.plot(x, category_exc['Mean_Ratio'], color='#F5A623', marker='o',
+                    linewidth=3, markersize=10, label='Mean Exceedance Ratio')
+    ax2.set_ylabel('Mean Exceedance Ratio (log scale)', fontsize=14, fontweight='bold', color='#F5A623')
+    ax2.tick_params(axis='y', labelcolor='#F5A623')
     ax2.set_yscale('log')
 
-    # Title and legend
-    ax1.set_title('MKK Exceedance Analysis: Frequency vs Severity', fontsize=14, fontweight='bold')
+    # Title
+    ax1.set_title('MKK Exceedance Analysis: Frequency vs Severity', fontsize=18, fontweight='bold', pad=15)
 
     # Combine legends
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right', fontsize=12)
 
     plt.tight_layout()
-    plt.savefig(output_dir / 'exceedance_analysis.png', dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / 'exceedance_analysis.png', facecolor='white')
     plt.close()
 
 
@@ -317,60 +236,62 @@ def plot_gvfk_summary(
     scatter = ax.scatter(
         df['River_Segment_Count'],
         df['Total_Flux_kg'],
-        s=df['Site_Count'] * 20,  # Size by site count
+        s=df['Site_Count'] * 30,  # Size by site count
         c=df['Max_Exceedance_Ratio'],
         cmap='YlOrRd',
-        alpha=0.6,
+        alpha=0.7,
         edgecolors='black',
         linewidth=0.5,
         norm=plt.matplotlib.colors.LogNorm()
     )
 
-    ax.set_xlabel('Number of Affected River Segments', fontsize=12)
-    ax.set_ylabel('Total Pollution Flux (kg/year, log scale)', fontsize=12)
+    ax.set_xlabel('Number of Affected River Segments', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Total Pollution Flux (kg/year)', fontsize=14, fontweight='bold')
     ax.set_yscale('log')
-    ax.set_title('GVFK Summary: Impact and Severity', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3)
+    ax.set_title('GVFK Summary: Impact and Severity', fontsize=18, fontweight='bold', pad=15)
 
     # Colorbar
     cbar = plt.colorbar(scatter, ax=ax)
-    cbar.set_label('Max Exceedance Ratio', fontsize=10)
+    cbar.set_label('Max Exceedance Ratio', fontsize=12, fontweight='bold')
 
     # Add legend for size
     for size in [1, 5, 10, 20]:
-        ax.scatter([], [], s=size*20, c='gray', alpha=0.5, edgecolors='black',
+        ax.scatter([], [], s=size*30, c='gray', alpha=0.5, edgecolors='black',
                   label=f'{size} sites')
-    ax.legend(scatterpoints=1, frameon=True, labelspacing=1, title='Site Count', loc='upper left')
+    ax.legend(scatterpoints=1, frameon=True, labelspacing=1, title='Site Count', 
+              loc='upper left', fontsize=10)
 
     # Annotate top 5 GVFKs
     top5 = df.nlargest(5, 'Total_Flux_kg')
     for _, row in top5.iterrows():
         ax.annotate(
-            row['GVFK'],
+            row['GVFK'].replace('dkms_', '').replace('_ks', ''),  # Shorten GVFK name
             (row['River_Segment_Count'], row['Total_Flux_kg']),
             xytext=(5, 5),
             textcoords='offset points',
-            fontsize=8,
-            bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.5)
+            fontsize=9,
+            fontweight='bold',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='gray')
         )
 
     plt.tight_layout()
-    plt.savefig(output_dir / 'gvfk_summary.png', dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / 'gvfk_summary.png', facecolor='white')
     plt.close()
 
 
 def plot_flow_scenario_sensitivity(cmix_results: pd.DataFrame, output_dir: Path) -> None:
-    """Box plot showing Cmix/MKK ratio distribution across all Q flow scenarios."""
+    """Box plot showing Cmix/MKK ratio distribution across flow scenarios."""
 
     if cmix_results.empty or 'Flow_Scenario' not in cmix_results.columns:
         print("    Warning: No flow scenario data for sensitivity plot")
         return
 
-    # Check what scenarios are present
+    # Clean scenario values
     scenario_values = cmix_results['Flow_Scenario'].dropna().map(lambda x: str(x).strip())
     if scenario_values.empty:
         print("    Warning: Flow scenario column contains only NaN/blank values")
         return
+    
     available_scenarios = sorted(set(s for s in scenario_values if s))
     if not available_scenarios:
         print("    Warning: Flow scenario labels missing after cleaning")
@@ -387,19 +308,17 @@ def plot_flow_scenario_sensitivity(cmix_results: pd.DataFrame, output_dir: Path)
         print("    Warning: No exceedances for flow scenario sensitivity plot")
         return
 
-    # Select top 8 categories by exceedance count
-    top_cats = exc['Qualifying_Category'].value_counts().head(8).index
+    # Select top 6 categories by exceedance count
+    top_cats = exc['Qualifying_Category'].value_counts().head(6).index
     exc_filtered = exc[exc['Qualifying_Category'].isin(top_cats)].copy()
 
     # Define proper scenario order (low flow to high flow)
     scenario_order = ['Q95', 'Q90', 'Q50', 'Q10', 'Q05']
-    # Filter to only scenarios present in data
     scenario_order = [s for s in scenario_order if s in exc_filtered['Flow_Scenario'].unique()]
     if not scenario_order:
         print("    Warning: No recognized flow scenarios available for plotting")
         return
 
-    # Convert to categorical with proper ordering
     exc_filtered['Flow_Scenario'] = pd.Categorical(
         exc_filtered['Flow_Scenario'],
         categories=scenario_order,
@@ -408,199 +327,278 @@ def plot_flow_scenario_sensitivity(cmix_results: pd.DataFrame, output_dir: Path)
 
     fig, ax = plt.subplots(figsize=(16, 10))
 
-    # Create box plot
-    exc_filtered_sorted = exc_filtered.sort_values('Qualifying_Category')
-
+    # Professional color palette
+    colors = ['#D14545', '#E57C23', '#F5A623', '#7CB342', '#4A90D9'][:len(scenario_order)]
+    
     sns.boxplot(
-        data=exc_filtered_sorted,
+        data=exc_filtered.sort_values('Qualifying_Category'),
         x='Qualifying_Category',
         y='Exceedance_Ratio',
         hue='Flow_Scenario',
-        hue_order=scenario_order,  # Explicit ordering
+        hue_order=scenario_order,
         ax=ax,
-        palette='RdYlGn_r'  # Red (Q95/low flow) to Green (Q05/high flow)
+        palette=colors
     )
 
     ax.set_yscale('log')
-    ax.set_xlabel('Category', fontsize=12)
-    ax.set_ylabel('Exceedance Ratio (Cmix/MKK, log scale)', fontsize=12)
+    ax.set_xlabel('Category', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Exceedance Ratio (Cmix/MKK)', fontsize=14, fontweight='bold')
     ax.set_title(
         f'Flow Scenario Sensitivity: Impact of River Flow on Exceedances\n'
-        f'Comparing {len(scenario_order)} scenarios (Q95=low flow → Q05=high flow)',
-        fontsize=14, fontweight='bold'
+        f'(Q95=low flow/worst case → Q05=high flow/best case)',
+        fontsize=16, fontweight='bold', pad=15
     )
-    ax.legend(title='Flow Scenario\n(Q95 = lowest flow)', loc='upper right', fontsize=10)
+    ax.legend(title='Flow Scenario', loc='upper right', fontsize=11)
     plt.xticks(rotation=45, ha='right')
 
-    # Add annotation explaining the scenarios
-    note_text = "Lower Q values = higher flow = more dilution = lower Cmix"
-    ax.text(0.02, 0.98, note_text, transform=ax.transAxes,
-            fontsize=9, style='italic', verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
     plt.tight_layout()
-    plt.savefig(output_dir / 'flow_scenario_sensitivity.png', dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / 'flow_scenario_sensitivity.png', facecolor='white')
     plt.close()
 
 
-def plot_substance_treemap(segment_flux: pd.DataFrame, output_dir: Path) -> None:
-    """Treemap showing category > substance hierarchy by flux."""
-
-    # Use squarify for treemap
-    try:
-        import squarify
-    except ImportError:
-        print("    Warning: squarify not installed, skipping treemap. Install with: pip install squarify")
+def plot_exceedance_severity_distribution(cmix_results: pd.DataFrame, output_dir: Path) -> None:
+    """
+    NEW: Histogram showing distribution of exceedance severity.
+    Bins: 1-10x, 10-100x, 100-1000x, 1000x+ MKK exceedances.
+    """
+    
+    exceedances = cmix_results[cmix_results['Exceedance_Flag'] == True].copy()
+    
+    if exceedances.empty:
+        print("    Warning: No exceedances found for severity distribution plot")
         return
-
-    # Aggregate by category and substance
-    substance_flux = segment_flux.groupby(['Qualifying_Category', 'Qualifying_Substance']).agg({
-        'Total_Flux_kg_per_year': 'sum'
-    }).reset_index()
-
-    # Get top substances per category (top 3)
-    top_substances = []
-    for cat in substance_flux['Qualifying_Category'].unique():
-        cat_data = substance_flux[substance_flux['Qualifying_Category'] == cat]
-        top_3 = cat_data.nlargest(3, 'Total_Flux_kg_per_year')
-        top_substances.append(top_3)
-
-    df = pd.concat(top_substances)
-
-    # Create labels
-    df['Label'] = df.apply(
-        lambda x: f"{x['Qualifying_Category']}\n{x['Qualifying_Substance'][:20]}\n{x['Total_Flux_kg_per_year']:.1f} kg/y",
-        axis=1
+    
+    # Define exceedance bins
+    bins = [1, 10, 100, 1000, 10000]
+    labels = ['1-10×', '10-100×', '100-1,000×', '1,000×+']
+    
+    exceedances['Severity_Bin'] = pd.cut(
+        exceedances['Exceedance_Ratio'], 
+        bins=bins, 
+        labels=labels, 
+        include_lowest=True
     )
-
-    fig, ax = plt.subplots(figsize=(16, 12))
-
-    # Create treemap
-    colors = plt.cm.tab20(np.linspace(0, 1, len(df)))
-
-    squarify.plot(
-        sizes=df['Total_Flux_kg_per_year'],
-        label=df['Label'],
-        color=colors,
-        alpha=0.7,
-        text_kwargs={'fontsize': 8, 'weight': 'bold'},
-        ax=ax
+    
+    # Handle values above 10000
+    exceedances.loc[exceedances['Exceedance_Ratio'] >= 10000, 'Severity_Bin'] = '1,000×+'
+    
+    # Count per bin
+    severity_counts = exceedances['Severity_Bin'].value_counts().reindex(labels, fill_value=0)
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Color gradient from yellow (mild) to dark red (severe)
+    colors = ['#F5A623', '#E57C23', '#D14545', '#8B0000']
+    
+    bars = ax.bar(severity_counts.index, severity_counts.values, color=colors, edgecolor='white', linewidth=2)
+    
+    # Add count labels on bars
+    for bar, count in zip(bars, severity_counts.values):
+        height = bar.get_height()
+        if height > 0:
+            ax.text(bar.get_x() + bar.get_width()/2., height + max(severity_counts)*0.02,
+                   f'{count:,}', ha='center', va='bottom', fontsize=14, fontweight='bold')
+    
+    ax.set_xlabel('Exceedance Severity (Cmix/MKK ratio)', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Number of Exceedances', fontsize=14, fontweight='bold')
+    ax.set_title('MKK Exceedance Severity Distribution', fontsize=18, fontweight='bold', pad=15)
+    
+    # Add summary stats
+    total = len(exceedances)
+    worst = exceedances['Exceedance_Ratio'].max()
+    median = exceedances['Exceedance_Ratio'].median()
+    
+    stats_text = (
+        f"Total exceedances: {total:,}\n"
+        f"Median: {median:.1f}× MKK\n"
+        f"Worst: {worst:,.0f}× MKK"
     )
-
-    ax.set_title('Substance Contribution Treemap: Top 3 per Category', fontsize=14, fontweight='bold')
-    ax.axis('off')
-
+    ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, fontsize=12,
+            verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round', facecolor='white', edgecolor='gray', alpha=0.9))
+    
     plt.tight_layout()
-    plt.savefig(output_dir / 'substance_treemap.png', dpi=300, bbox_inches='tight')
+    plt.savefig(output_dir / 'exceedance_severity_distribution.png', facecolor='white')
     plt.close()
 
 
-def plot_multi_scenario_breakdown(
-    segment_flux: pd.DataFrame,
-    cmix_results: pd.DataFrame,
-    output_dir: Path,
-) -> None:
-    """Highlight categories with multiple scenario modelstoffer."""
-
-    flux_df = segment_flux.copy()
-    flux_df["Scenario_Modelstof"] = flux_df["Qualifying_Substance"].apply(_extract_scenario_name)
-    scenario_counts = (
-        flux_df.dropna(subset=["Scenario_Modelstof"])
-        .groupby("Qualifying_Category")["Scenario_Modelstof"]
-        .nunique()
-    )
-    multi_categories = scenario_counts[scenario_counts > 1].index.tolist()
-
-    if not multi_categories:
-        print("    Warning: No categories with multiple scenarios found for breakdown plot")
+def plot_site_river_impact(site_flux: pd.DataFrame, cmix_results: pd.DataFrame, output_dir: Path) -> None:
+    """
+    NEW: Shows how many sites affect how many river segments.
+    Answers: How concentrated is pollution? Few sites = many rivers or distributed?
+    """
+    
+    # cmix_results has Contributing_Site_IDs (semicolon-separated) and River_Segment_GVFK
+    required_cols = ['Contributing_Site_IDs', 'River_Segment_GVFK', 'Exceedance_Flag']
+    if not all(col in cmix_results.columns for col in required_cols):
+        print(f"    Warning: Missing columns for site-river impact plot. Have: {cmix_results.columns.tolist()}")
         return
-
-    category_order = sorted(multi_categories)
-    flux_filtered = flux_df[
-        flux_df["Qualifying_Category"].isin(category_order)
-        & flux_df["Scenario_Modelstof"].notna()
-    ]
-
-    flux_summary = (
-        flux_filtered.groupby(["Qualifying_Category", "Scenario_Modelstof"])["Total_Flux_kg_per_year"]
-        .sum()
-        .reset_index()
+    
+    exceedances = cmix_results[cmix_results['Exceedance_Flag'] == True].copy()
+    
+    if exceedances.empty:
+        print("    Warning: No exceedances for site-river impact plot")
+        return
+    
+    # Parse Contributing_Site_IDs and count rivers per site
+    site_river_pairs = []
+    for _, row in exceedances.iterrows():
+        site_ids = str(row['Contributing_Site_IDs']).split(';')
+        gvfk = row['River_Segment_GVFK']
+        for site_id in site_ids:
+            site_id = site_id.strip()
+            if site_id:
+                site_river_pairs.append({'Site_ID': site_id, 'GVFK': gvfk})
+    
+    if not site_river_pairs:
+        print("    Warning: No valid site-river pairs found")
+        return
+    
+    pair_df = pd.DataFrame(site_river_pairs)
+    
+    # Count unique GVFKs affected per site
+    site_gvfk_counts = pair_df.groupby('Site_ID')['GVFK'].nunique().reset_index()
+    site_gvfk_counts.columns = ['Site_ID', 'Rivers_Affected']
+    
+    # Create histogram of sites by number of rivers they affect
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+    
+    # Left: Histogram of rivers affected per site
+    max_rivers = site_gvfk_counts['Rivers_Affected'].max()
+    bins = range(1, min(int(max_rivers) + 2, 21))  # Cap at 20 for readability
+    
+    counts, edges, bars = ax1.hist(site_gvfk_counts['Rivers_Affected'], bins=bins, 
+                                    color='#2E86AB', edgecolor='white', linewidth=1.5)
+    
+    ax1.set_xlabel('Number of River Segments Affected', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Number of Sites', fontsize=14, fontweight='bold')
+    ax1.set_title('Site Impact Distribution\n(How Many Rivers Does Each Site Affect?)', 
+                  fontsize=16, fontweight='bold', pad=15)
+    
+    # Add labels on significant bars
+    max_count = max(counts) if len(counts) > 0 else 1
+    for i, (count, bar) in enumerate(zip(counts, bars)):
+        if count > 0:
+            ax1.text(bar.get_x() + bar.get_width()/2., count + max_count*0.02,
+                    f'{int(count)}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    # Right: Top 15 most impactful sites
+    top_sites = site_gvfk_counts.nlargest(15, 'Rivers_Affected')
+    
+    # Color gradient based on impact
+    colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(top_sites)))[::-1]
+    
+    bars2 = ax2.barh(range(len(top_sites)), top_sites['Rivers_Affected'].values, 
+                     color=colors, edgecolor='white', linewidth=1.5)
+    ax2.set_yticks(range(len(top_sites)))
+    ax2.set_yticklabels([f"{str(sid)[:20]}..." if len(str(sid)) > 20 else str(sid) 
+                         for sid in top_sites['Site_ID']], fontsize=10)
+    ax2.invert_yaxis()
+    ax2.set_xlabel('Number of River Segments Affected', fontsize=14, fontweight='bold')
+    ax2.set_title('Top 15 Most Impactful Sites', fontsize=16, fontweight='bold', pad=15)
+    
+    # Add value labels
+    max_rivers_val = max(top_sites['Rivers_Affected']) if len(top_sites) > 0 else 1
+    for i, (bar, val) in enumerate(zip(bars2, top_sites['Rivers_Affected'].values)):
+        ax2.text(val + max_rivers_val*0.02, bar.get_y() + bar.get_height()/2,
+                f'{val}', ha='left', va='center', fontsize=11, fontweight='bold')
+    
+    # Add summary stats
+    total_sites = len(site_gvfk_counts)
+    total_rivers = pair_df['GVFK'].nunique()
+    avg_per_site = site_gvfk_counts['Rivers_Affected'].mean()
+    
+    stats_text = (
+        f"Summary:\n"
+        f"• {total_sites:,} sites with exceedances\n"
+        f"• {total_rivers:,} river segments affected\n"
+        f"• Avg: {avg_per_site:.1f} rivers per site"
     )
-    flux_summary["Qualifying_Category"] = pd.Categorical(
-        flux_summary["Qualifying_Category"], categories=category_order, ordered=True
-    )
-
-    exceedances = cmix_results.copy()
-    exceedances["Scenario_Modelstof"] = exceedances["Qualifying_Substance"].apply(
-        _extract_scenario_name
-    )
-    exc_filtered = exceedances[
-        (exceedances["Qualifying_Category"].isin(category_order))
-        & (exceedances["Scenario_Modelstof"].notna())
-        & (exceedances.get("Exceedance_Flag", False) == True)
-    ]
-
-    fig = plt.figure(figsize=(18, 12))
-    gs = fig.add_gridspec(2, 1, height_ratios=[2.2, 1.0], hspace=0.35)
-    ax_flux = fig.add_subplot(gs[0])
-    ax_heat = fig.add_subplot(gs[1])
-
-    sns.barplot(
-        data=flux_summary,
-        x="Qualifying_Category",
-        y="Total_Flux_kg_per_year",
-        hue="Scenario_Modelstof",
-        ax=ax_flux,
-    )
-    ax_flux.set_yscale("log")
-    ax_flux.set_xlabel("Category", fontsize=12)
-    ax_flux.set_ylabel("Total Flux (kg/year, log scale)", fontsize=12)
-    ax_flux.set_title("Scenario Contribution per Category (Flux)", fontsize=14, fontweight="bold")
-    ax_flux.legend(title="Scenario / Modelstof", bbox_to_anchor=(1.02, 1), loc="upper left")
-    plt.setp(ax_flux.get_xticklabels(), rotation=30, ha="right")
-
-    if not exc_filtered.empty:
-        heatmap_data = (
-            exc_filtered.groupby(["Scenario_Modelstof", "Qualifying_Category"])["Exceedance_Ratio"]
-            .max()
-            .unstack()
-            .reindex(columns=category_order)
-        )
-        mask = heatmap_data.isna()
-        sns.heatmap(
-            heatmap_data,
-            ax=ax_heat,
-            cmap="Reds",
-            annot=True,
-            fmt=".2f",
-            cbar_kws={"label": "Max exceedance ratio"},
-            mask=mask,
-        )
-        ax_heat.set_title("Scenario Exceedance Severity (max Cmix/MKK)", fontsize=14, fontweight="bold")
-        ax_heat.set_xlabel("Category")
-        ax_heat.set_ylabel("Scenario / Modelstof")
-    else:
-        ax_heat.axis("off")
-        ax_heat.text(
-            0.5,
-            0.5,
-            "No MKK exceedances were observed for multi-scenario categories.",
-            ha="center",
-            va="center",
-            fontsize=12,
-            fontweight="bold",
-        )
-
+    ax1.text(0.98, 0.98, stats_text, transform=ax1.transAxes, fontsize=11,
+             verticalalignment='top', horizontalalignment='right',
+             bbox=dict(boxstyle='round', facecolor='white', edgecolor='gray', alpha=0.9))
+    
     plt.tight_layout()
-    plt.savefig(output_dir / "category_scenario_breakdown.png", dpi=300, bbox_inches="tight")
+    plt.savefig(output_dir / 'site_river_impact.png', facecolor='white')
     plt.close()
 
 
-def _extract_scenario_name(substance: str) -> str | None:
-    """Return the scenario/modelstof part from 'Category__via_Modelstof' labels."""
-    if not isinstance(substance, str):
-        return None
-    marker = "__via_"
-    if marker in substance:
-        return substance.split(marker, 1)[1]
-    return None
+def plot_category_exceedance_contribution(site_flux: pd.DataFrame, cmix_results: pd.DataFrame, output_dir: Path) -> None:
+    """
+    NEW: Shows which site categories drive MKK exceedances.
+    Bar chart with total exceedance count per category.
+    """
+    
+    # cmix_results already has Qualifying_Category column
+    if 'Qualifying_Category' not in cmix_results.columns:
+        print("    Warning: Missing Qualifying_Category for category contribution plot")
+        return
+    
+    exceedances = cmix_results[cmix_results['Exceedance_Flag'] == True].copy()
+    
+    if exceedances.empty:
+        print("    Warning: No exceedances for category contribution plot")
+        return
+    
+    category_col = 'Qualifying_Category'
+    
+    # Count exceedances by category
+    category_counts = exceedances[category_col].value_counts()
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    
+    # Left: Bar chart of exceedance counts by category
+    colors = plt.cm.RdYlGn_r(np.linspace(0.2, 0.8, len(category_counts)))
+    
+    bars = ax1.bar(range(len(category_counts)), category_counts.values, 
+                   color=colors, edgecolor='white', linewidth=2)
+    ax1.set_xticks(range(len(category_counts)))
+    ax1.set_xticklabels(category_counts.index, rotation=45, ha='right', fontsize=11)
+    ax1.set_ylabel('Number of Exceedances', fontsize=14, fontweight='bold')
+    ax1.set_title('Exceedances by Site Category', fontsize=18, fontweight='bold', pad=15)
+    
+    # Add value labels
+    max_cat_count = max(category_counts) if len(category_counts) > 0 else 1
+    for bar, count in zip(bars, category_counts.values):
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2., height + max_cat_count*0.02,
+                f'{count:,}', ha='center', va='bottom', fontsize=12, fontweight='bold')
+    
+    # Right: Average exceedance severity by category
+    avg_severity = exceedances.groupby(category_col)['Exceedance_Ratio'].median()
+    avg_severity = avg_severity.reindex(category_counts.index)  # Same order
+    
+    severity_colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(avg_severity)))
+    
+    bars2 = ax2.bar(range(len(avg_severity)), avg_severity.values,
+                    color=severity_colors, edgecolor='white', linewidth=2)
+    ax2.set_xticks(range(len(avg_severity)))
+    ax2.set_xticklabels(avg_severity.index, rotation=45, ha='right', fontsize=11)
+    ax2.set_ylabel('Median Exceedance Ratio (Cmix/MKK)', fontsize=14, fontweight='bold')
+    ax2.set_title('Exceedance Severity by Category', fontsize=18, fontweight='bold', pad=15)
+    ax2.set_yscale('log')  # Log scale for severity
+    
+    # Add value labels
+    for bar, val in zip(bars2, avg_severity.values):
+        if not np.isnan(val):
+            ax2.text(bar.get_x() + bar.get_width()/2., val * 1.2,
+                    f'{val:.1f}×', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    # Summary stats
+    worst_cat = avg_severity.idxmax()
+    most_freq_cat = category_counts.idxmax()
+    
+    stats_text = (
+        f"Key Findings:\n"
+        f"• Most exceedances: {most_freq_cat}\n"
+        f"  ({category_counts.max():,} exceedances)\n"
+        f"• Worst severity: {worst_cat}\n"
+        f"  ({avg_severity.max():.1f}× median ratio)"
+    )
+    fig.text(0.5, 0.02, stats_text, ha='center', fontsize=12,
+             bbox=dict(boxstyle='round', facecolor='lightyellow', edgecolor='orange', alpha=0.9))
+    
+    plt.tight_layout(rect=[0, 0.12, 1, 1])
+    plt.savefig(output_dir / 'category_exceedance_contribution.png', facecolor='white')
+    plt.close()
+

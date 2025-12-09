@@ -4,9 +4,95 @@
 
 This standardized workflow assesses contamination risk from contaminated sites (V1/V2) to groundwater aquifers (GVFKs) in Denmark. The methodology identifies high-risk sites based on proximity to rivers with groundwater contact and applies literature-based distance thresholds for different contamination categories.
 
-**Version:** Standardized Core Workflow v1.0
-**Target Users:** Technical users with Python/GIS experience
-**Runtime:** ~5-15 minutes (depending on data size)
+**Version:** Standardized Core Workflow v2.0 (Steps 1-6)  
+**Target Users:** Technical users with Python/GIS experience  
+**Runtime:** ~15-30 minutes (full workflow including Step 6)
+
+### Workflow Diagram
+
+```mermaid
+flowchart TD
+    subgraph Step1["Step 1: Data Loading"]
+        A1[("All GVFKs<br>~2,200")]
+    end
+
+    subgraph Step2["Step 2: River Contact Filter"]
+        A1 --> B1{Has river<br>contact?}
+        B1 -->|Yes| B2[("GVFKs with rivers<br>~1,600")]
+        B1 -->|No| B3["Excluded<br>~600"]
+    end
+
+    subgraph Step3["Step 3: V1/V2 Sites"]
+        B2 --> C1["Load V1/V2<br>contamination data"]
+        C1 --> C2["Spatial join with<br>GVFK polygons"]
+        C2 --> C3[("Site-GVFK combinations<br>~69,000 rows")]
+    end
+
+    subgraph Step4["Step 4: Distance Calculation"]
+        C3 --> D1["Calculate distance<br>to nearest river"]
+        D1 --> D2[("Sites with distances<br>in each GVFK")]
+    end
+
+    subgraph Step5["Step 5: Risk Assessment"]
+        D2 --> E1{"Step 5a<br>≤500m?"}
+        E1 -->|Yes| E2[("General risk<br>~300 GVFKs")]
+        
+        D2 --> E3["Step 5b: Category<br>thresholds"]
+        E3 --> E4{Within category<br>threshold?}
+        E4 -->|Yes| E5[("Compound risk<br>~212 GVFKs<br>~3,700 rows")]
+        E4 -->|No| E6["Excluded"]
+
+        E5 --> F1["Step 5c: Infiltration<br>filter"]
+        F1 --> F2{Downward<br>flow?}
+        F2 -->|Yes| F3[("Filtered sites<br>~182 GVFKs<br>~2,000 rows")]
+        F2 -->|No| F4["Upward flow<br>excluded<br>~45%"]
+    end
+
+    subgraph Step6["Step 6: Tilstandsvurdering"]
+        F3 --> G1["Attach infiltration<br>& calculate flux"]
+        G1 --> G2["Aggregate by<br>river segment"]
+        G2 --> G3["Calculate Cmix<br>per scenario"]
+        G3 --> G4{"Cmix > MKK?"}
+        G4 -->|Yes| G5[("MKK Exceedances<br>~101 GVFKs<br>~226 sites")]
+        G4 -->|No| G6["No exceedance"]
+    end
+
+    style Step1 fill:#e1f5fe
+    style Step2 fill:#b3e5fc
+    style Step3 fill:#81d4fa
+    style Step4 fill:#4fc3f7
+    style Step5 fill:#ffcc80
+    style Step6 fill:#ef9a9a
+    style G5 fill:#c62828,color:#fff
+```
+
+### Key Data Files Through Workflow
+
+```mermaid
+flowchart LR
+    subgraph Inputs["Input Data"]
+        I1["GVFK shapefile"]
+        I2["River shapefile"]
+        I3["V1/V2 CSV"]
+        I4["GVD rasters"]
+        I5["Q-points"]
+    end
+
+    subgraph Outputs["Key Outputs"]
+        O1["step5b_compound_combinations.csv"]
+        O2["step5c_filtered_combinations.csv"]
+        O3["step6_cmix_results.csv"]
+        O4["step6_sites_mkk_exceedance.csv"]
+    end
+
+    I1 & I2 --> O1
+    O1 --> O2
+    I4 --> O2
+    O2 & I5 --> O3
+    O3 --> O4
+
+    style O4 fill:#c62828,color:#fff
+```
 
 ---
 
@@ -43,16 +129,32 @@ python main_workflow.py
 
 ### What Happens
 
-The workflow runs 5 sequential steps:
-1. Loads all 2,044 GVFKs in Denmark
-2. Filters to ~1,600 GVFKs with river contact
-3. Identifies contaminated sites (V1/V2) within these GVFKs
-4. Calculates distances from sites to rivers
-5. Performs risk assessment with two approaches:
-   - **Step 5a:** General assessment (universal 500m threshold)
-   - **Step 5b:** Compound-specific assessment (variable thresholds)
+The workflow runs 6 sequential steps:
+1. **Step 1**: Loads all ~2,200 GVFKs in Denmark
+2. **Step 2**: Filters to ~1,600 GVFKs with river contact
+3. **Step 3**: Identifies contaminated sites (V1/V2) within these GVFKs
+4. **Step 4**: Calculates distances from sites to rivers
+5. **Step 5**: Risk assessment (three sub-steps):
+   - **5a**: General assessment (universal 500m threshold)
+   - **5b**: Compound-specific assessment (variable thresholds by category)
+   - **5c**: Infiltration filter (removes sites in upward flow zones)
+6. **Step 6**: Tilstandsvurdering (flux calculation, Cmix, MKK comparison)
 
 Results are saved to `Resultater/` directory.
+
+### Typical GVFK Funnel (Example Run)
+
+| Step | Description | GVFKs | Sites | Rows |
+|------|-------------|-------|-------|------|
+| Step 1 | All GVFKs in Denmark | ~2,200 | — | — |
+| Step 2 | River contact filter | ~1,600 | — | — |
+| Step 3 | V1/V2 sites in GVFKs | ~800 | ~8,000 | ~69,000 |
+| Step 5a | ≤500m threshold | ~300 | ~2,500 | — |
+| Step 5b | Compound-specific thresholds | ~212 | ~1,500 | ~3,700 |
+| Step 5c | Infiltration filter | ~182 | ~900 | ~2,000 |
+| Step 6 | MKK exceedances | **~101** | **~226** | ~1,200 |
+
+*Actual numbers may vary with data updates.*
 
 ---
 
@@ -203,6 +305,73 @@ Two parallel assessments are performed:
 See `risikovurdering/refined_compound_analysis.py` for:
 - LITERATURE_COMPOUND_MAPPING: Category names, keywords, distance thresholds, literature basis
 - COMPOUND_SPECIFIC_DISTANCES: Individual compound overrides (e.g., benzene: 200m)
+
+---
+
+#### Step 5c: Infiltration Filter (Groundwater Flow Direction)
+
+**Purpose:** Remove sites in upward groundwater flow zones (opstrømningszoner)
+
+**Input:**
+- Step 5b output: `step5b_compound_combinations.csv`
+- GVD rasters: `Data/dkm2019_vp3_GVD/` (infiltration rate grids)
+
+**Output:**
+- `Resultater/step5c_filtered_combinations.csv` (sites with downward flow only)
+- `Resultater/Figures/step5c/upward_flux_sites_map.html` (interactive map)
+
+**What it does:**
+- For each site polygon, samples all pixels from the infiltration raster
+- Converts pixel values to binary: **<0 = upward flow**, **≥0 = downward flow**
+- Applies **pixel-level majority voting**: if >50% of pixels are upward, site is removed
+- Conservatively keeps sites with `no_data` pixels
+- Typical reduction: ~45% rows filtered, ~40% sites removed
+
+**Scientific basis:**
+The flux formula `J = A × C × I` assumes groundwater flows downward toward the aquifer. In upward flow zones (discharge areas), contamination does not reach the aquifer via infiltration, so these sites are excluded from risk assessment.
+
+---
+
+### Step 6: Tilstandsvurdering (Flux & Cmix Calculation)
+
+**Purpose:** Calculate pollution fluxes and compare mixed concentration (Cmix) to environmental quality standards (MKK)
+
+**Input:**
+- Step 5c filtered data (via alias `step5_compound_detailed_combinations`)
+- Site geometries from Step 3
+- GVFK-to-modellag mapping
+- GVD infiltration rasters
+- River flow data (Q-points with Mean/Q90/Q95)
+- MKK thresholds from `config.py`
+
+**Output:**
+| File | Description |
+|------|-------------|
+| `step6_flux_site_segment.csv` | Per-site flux values before segment aggregation |
+| `step6_cmix_results.csv` | Segment-level Cmix with MKK exceedance flags |
+| `step6_segment_summary.csv` | Per-segment summary with max Cmix and failing scenarios |
+| `step6_sites_mkk_exceedance.csv` | Sites contributing to MKK exceedances |
+| `step6_filtering_audit_detailed.csv` | Audit trail of filtered rows (missing data, etc.) |
+
+**What it does:**
+
+1. **Attach infiltration**: Sample GVD rasters for each site based on DK-modellag
+2. **Calculate flux**: `J = Area × Infiltration × Concentration`
+   - Scenario-based: Each category generates multiple flux rows (one per modelstof)
+   - Example: BTXER → 2 scenarios (Benzen @ 400 µg/L, Olie @ 3000 µg/L)
+3. **Aggregate by river segment**: Sum fluxes per scenario per segment
+4. **Calculate Cmix**: `Cmix = Flux / (Q × 1000)` for each flow scenario (Mean/Q90/Q95)
+5. **Apply MKK thresholds**: Compare Cmix to substance or category MKK
+6. **Flag exceedances**: Identify segments and sites exceeding environmental limits
+
+**Data filtering:**
+- Sites with missing modellag mapping: removed
+- Sites with negative infiltration (upward flow): quarantined
+- Rows with concentration = -1 (LOSSEPLADS/ANDRE/PFAS without overrides): filtered
+
+**Typical results:** ~100-150 GVFKs with MKK exceedances, affecting 200-300 sites
+
+See `README_STEP6.md` for detailed examples and technical notes.
 
 ---
 

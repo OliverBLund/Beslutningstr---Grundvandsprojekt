@@ -252,11 +252,29 @@ The Trichlorethylen scenario is completely independent from the Chloroform scena
 ### 6. Recent investigations / data caveats
 
 - **-1 Concentration Filtering (LOSSEPLADS, ANDRE, PFAS)**
-  Three categories have default concentration = -1 in `config.py`: LOSSEPLADS, ANDRE, and PFAS. These represent cases where no valid standard concentration exists from Delprojekt 3. Rows with these categories are **filtered out during flux calculation** (line 916 in `step6_tilstandsvurdering.py`) UNLESS:
-  - They have specific losseplads overrides (e.g., "BTXER" → 3000 µg/L for landfills)
-  - They have activity-specific overrides (e.g., "Servicestationer_Benzen" → 8000 µg/L)
+  Three categories have default concentration = -1 in `config.py`: LOSSEPLADS, ANDRE, and PFAS. These represent cases where no valid standard concentration exists from Delprojekt 3.
+
+  **LOSSEPLADS Detailed Breakdown:**
+
+  | Substance Type in Step 5 Input | Count | Gets Concentration? | Config Source |
+  |-------------------------------|-------|---------------------|---------------|
+  | `Landfill Override: UORGANISKE_FORBINDELSER` | ~100 | ✅ Yes (1800 µg/L) | `losseplads["UORGANISKE_FORBINDELSER"]` |
+  | `Landfill Override: BTXER` | ~76 | ✅ Yes (3000 µg/L) | `losseplads["BTXER"]` |
+  | `Landfill Override: PESTICIDER` | ~71 | ✅ Yes (1000 µg/L) | `losseplads["PESTICIDER"]` |
+  | `Landfill Override: KLOREREDE_OPLØSNINGSMIDLER` | ~31 | ✅ Yes (2800 µg/L) | `losseplads["KLOREREDE_OPLØSNINGSMIDLER"]` |
+  | `Landfill Override: PHENOLER` | ~16 | ✅ Yes (1500 µg/L) | `losseplads["PHENOLER"]` |
+  | `Branch/Activity: LOSSEPLADS` | ~56 | ❌ No → filtered | Falls to `category["LOSSEPLADS"]` = -1 |
+  | `Lossepladsperkolat` | ~52 | ❌ No → filtered | No match in `losseplads` dict |
+  | `Methan` | ~15 | ❌ No → filtered | No match in `losseplads` dict |
+  | `Lossepladsgas` | ~13 | ❌ No → filtered | No match in `losseplads` dict |
+
+  **Key points:**
+  - Rows with "Landfill Override: [CATEGORY]" substances successfully match entries in `STANDARD_CONCENTRATIONS["losseplads"]`
+  - Generic landfill substances (Lossepladsperkolat, Methan, Lossepladsgas) have no D3 concentration data
+  - "Branch/Activity: LOSSEPLADS" represents sites where the activity is "losseplads" but no specific substance category was identified
+  - **This filtering is intentional and scientifically correct** — these rows lack validated concentration data from Delprojekt 3
   
-  This filtering is scientifically correct and intentional. Sites that get filtered are documented in `step6_filtering_audit_detailed.csv`.
+  Filtered rows are documented in `step6_filtering_audit_detailed.csv`.
 
 - **PFAS exceedances dominate the top of the ratio list.**
   PFAS sites that survive filtering (via specific overrides) currently use a category concentration of 500 µg/L and a very low MKK (0.0044 µg/L). When combined with tiny Q95/Q90 flows (e.g., 0.0003 m³/s on DKRIVER2849), the Cmix/MKK ratio exceeds 300 000×. Review whether the PFAS concentration, MKK reference, or flow inputs should be adjusted or capped.

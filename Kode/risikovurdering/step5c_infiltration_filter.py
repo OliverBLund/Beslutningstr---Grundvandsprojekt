@@ -16,13 +16,13 @@ Method:
 5. Update step5 output files with filtered results
 
 Input:
-- Step 5 compound-specific results (step5_compound_detailed_combinations.csv)
+- Step 5b compound-specific results (step5b_compound_combinations.csv)
 - Site geometries from Step 3
 - GVFK layer mapping
 - GVD infiltration rasters
 
 Output:
-- Filtered step5_compound_detailed_combinations.csv (overwrites original)
+- Filtered step5c_filtered_combinations.csv (separate from step5b)
 - Filtering report showing removed sites and statistics
 """
 
@@ -404,9 +404,9 @@ def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFra
     if verbose:
         print("\nLoading data for infiltration filtering...")
 
-    # Load Step 5 results
-    step5_path = get_output_path("step5_compound_detailed_combinations")
-    step5_results = pd.read_csv(step5_path, encoding='utf-8')
+    # Load Step 5b results (PRE-filter)
+    step5b_path = get_output_path("step5b_compound_combinations")
+    step5_results = pd.read_csv(step5b_path, encoding='utf-8')
 
     # Load site geometries
     from data_loaders import load_site_geometries
@@ -420,17 +420,15 @@ def run_step5c_filtering(verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFra
         step5_results, site_geometries, layer_mapping, verbose=verbose
     )
 
-    # Save filtered results (overwrite original)
+    # Save filtered results to Step 5c output file (separate from 5b)
     if verbose:
         print("Saving filtered results...")
 
-    filtered_results.to_csv(step5_path, index=False, encoding="utf-8")
-
-    # Note: Removed sites are not saved to file (considered dead-end data)
-    # They are returned for in-memory analysis if needed
+    step5c_path = get_output_path("step5c_filtered_combinations")
+    filtered_results.to_csv(step5c_path, index=False, encoding="utf-8")
 
     if verbose:
-        print(f"  - Saved: {step5_path.name}")
+        print(f"  - Saved: {step5c_path.name}")
 
     # Create visualization of removed sites (upward flux zones)
     if not removed_sites.empty:
