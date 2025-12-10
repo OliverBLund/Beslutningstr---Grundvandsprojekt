@@ -121,6 +121,17 @@ def create_gvfk_progression_plot(figures_path):
         except:
             pass
 
+    # Step 3b: After infiltration filter (EARLY filtering of upward flow sites)
+    step3b_gvfks = 0
+    step3b_path = get_output_path("step3b_filtered_sites")
+    if step3b_path.exists():
+        try:
+            step3b_df = gpd.read_file(step3b_path)
+            gvfk_col_3b = "Navn"  # GVFK column in shapefile
+            step3b_gvfks = step3b_df[gvfk_col_3b].nunique()
+        except:
+            pass
+
     # Step 5a: General risk (≤500m) - use CSV instead of shapefile
     step5a_gvfks = 0
     step5a_path = get_output_path("step5_high_risk_sites")
@@ -131,7 +142,7 @@ def create_gvfk_progression_plot(figures_path):
         except:
             pass
 
-    # Step 5b: Compound-specific risk (PRE-infiltration filter)
+    # Step 5b: Compound-specific risk (final output - Step 5c is now obsolete)
     step5b_gvfks = 0
     step5b_path = get_output_path("step5b_compound_combinations")
     if step5b_path.exists():
@@ -141,33 +152,24 @@ def create_gvfk_progression_plot(figures_path):
         except:
             pass
 
-    # Step 5c: After infiltration filter (POST-filter)
-    step5c_gvfks = 0
-    step5c_path = get_output_path("step5c_filtered_combinations")
-    if step5c_path.exists():
-        try:
-            step5c_df = pd.read_csv(step5c_path)
-            step5c_gvfks = step5c_df["GVFK"].nunique()
-        except:
-            pass
-
     # NOTE: Step 6 (MKK exceedances) is NOT included here - this plot is for
     # risikovurdering (risk assessment) only. Tilstandsvurdering (Step 6) has
     # its own separate analysis with MKK scenario sensitivity.
 
-    # Build data - Risikovurdering progression (Steps 1-5c)
+    # Build data - Risikovurdering progression (Steps 1-3-3b-5a-5b)
+    # Note: Step 4 (distances) doesn't reduce GVFK count, just adds distances
     stages = [
         "Alle GVFK\n(Danmark)",
         "Vandløbskontakt\n(Trin 2)",
         "V1/V2 lokaliteter\n(Trin 3)",
+        "Infiltrationsfilter\n(Trin 3b)",
         "Generel risiko\n(Trin 5a: ≤500m)",
         "Stofspecifik risiko\n(Trin 5b)",
-        "Infiltrationsfilter\n(Trin 5c)",
     ]
-    counts = [total_gvfks, river_gvfks, v1v2_gvfks, step5a_gvfks, step5b_gvfks, step5c_gvfks]
+    counts = [total_gvfks, river_gvfks, v1v2_gvfks, step3b_gvfks, step5a_gvfks, step5b_gvfks]
     
-    # Professional color gradient (blue to orange)
-    colors = ["#4A90D9", "#5BA3E0", "#78B7E8", "#F5A623", "#E57C23", "#D14545"]
+    # Professional color gradient (blue to orange - now includes green for 3b)
+    colors = ["#4A90D9", "#5BA3E0", "#78B7E8", "#66BB6A", "#F5A623", "#E57C23"]
 
     # Create figure
     fig, ax = plt.subplots(figsize=(14, 8))
@@ -233,6 +235,18 @@ def create_sites_progression_plot(figures_path):
         except Exception as e:
             print(f"    Warning: Could not load Step 3 sites: {e}")
 
+    # Step 3b: After infiltration filter
+    step3b_path = get_output_path("step3b_filtered_sites")
+    if step3b_path.exists():
+        try:
+            step3b_df = gpd.read_file(step3b_path)
+            site_id_col_3b = "Lokalitet_"  # Site ID column in shapefile
+            step3b_sites = step3b_df[site_id_col_3b].nunique()
+            sites_counts.append(step3b_sites)
+            stages.append("Infiltrationsfilter\n(Trin 3b)")
+        except:
+            pass
+
     # Step 5a: High-risk sites (general)
     step5a_path = get_output_path("step5_high_risk_sites")
     if step5a_path.exists():
@@ -244,7 +258,7 @@ def create_sites_progression_plot(figures_path):
         except:
             pass
 
-    # Step 5b: Compound-specific sites (PRE-filter)
+    # Step 5b: Compound-specific sites (final output)
     step5b_path = get_output_path("step5b_compound_combinations")
     if step5b_path.exists():
         try:
@@ -255,17 +269,6 @@ def create_sites_progression_plot(figures_path):
         except:
             pass
 
-    # Step 5c: After infiltration filter
-    step5c_path = get_output_path("step5c_filtered_combinations")
-    if step5c_path.exists():
-        try:
-            step5c_df = pd.read_csv(step5c_path)
-            step5c_sites = step5c_df["Lokalitet_ID"].nunique()
-            sites_counts.append(step5c_sites)
-            stages.append("Infiltrationsfilter\n(Trin 5c)")
-        except:
-            pass
-
     # NOTE: Step 6 (MKK exceedances) is NOT included here - this plot is for
     # risikovurdering (risk assessment) only.
 
@@ -273,8 +276,8 @@ def create_sites_progression_plot(figures_path):
         print("    Insufficient data for sites progression plot")
         return
 
-    # Professional color gradient (4 stages: Step 3, 5a, 5b, 5c)
-    colors = ["#4A90D9", "#F5A623", "#E57C23", "#D14545"][:len(stages)]
+    # Professional color gradient (5 stages: Step 3, 3b, 5a, 5b)
+    colors = ["#4A90D9", "#66BB6A", "#F5A623", "#E57C23"][:len(stages)]
 
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 8))

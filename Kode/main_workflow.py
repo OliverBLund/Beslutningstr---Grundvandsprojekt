@@ -46,7 +46,13 @@ USAGE:
 
 Expected runtime: ~10-20 minutes depending on data size.
 """
+'''
+TODO step6:
+Check polygoner vs centroid resultaterne
+Check mængden af pixels capped? Der er mange.
+Check mængden af pixels zeroed.
 
+'''
 import pandas as pd
 import os
 import warnings
@@ -57,6 +63,7 @@ from config import validate_input_files, get_output_path
 from risikovurdering.step1_all_gvfk import run_step1
 from risikovurdering.step2_river_contact import run_step2
 from risikovurdering.step3_v1v2_sites import run_step3
+from risikovurdering.step3b_infiltration_filter import run_step3b
 from risikovurdering.step4_distances import run_step4
 from risikovurdering.step5_risk_assessment import run_step5
 from tilstandsvurdering.step6_tilstandsvurdering import run_step6
@@ -133,9 +140,18 @@ def main():
         "v1v2_sites": v1v2_sites,
     }
 
-    # STEP 4
+    # STEP 3b: Infiltration filter (filter sites in upward flow zones)
+    v1v2_sites_filtered = run_step3b(v1v2_sites)
+    if v1v2_sites_filtered.empty:
+        print("✗ Step 3b failed - all sites filtered (no downward flow sites)")
+        return False
+    results["step3b"] = {
+        "v1v2_sites_filtered": v1v2_sites_filtered,
+    }
+
+    # STEP 4 - Uses filtered sites from Step 3b
     from risikovurdering.step4_distances import run_step4
-    distance_results = run_step4(v1v2_sites)
+    distance_results = run_step4(v1v2_sites_filtered)
     if distance_results is None:
         print("✗ Step 4 failed - distance calculation unsuccessful")
         return False
