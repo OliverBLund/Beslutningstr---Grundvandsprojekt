@@ -267,6 +267,8 @@ CORE_OUTPUTS = {
     # Step 3: V1/V2 contamination sites
     "step3_v1v2_sites": STEP3_DATA_DIR / "step3_v1v2_sites.shp",
     "step3_gvfk_polygons": STEP3_DATA_DIR / "step3_gvfk_with_v1v2.shp",
+    # Step 3b: Infiltration-filtered sites (BEFORE distance calculation)
+    "step3b_filtered_sites": STEP3_DATA_DIR / "step3b_filtered_sites.shp",
     # Step 4: Distance calculations
     "step4_final_distances_for_risk_assessment": STEP4_DATA_DIR
     / "step4_final_distances.csv",
@@ -281,10 +283,11 @@ CORE_OUTPUTS = {
     # Step 5b: Compound-specific assessment (PRE-infiltration filter)
     "step5b_compound_combinations": STEP5_DATA_DIR / "step5b_compound_combinations.csv",
     "step5b_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5b_compound_gvfk_high_risk.shp",
-    # Step 5c: After infiltration filter (POST-filter - used by Step 6)
+    # Step 5c: DEPRECATED - infiltration now happens at Step 3b
+    # Keeping the path for backward compatibility with existing files
     "step5c_filtered_combinations": STEP5_DATA_DIR / "step5c_filtered_combinations.csv",
-    # Legacy key for backward compatibility (points to 5c output)
-    "step5_compound_detailed_combinations": STEP5_DATA_DIR / "step5c_filtered_combinations.csv",
+    # Legacy key for Step 6 input (now points to step5b since 3b handles infiltration)
+    "step5_compound_detailed_combinations": STEP5_DATA_DIR / "step5b_compound_combinations.csv",
     "step5_compound_specific_sites": STEP5_DATA_DIR / "step5_compound_specific_sites.csv",
     "step5_compound_gvfk_high_risk": STEP5_DATA_DIR / "step5b_compound_gvfk_high_risk.shp",
     # Step 5: Sites without substance data (parked for later analysis)
