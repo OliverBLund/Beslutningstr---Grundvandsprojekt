@@ -160,6 +160,7 @@ def create_combined_impact_maps(
             qpoint_lookup,
             gvfk_exceedances,
             rivers_all_web=rivers_all_web,
+            qpoints_web=qpoints_web,
         )
     else:
         print("    Skipping overall GVFK exceedance maps (disabled in config).")
@@ -177,13 +178,19 @@ def _build_qpoint_lookup_v2(qpoints_gdf: gpd.GeoDataFrame) -> Dict[str, Dict]:
     """
     Flow lookup with mode toggle (STEP6_FLOW_SELECTION_MODE).
 
+    Modes:
+    - max_per_ov: max Q per ov_id per scenario (entire river)
+    - max_near_segment: max Q from Q-points within 100m buffer of segment
+    - downstream_per_segment: nearest Q-point to segment's downstream end (NEW)
+
     Returns:
       {
         "by_ov": {(ov_id, scenario): (flow, geom)},
-        "by_fid": {(fid, scenario): (flow, geom)}  # only in nearest mode
+        "by_fid": {(fid, scenario): (flow, geom)},
+        "fallback_count": int  # segments that used river-level fallback
       }
     """
-    result: Dict[str, Dict] = {"by_ov": {}, "by_fid": {}}
+    result: Dict[str, Dict] = {"by_ov": {}, "by_fid": {}, "fallback_count": 0}
 
     valid_qpoints = qpoints_gdf[qpoints_gdf["ov_id"].notna()].copy()
     if valid_qpoints.empty:
@@ -203,72 +210,131 @@ def _build_qpoint_lookup_v2(qpoints_gdf: gpd.GeoDataFrame) -> Dict[str, Dict]:
     )
     flow_long = flow_long[flow_long["Flow_m3_s"].notna() & (flow_long["Flow_m3_s"] > 0)]
 
-    # Max per ov_id per scenario
+    # Max per ov_id per scenario (always computed as fallback)
     idx_max = flow_long.groupby(["ov_id", "Scenario"])["Flow_m3_s"].idxmax()
     max_ov = flow_long.loc[idx_max]
     for _, row in max_ov.iterrows():
         key = (str(row["ov_id"]), row["Scenario"])
         result["by_ov"][key] = (row["Flow_m3_s"], row.geometry)
 
-    if STEP6_FLOW_SELECTION_MODE != "max_near_segment":
-
+    # Early exit for max_per_ov mode
+    if STEP6_FLOW_SELECTION_MODE == "max_per_ov":
+        print(f"      Built Q-point lookup (max_per_ov: {len(result['by_ov'])} keys)")
         return result
 
-    # Nearest-per-segment mode
+    # Load rivers for segment-based modes
     try:
         rivers = gpd.read_file(RIVERS_PATH, layer=RIVERS_LAYER_NAME)
         rivers = rivers.reset_index().rename(columns={"index": "River_FID"})
     except Exception as exc:
-        print(f"      WARNING: Cannot load rivers for nearest Q-point mode ({exc}); using max_per_ov only.")
+        print(f"      WARNING: Cannot load rivers for segment mode ({exc}); using max_per_ov fallback.")
         return result
 
     if rivers.crs != valid_qpoints.crs:
         try:
             rivers = rivers.to_crs(valid_qpoints.crs)
         except Exception:
-            print("      WARNING: CRS mismatch; nearest Q-point mode skipped.")
+            print("      WARNING: CRS mismatch; using max_per_ov fallback.")
             return result
 
-    buffer_dist = 100  # meters
+    # Ensure projected CRS for distance calculations
     rivers_proj = rivers
     qpoints_proj = valid_qpoints
-    flow_proj = flow_long
     try:
         if rivers_proj.crs.is_geographic:
             rivers_proj = rivers_proj.to_crs(epsg=25832)
             qpoints_proj = valid_qpoints.to_crs(epsg=25832)
-            flow_proj = flow_long.copy()
-            flow_proj["geometry"] = qpoints_proj["geometry"].values
     except Exception:
-        flow_proj = flow_long
+        pass
 
-    flow_proj = flow_proj.reset_index(drop=True)
-    for _, seg in rivers_proj.iterrows():
-        seg_fid = seg.get("River_FID")
-        if pd.isna(seg_fid) or seg.geometry is None:
-            continue
-        try:
-            seg_fid_int = int(seg_fid)
-        except Exception:
-            continue
+    fallback_count = 0
 
-        dists = flow_proj.geometry.distance(seg.geometry)
-        nearby_idx = dists <= buffer_dist
-        if not nearby_idx.any():
-            continue
+    if STEP6_FLOW_SELECTION_MODE == "downstream_per_segment":
+        # For each segment, find nearest Q-point on same ov_id
+        # Use segment endpoint (downstream end) for distance calculation
+        for _, seg in rivers_proj.iterrows():
+            seg_fid = seg.get("River_FID")
+            seg_ov_id = str(seg.get("ov_id", ""))
+            if pd.isna(seg_fid) or seg.geometry is None or not seg_ov_id:
+                continue
+            try:
+                seg_fid_int = int(seg_fid)
+            except Exception:
+                continue
 
-        nearby = flow_proj[nearby_idx]
-        idx_max_near = nearby.groupby("Scenario")["Flow_m3_s"].idxmax()
-        max_near = nearby.loc[idx_max_near]
-        for _, row in max_near.iterrows():
-            key = (seg_fid_int, row["Scenario"])
-            orig_geom = flow_long.loc[row.name, "geometry"] if "geometry" in flow_long.columns else row.geometry
-            result["by_fid"][key] = (row["Flow_m3_s"], orig_geom)
+            # Get Q-points on same river
+            ov_qpoints = qpoints_proj[qpoints_proj["ov_id"] == seg_ov_id]
+            if ov_qpoints.empty:
+                fallback_count += 1
+                continue
 
-    print(
-        f"      Built Q-point lookup (max_per_ov: {len(result['by_ov'])} keys, "
-        f"max_near_segment: {len(result['by_fid'])} keys within buffer)"
-    )
+            # Get segment's downstream endpoint (last coordinate)
+            try:
+                coords = list(seg.geometry.coords)
+                downstream_pt = coords[-1]  # Assuming line direction is upstream→downstream
+                from shapely.geometry import Point
+                downstream_geom = Point(downstream_pt)
+            except Exception:
+                # Fallback to centroid
+                downstream_geom = seg.geometry.centroid
+
+            # Find nearest Q-point to downstream end
+            distances = ov_qpoints.geometry.distance(downstream_geom)
+            nearest_idx = distances.idxmin()
+            nearest_qpoint = ov_qpoints.loc[nearest_idx]
+
+            # Get original WGS84 geometry for map display
+            orig_qpoint = valid_qpoints.loc[nearest_idx]
+
+            # Add entry for each scenario
+            for scenario in scenario_cols:
+                flow_val = nearest_qpoint.get(scenario)
+                if pd.notna(flow_val) and flow_val > 0:
+                    key = (seg_fid_int, scenario)
+                    result["by_fid"][key] = (flow_val, orig_qpoint.geometry)
+
+        result["fallback_count"] = fallback_count
+        print(
+            f"      Built Q-point lookup (downstream_per_segment: {len(result['by_fid'])} keys, "
+            f"fallback used: {fallback_count} segments)"
+        )
+
+    elif STEP6_FLOW_SELECTION_MODE == "max_near_segment":
+        # Original max_near_segment logic (buffer-based)
+        buffer_dist = 100  # meters
+        flow_proj = flow_long.copy()
+        flow_proj["geometry"] = qpoints_proj["geometry"].reindex(flow_long.index).values
+
+        flow_proj = flow_proj.reset_index(drop=True)
+        for _, seg in rivers_proj.iterrows():
+            seg_fid = seg.get("River_FID")
+            if pd.isna(seg_fid) or seg.geometry is None:
+                continue
+            try:
+                seg_fid_int = int(seg_fid)
+            except Exception:
+                continue
+
+            dists = flow_proj.geometry.distance(seg.geometry)
+            nearby_idx = dists <= buffer_dist
+            if not nearby_idx.any():
+                fallback_count += 1
+                continue
+
+            nearby = flow_proj[nearby_idx]
+            idx_max_near = nearby.groupby("Scenario")["Flow_m3_s"].idxmax()
+            max_near = nearby.loc[idx_max_near]
+            for _, row in max_near.iterrows():
+                key = (seg_fid_int, row["Scenario"])
+                orig_geom = flow_long.loc[row.name, "geometry"] if "geometry" in flow_long.columns else row.geometry
+                result["by_fid"][key] = (row["Flow_m3_s"], orig_geom)
+
+        result["fallback_count"] = fallback_count
+        print(
+            f"      Built Q-point lookup (max_near_segment: {len(result['by_fid'])} keys, "
+            f"fallback used: {fallback_count} segments)"
+        )
+
     return result
 
 def _create_scenario_map(
@@ -354,7 +420,10 @@ def _create_scenario_map(
     # Add rivers (display all for context, color only GVFK segments with data)
     _add_rivers(m, rivers_web, scenario_cmix, rivers_all_web)
 
-    # Add Q-points for affected segments (use selected flow scenario)
+    # Add ALL Q-points (toggleable layer, shows used vs unused)
+    _add_all_qpoints(m, qpoints_web, STEP6_PRIMARY_FLOW_SCENARIO)
+
+    # Add Q-points for affected segments (use selected flow scenario) - main visible layer
     _add_qpoints(m, scenario_flux, qpoint_lookup, STEP6_PRIMARY_FLOW_SCENARIO)
 
     # Add sites
@@ -398,6 +467,7 @@ def _create_overall_exceedance_maps(
     qpoint_lookup: Dict[str, Tuple],
     gvfk_exceedances: pd.DataFrame | None = None,
     rivers_all_web: gpd.GeoDataFrame | None = None,
+    qpoints_web: gpd.GeoDataFrame | None = None,
 ) -> None:
     """
     Create GVFK-focused overview maps showing Step 6 impacts in binary form.
@@ -893,7 +963,11 @@ def _create_overall_exceedance_maps(
                     name="Exceeding segments (MKK)",
                 ).add_to(m)
 
-        # Layer 4: Q-points
+        # Layer 4a: All Q-points (toggleable layer, hidden by default)
+        if qpoints_web is not None and not qpoints_web.empty:
+            _add_all_qpoints(m, qpoints_web, STEP6_PRIMARY_FLOW_SCENARIO)
+        
+        # Layer 4b: Used Q-points (visible)
         if not overall_flux.empty and sites_web is not None and not sites_web.empty:
             if len(overall_flux) > 0:
                 _add_qpoints(m, overall_flux, qpoint_lookup, STEP6_PRIMARY_FLOW_SCENARIO)
@@ -1196,6 +1270,10 @@ def _add_rivers(
 
     # Use all rivers for display if provided, otherwise use GVFK rivers only
     display_rivers = rivers_all_web if rivers_all_web is not None else rivers_web
+    
+    # Ensure River_FID is present
+    if "River_FID" not in display_rivers.columns:
+        display_rivers = display_rivers.reset_index().rename(columns={"index": "River_FID"})
 
     # Merge river geometries with Cmix data
     rivers_enriched = display_rivers.merge(
@@ -1208,6 +1286,7 @@ def _add_rivers(
     # Add each river segment
     for _, river in rivers_enriched.iterrows():
         cmix_pct = river.get("Cmix_pct_MKK")
+        river_fid = river.get("River_FID", "N/A")
 
         # Determine color based on Cmix % of MKK
         if pd.isna(cmix_pct):
@@ -1229,10 +1308,11 @@ def _add_rivers(
             color = "#8B0000"  # Dark red (severe)
             weight = 4
 
-        # Create popup
+        # Create popup with FID
         popup_html = f"""
         <b>River: {river.get("ov_navn", "Unknown")}</b><br>
-        ID: {river.get("ov_id", "N/A")}<br>
+        River ID: {river.get("ov_id", "N/A")}<br>
+        <b>Segment FID: {river_fid}</b><br>
         """
         if pd.notna(cmix_pct):
             popup_html += f"""
@@ -1253,35 +1333,53 @@ def _add_rivers(
                 "opacity": 0.7,
             },
             popup=folium.Popup(popup_html, max_width=300),
+            tooltip=f"FID: {river_fid}",
         ).add_to(m)
 
-        # Add subtle segment boundary markers (visible only when zoomed in)
-        # Extract endpoints of the river geometry
-        if river.geometry is not None and hasattr(river.geometry, 'coords'):
+        # Add segment boundary markers with FID labels (more visible)
+        if river.geometry is not None:
             try:
-                coords = list(river.geometry.coords)
+                # Handle MultiLineString
+                if river.geometry.geom_type == 'MultiLineString':
+                    geom_list = list(river.geometry.geoms)
+                    coords = list(geom_list[-1].coords) if geom_list else []
+                else:
+                    coords = list(river.geometry.coords)
+                
                 if len(coords) >= 2:
+                    # Downstream point (end) - show FID label
+                    end_point = coords[-1]
+                    folium.CircleMarker(
+                        location=[end_point[1], end_point[0]],  # lat, lon
+                        radius=4,
+                        color='#FF00FF',  # Magenta for visibility
+                        fillColor='#FF00FF',
+                        fillOpacity=0.9,
+                        weight=2,
+                        popup=folium.Popup(
+                            f"<b>Segment End (Downstream)</b><br>FID: {river_fid}<br>River: {river.get('ov_id', 'N/A')}",
+                            max_width=200
+                        ),
+                        tooltip=f"FID: {river_fid} (end)",
+                        className='segment-boundary-marker'
+                    ).add_to(m)
+                    
                     # Start point
                     start_point = coords[0]
-                    # End point
-                    end_point = coords[-1]
-
-                    # Add small circles at endpoints (only visible at zoom >= 11)
-                    for point in [start_point, end_point]:
-                        folium.CircleMarker(
-                            location=[point[1], point[0]],  # lat, lon
-                            radius=2,
-                            color='white',
-                            fillColor='white',
-                            fillOpacity=0.8,
-                            weight=1,
-                            popup=folium.Popup(
-                                f"<b>Segment boundary</b><br>ID: {river.get('ov_id', 'N/A')}",
-                                max_width=200
-                            ),
-                            # Use custom CSS to hide at low zoom levels
-                            className='segment-boundary-marker'
-                        ).add_to(m)
+                    folium.CircleMarker(
+                        location=[start_point[1], start_point[0]],
+                        radius=3,
+                        color='#00FF00',  # Green for start
+                        fillColor='#00FF00',
+                        fillOpacity=0.7,
+                        weight=1,
+                        popup=folium.Popup(
+                            f"<b>Segment Start (Upstream)</b><br>FID: {river_fid}",
+                            max_width=200
+                        ),
+                        tooltip=f"FID: {river_fid} (start)",
+                        className='segment-boundary-marker'
+                    ).add_to(m)
             except Exception:
                 pass  # Skip if geometry doesn't have standard coords
 
@@ -1319,12 +1417,12 @@ def _add_qpoints(
     qpoint_lookup: Dict[str, Dict],
     flow_scenario: str | None = None,
 ) -> None:
-    # Add Q-point markers for affected river segments
+    """Add Q-point markers for affected river segments (used for Cmix calculation)."""
 
     scenario = flow_scenario or STEP6_PRIMARY_FLOW_SCENARIO
 
-    # Create a single FeatureGroup for all Q-points to prevent legend clutter
-    qpoint_group = folium.FeatureGroup(name=f"Q-points (flow {scenario})", show=True)
+    # Create a FeatureGroup for used Q-points (distinct styling)
+    qpoint_group = folium.FeatureGroup(name=f"Used Q-points ({scenario})", show=True)
 
     if flux_df is None or flux_df.empty:
         return
@@ -1346,22 +1444,97 @@ def _add_qpoints(
         if qpoint_geom is None or flow_val is None:
             continue
 
+        # Used Q-points: bright cyan with thick white border
         folium.CircleMarker(
             location=[qpoint_geom.y, qpoint_geom.x],
-            radius=6,
+            radius=8,
             color="#FFFFFF",
-            weight=2,
+            weight=3,
             fill=True,
-            fillColor="#00BFFF",
-            fillOpacity=0.9,
+            fillColor="#00FFFF",  # Cyan for used Q-points
+            fillOpacity=1.0,
             popup=folium.Popup(
-                f"<b>Q-point</b><br>Segment: {seg_ov if pd.notna(seg_ov) else 'N/A'}<br>{scenario}: {flow_val:.4f} m3/s",
-                max_width=220,
+                f"<b>Q-point (USED for Cmix)</b><br>"
+                f"Segment FID: {seg_fid if pd.notna(seg_fid) else 'N/A'}<br>"
+                f"River: {seg_ov if pd.notna(seg_ov) else 'N/A'}<br>"
+                f"<b>{scenario}: {flow_val:.4f} m³/s</b>",
+                max_width=250,
             ),
-            tooltip=f"{scenario}: {flow_val:.4f} m3/s",
+            tooltip=f"USED - {scenario}: {flow_val:.4f} m³/s (FID {seg_fid})",
         ).add_to(qpoint_group)
 
     qpoint_group.add_to(m)
+
+
+def _add_all_qpoints(
+    m: folium.Map,
+    qpoints_web: gpd.GeoDataFrame,
+    flow_scenario: str | None = None,
+    used_qpoint_coords: set | None = None,
+) -> None:
+    """Add ALL Q-points to the map (used and unused) with visual distinction.
+    
+    Args:
+        m: Folium map to add Q-points to
+        qpoints_web: GeoDataFrame of Q-points in WGS84
+        flow_scenario: Flow scenario to display (Q95, Q90, etc.)
+        used_qpoint_coords: Set of (x, y) tuples for Q-points that are used in Cmix calculation
+    """
+    scenario = flow_scenario or STEP6_PRIMARY_FLOW_SCENARIO
+    used_coords = used_qpoint_coords or set()
+    
+    # Create two feature groups: used and unused
+    all_qpoint_group = folium.FeatureGroup(name=f"All Q-points ({scenario})", show=False)
+    
+    if qpoints_web is None or qpoints_web.empty:
+        return
+    
+    for _, qpoint in qpoints_web.iterrows():
+        if qpoint.geometry is None:
+            continue
+            
+        x, y = qpoint.geometry.x, qpoint.geometry.y
+        coord_key = (round(x, 6), round(y, 6))
+        is_used = coord_key in used_coords
+        
+        flow_val = qpoint.get(scenario, None)
+        ov_id = qpoint.get("ov_id", "N/A")
+        
+        if is_used:
+            # Used Q-points: bright cyan (but smaller since _add_qpoints handles main display)
+            color = "#00FFFF"
+            fill_color = "#00FFFF"
+            radius = 6
+            opacity = 0.9
+            label = "USED"
+        else:
+            # Unused Q-points: small gray dots
+            color = "#808080"
+            fill_color = "#A0A0A0"
+            radius = 4
+            opacity = 0.6
+            label = "Available"
+        
+        flow_str = f"{flow_val:.4f} m³/s" if pd.notna(flow_val) else "N/A"
+        
+        folium.CircleMarker(
+            location=[y, x],
+            radius=radius,
+            color=color,
+            weight=1,
+            fill=True,
+            fillColor=fill_color,
+            fillOpacity=opacity,
+            popup=folium.Popup(
+                f"<b>Q-point ({label})</b><br>"
+                f"River: {ov_id}<br>"
+                f"{scenario}: {flow_str}",
+                max_width=220,
+            ),
+            tooltip=f"{label}: {scenario}={flow_str}",
+        ).add_to(all_qpoint_group)
+    
+    all_qpoint_group.add_to(m)
 
 def _add_sites(
     m: folium.Map, scenario_flux: pd.DataFrame, sites_web: gpd.GeoDataFrame

@@ -166,9 +166,10 @@ STEP6_MAP_SETTINGS = {
 # Primary flow scenario to use for overall map / reporting context
 STEP6_PRIMARY_FLOW_SCENARIO = "Q95"
 # Flow selection mode for Step 6 (Q-point choice per segment)
-# - "max_per_ov": current behavior, max Q per ov_id per scenario
-# - "max_near_segment": for each River_FID, pick max Q per scenario from Q-points near that segment (fallback to max_per_ov)
-STEP6_FLOW_SELECTION_MODE = "max_per_ov"
+# - "max_per_ov": max Q per ov_id per scenario (entire river)
+# - "max_near_segment": max Q from Q-points within 100m buffer of segment
+# - "downstream_per_segment": nearest Q-point downstream of segment (NEW, hydrologically correct)
+STEP6_FLOW_SELECTION_MODE = "downstream_per_segment"
 # -------------------------------------------------------------------
 # Input Data Column Mappings
 # -------------------------------------------------------------------
@@ -234,8 +235,11 @@ GRUNDVAND_LAYER_NAME = "dkm_gvf_vp3genbesog_kontakt"
 GRUNDVAND_PATH = GRUNDVAND_GDB_PATH  # Backwards compatibility for legacy imports
 RIVERS_PATH = GRUNDVAND_DATA_DIR / "Grunddata_results.gdb"
 RIVERS_LAYER_NAME = "Rivers_gvf_vp3genbesog_kontakt"
-V1_CSV_PATH = DATA_DIR / "v1_gvfk_forurening.csv"
-V2_CSV_PATH = DATA_DIR / "v2_gvfk_forurening.csv"
+V1_CSV_PATH = DATA_DIR / "v1_gvfk_forurening_NEW.csv"  # New GVFK mappings from Grunddata
+V2_CSV_PATH = DATA_DIR / "v2_gvfk_forurening_NEW.csv"  # New GVFK mappings from Grunddata
+# Original files (for reference):
+# V1_CSV_PATH = DATA_DIR / "v1_gvfk_forurening.csv"
+# V2_CSV_PATH = DATA_DIR / "v2_gvfk_forurening.csv"
 V1_SHP_PATH = SHAPE_DIR / "V1FLADER.shp"
 V2_SHP_PATH = SHAPE_DIR / "V2FLADER.shp"
 

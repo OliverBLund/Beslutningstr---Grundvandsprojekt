@@ -211,25 +211,9 @@ def main():
             "risk_analysis": general_analysis,
         }
 
-    # Step 5c: Infiltration-Based Filtering
-    try:
-        from risikovurdering.step5c_infiltration_filter import run_step5c_filtering
-        filtered_results, removed_sites = run_step5c_filtering(verbose=True)
-
-        if not filtered_results.empty:
-            results["step5c"] = {
-                "filtered_results": filtered_results,
-                "removed_sites": removed_sites,
-                "filtered_sites_count": filtered_results["Lokalitet_ID"].nunique(),
-                "filtered_gvfk_count": filtered_results["GVFK"].nunique(),
-                "removed_sites_count": removed_sites["Lokalitet_ID"].nunique() if not removed_sites.empty else 0,
-                "success": True,
-            }
-        else:
-            results["step5c"] = {"success": False, "error": "No sites remaining after filtering"}
-    except Exception as e:
-        print(f"✗ Step 5c failed: {e}")
-        results["step5c"] = {"success": False, "error": str(e)}
+    # NOTE: Step 5c (infiltration filtering) is DEPRECATED.
+    # Infiltration filtering now happens at Step 3b, BEFORE distance calculation.
+    # The step5b output is now the final output (already filtered from Step 3b).
 
     # Step 6: Tilstandsvurdering (State Assessment)
     try:

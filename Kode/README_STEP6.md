@@ -276,6 +276,24 @@ The Trichlorethylen scenario is completely independent from the Chloroform scena
   
   Filtered rows are documented in `step6_filtering_audit_detailed.csv`.
 
+  **Row Count Discrepancy (Step 5 vs Step 6)**
+
+  You may notice that the Step 5 boxplot shows a different count than the Step 6 filtering message for categories like PFAS, ANDRE, or LOSSEPLADS. Example:
+  - Step 5 boxplot: "PFAS: 9 sites, 12 occurrences"
+  - Step 6 terminal: "PFAS: 9 rows excluded"
+
+  **This is NOT a bug.** The counts differ because of **grouping in Step 6**:
+
+  | Step | Count unit | What it represents |
+  |------|-----------|-------------------|
+  | **Step 5** | Rows = 12 | Site-GVFK-**substance** combinations |
+  | **Step 5** | Sites = 9 | Unique Lokalitet_IDs |
+  | **Step 6** | Rows = 9 | Unique (Site, GVFK, Segment, Category) tuples |
+
+  **Why?** Step 6's `_calculate_flux()` groups rows by `[Lokalitet_ID, GVFK, Nearest_River_FID, Qualifying_Category]` before creating flux rows. For categories without modelstof scenarios (PFAS, ANDRE, LOSSEPLADS), this collapses multiple substance rows into one flux row per unique combination.
+
+  Example: A site with 2 different PFAS substances in the same GVFK/segment = 2 rows in Step 5, but only 1 row in Step 6 after grouping.
+
 - **PFAS exceedances dominate the top of the ratio list.**
   PFAS sites that survive filtering (via specific overrides) currently use a category concentration of 500 µg/L and a very low MKK (0.0044 µg/L). When combined with tiny Q95/Q90 flows (e.g., 0.0003 m³/s on DKRIVER2849), the Cmix/MKK ratio exceeds 300 000×. Review whether the PFAS concentration, MKK reference, or flow inputs should be adjusted or capped.
 

@@ -1141,11 +1141,11 @@ def _calculate_cmix(
         if pd.notna(row["Flow_m3_s"])
     }
 
-    # Optional: build flow lookup by River_FID (nearest-per-segment)
+    # Optional: build flow lookup by River_FID (segment-based modes)
     flow_by_fid = {}
     if (
         qpoints_gdf is not None
-        and STEP6_FLOW_SELECTION_MODE == "max_near_segment"
+        and STEP6_FLOW_SELECTION_MODE in ("max_near_segment", "downstream_per_segment")
         and "geometry" in qpoints_gdf.columns
     ):
         try:
@@ -1155,51 +1155,106 @@ def _calculate_cmix(
 
             scenario_cols = [c for c in FLOW_SCENARIO_COLUMNS if c in qpoints_gdf.columns]
             if scenario_cols:
-                flow_long = qpoints_gdf.melt(
-                    id_vars=["ov_id", "geometry"],
-                    value_vars=scenario_cols,
-                    var_name="Scenario_raw",
-                    value_name="Flow_m3_s",
-                )
-                flow_long["Scenario"] = flow_long["Scenario_raw"].map(FLOW_SCENARIO_COLUMNS)
-                flow_long = flow_long.drop(columns=["Scenario_raw"])
-                flow_long = flow_long[
-                    flow_long["Flow_m3_s"].notna() & (flow_long["Flow_m3_s"] > 0)
-                ].reset_index(drop=True)
-
-                # Project to metric CRS for distance if needed
+                # Project to metric CRS for distance calculations if needed
                 rivers_proj = rivers
-                flow_proj = flow_long
+                qpoints_proj = qpoints_gdf
                 try:
                     if rivers_proj.crs.is_geographic:
                         rivers_proj = rivers_proj.to_crs(epsg=25832)
-                        flow_proj = flow_long.copy()
-                        flow_proj["geometry"] = flow_long["geometry"].to_crs(epsg=25832).values
+                        qpoints_proj = qpoints_gdf.to_crs(epsg=25832)
                 except Exception:
-                    flow_proj = flow_long
+                    pass
 
-                buffer_dist = 100.0
-                for _, seg in rivers_proj.iterrows():
-                    seg_fid = seg.get("River_FID")
-                    if pd.isna(seg_fid) or seg.geometry is None:
-                        continue
+                fallback_count = 0
+
+                if STEP6_FLOW_SELECTION_MODE == "downstream_per_segment":
+                    # For each segment, find nearest Q-point on same ov_id
+                    # Use segment endpoint (downstream end) for distance calculation
+                    from shapely.geometry import Point
+                    for _, seg in rivers_proj.iterrows():
+                        seg_fid = seg.get("River_FID")
+                        seg_ov_id = str(seg.get("ov_id", ""))
+                        if pd.isna(seg_fid) or seg.geometry is None or not seg_ov_id:
+                            continue
+                        try:
+                            seg_fid_int = int(seg_fid)
+                        except Exception:
+                            continue
+
+                        # Get Q-points on same river
+                        ov_qpoints = qpoints_proj[qpoints_proj["ov_id"] == seg_ov_id]
+                        if ov_qpoints.empty:
+                            fallback_count += 1
+                            continue
+
+                        # Get segment's downstream endpoint (last coordinate)
+                        try:
+                            coords = list(seg.geometry.coords)
+                            downstream_pt = coords[-1]  # Assuming line direction is upstream→downstream
+                            downstream_geom = Point(downstream_pt)
+                        except Exception:
+                            # Fallback to centroid
+                            downstream_geom = seg.geometry.centroid
+
+                        # Find nearest Q-point to downstream end
+                        distances = ov_qpoints.geometry.distance(downstream_geom)
+                        nearest_idx = distances.idxmin()
+                        nearest_qpoint = qpoints_gdf.loc[nearest_idx]  # Use original (non-projected) for values
+
+                        # Add entry for each scenario
+                        for scenario_col in scenario_cols:
+                            flow_val = nearest_qpoint.get(scenario_col)
+                            scenario_name = FLOW_SCENARIO_COLUMNS.get(scenario_col, scenario_col)
+                            if pd.notna(flow_val) and flow_val > 0:
+                                flow_by_fid[(seg_fid_int, scenario_name)] = flow_val
+
+                    print(f"      Built segment flow lookup (downstream_per_segment: {len(flow_by_fid)} keys, fallback: {fallback_count})")
+
+                else:  # max_near_segment mode
+                    flow_long = qpoints_gdf.melt(
+                        id_vars=["ov_id", "geometry"],
+                        value_vars=scenario_cols,
+                        var_name="Scenario_raw",
+                        value_name="Flow_m3_s",
+                    )
+                    flow_long["Scenario"] = flow_long["Scenario_raw"].map(FLOW_SCENARIO_COLUMNS)
+                    flow_long = flow_long.drop(columns=["Scenario_raw"])
+                    flow_long = flow_long[
+                        flow_long["Flow_m3_s"].notna() & (flow_long["Flow_m3_s"] > 0)
+                    ].reset_index(drop=True)
+
+                    flow_proj = flow_long.copy()
                     try:
-                        seg_fid_int = int(seg_fid)
+                        flow_proj["geometry"] = flow_long["geometry"].to_crs(epsg=25832).values
                     except Exception:
-                        continue
-                    dists = flow_proj.geometry.distance(seg.geometry)
-                    nearby_idx = dists <= buffer_dist
-                    if not nearby_idx.any():
-                        continue
-                    nearby = flow_proj[nearby_idx]
-                    idx_max_near = nearby.groupby("Scenario")["Flow_m3_s"].idxmax()
-                    max_near = nearby.loc[idx_max_near]
-                    for _, row in max_near.iterrows():
-                        flow_by_fid[(seg_fid_int, row["Scenario"])] = row["Flow_m3_s"]
+                        pass
+
+                    buffer_dist = 100.0
+                    for _, seg in rivers_proj.iterrows():
+                        seg_fid = seg.get("River_FID")
+                        if pd.isna(seg_fid) or seg.geometry is None:
+                            continue
+                        try:
+                            seg_fid_int = int(seg_fid)
+                        except Exception:
+                            continue
+                        dists = flow_proj.geometry.distance(seg.geometry)
+                        nearby_idx = dists <= buffer_dist
+                        if not nearby_idx.any():
+                            fallback_count += 1
+                            continue
+                        nearby = flow_proj[nearby_idx]
+                        idx_max_near = nearby.groupby("Scenario")["Flow_m3_s"].idxmax()
+                        max_near = nearby.loc[idx_max_near]
+                        for _, row in max_near.iterrows():
+                            flow_by_fid[(seg_fid_int, row["Scenario"])] = row["Flow_m3_s"]
+
+                    print(f"      Built segment flow lookup (max_near_segment: {len(flow_by_fid)} keys, fallback: {fallback_count})")
+
             else:
-                print("NOTE: No scenario columns in Q-point data for nearest-per-segment flow.")
+                print("NOTE: No scenario columns in Q-point data for segment-based flow.")
         except Exception as exc:
-            print(f"NOTE: Nearest-per-segment flow lookup failed; using ov_id max only. ({exc})")
+            print(f"NOTE: Segment-based flow lookup failed; using ov_id max only. ({exc})")
 
     merged = segment_flux.merge(
         flow_scenarios,
