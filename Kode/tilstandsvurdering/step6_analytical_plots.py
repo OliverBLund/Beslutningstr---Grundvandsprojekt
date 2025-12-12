@@ -110,8 +110,7 @@ def plot_category_impact_overview(
 
     # Create figure with 2x2 subplots
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-    fig.suptitle('Category Impact Overview', fontsize=20, fontweight='bold', y=1.02)
-
+    # fig.suptitle('Category Impact Overview', fontsize=20, fontweight='bold', y=1.02)
     categories = df['Category'].values
     
     # Professional colors
@@ -120,31 +119,31 @@ def plot_category_impact_overview(
     # Plot 1: Affected Rivers
     ax1 = axes[0, 0]
     ax1.barh(categories, df['Affected_Rivers'], color=colors[0], edgecolor='white')
-    ax1.set_xlabel('Number of Affected River Segments', fontweight='bold')
-    ax1.set_title('River Segment Impact', fontweight='bold')
+    ax1.set_xlabel('Antal påvirkede vandløbssegmenter', fontweight='bold')
+    ax1.set_title('Vandløbspåvirkning', fontweight='bold')
     ax1.invert_yaxis()
 
     # Plot 2: Total Flux (log scale)
     ax2 = axes[0, 1]
     ax2.barh(categories, df['Total_Flux_kg'], color=colors[1], edgecolor='white')
-    ax2.set_xlabel('Total Flux (kg/year)', fontweight='bold')
+    ax2.set_xlabel('Total Flux (kg/år)', fontweight='bold')
     ax2.set_xscale('log')
-    ax2.set_title('Pollution Flux', fontweight='bold')
+    ax2.set_title('Forureningsflux', fontweight='bold')
     ax2.invert_yaxis()
 
     # Plot 3: Exceedance Count
     ax3 = axes[1, 0]
     ax3.barh(categories, df['Exceedance_Count'], color=colors[2], edgecolor='white')
-    ax3.set_xlabel('Number of MKK Exceedances', fontweight='bold')
-    ax3.set_title('Regulatory Exceedances', fontweight='bold')
+    ax3.set_xlabel('Antal MKK-overskridelser', fontweight='bold')
+    ax3.set_title('Miljøkvalitetskrav (MKK)', fontweight='bold')
     ax3.invert_yaxis()
 
     # Plot 4: Median Exceedance Ratio
     ax4 = axes[1, 1]
     ax4.barh(categories, df['Median_Exceedance_Ratio'], color=colors[3], edgecolor='white')
-    ax4.set_xlabel('Median Exceedance Ratio (Cmix/MKK)', fontweight='bold')
+    ax4.set_xlabel('Median overskridelsesratio (Cmix/MKK)', fontweight='bold')
     ax4.set_xscale('log')
-    ax4.set_title('Exceedance Severity', fontweight='bold')
+    ax4.set_title('Overskridelsens alvorlighed', fontweight='bold')
     ax4.invert_yaxis()
 
     plt.tight_layout()
@@ -174,9 +173,9 @@ def plot_exceedance_analysis(cmix_results: pd.DataFrame, output_dir: Path) -> No
 
     # Bar plot for counts
     x = np.arange(len(category_exc))
-    bars = ax1.bar(x, category_exc['Count'], color='#D14545', edgecolor='white', label='Exceedance Count')
-    ax1.set_xlabel('Category', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('Number of Exceedances', fontsize=14, fontweight='bold', color='#D14545')
+    bars = ax1.bar(x, category_exc['Count'], color='#D14545', edgecolor='white', label='Antal overskridelser')
+    ax1.set_xlabel('Kategori', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Antal overskridelser', fontsize=14, fontweight='bold', color='#D14545')
     ax1.tick_params(axis='y', labelcolor='#D14545')
     ax1.set_xticks(x)
     ax1.set_xticklabels(category_exc['Category'], rotation=45, ha='right')
@@ -184,13 +183,13 @@ def plot_exceedance_analysis(cmix_results: pd.DataFrame, output_dir: Path) -> No
     # Line plot for mean ratio
     ax2 = ax1.twinx()
     line = ax2.plot(x, category_exc['Mean_Ratio'], color='#F5A623', marker='o',
-                    linewidth=3, markersize=10, label='Mean Exceedance Ratio')
-    ax2.set_ylabel('Mean Exceedance Ratio (log scale)', fontsize=14, fontweight='bold', color='#F5A623')
+                    linewidth=3, markersize=10, label='Gns. overskridelsesratio')
+    ax2.set_ylabel('Gns. overskridelsesratio (log skala)', fontsize=14, fontweight='bold', color='#F5A623')
     ax2.tick_params(axis='y', labelcolor='#F5A623')
     ax2.set_yscale('log')
 
     # Title
-    ax1.set_title('MKK Exceedance Analysis: Frequency vs Severity', fontsize=18, fontweight='bold', pad=15)
+    # ax1.set_title('MKK Exceedance Analysis: Frequency vs Severity', fontsize=18, fontweight='bold', pad=15)
 
     # Combine legends
     lines1, labels1 = ax1.get_legend_handles_labels()
@@ -208,7 +207,20 @@ def plot_gvfk_summary(
     cmix_results: pd.DataFrame,
     output_dir: Path,
 ) -> None:
-    """GVFK-level summary scatter plot."""
+    """
+    GVFK-level summary scatter plot.
+    
+    DATA SOURCES:
+    - site_flux: step6_flux_site_segment.csv (per-site flux rows)
+    - segment_summary: step6_segment_summary.csv (per-segment aggregated)
+    - cmix_results: step6_cmix_results.csv (Cmix calculations)
+    
+    METRICS:
+    - X-axis: Unique river segments (ov_id) from segment_summary
+    - Y-axis: Total flux from site_flux
+    - Color: Max exceedance ratio from cmix_results  
+    - Size: Unique site count from site_flux
+    """
 
     # Aggregate metrics by GVFK
     gvfk_metrics = []
@@ -245,20 +257,20 @@ def plot_gvfk_summary(
         norm=plt.matplotlib.colors.LogNorm()
     )
 
-    ax.set_xlabel('Number of Affected River Segments', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Total Pollution Flux (kg/year)', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Antal påvirkede vandløbssegmenter', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Total forureningsflux (kg/år)', fontsize=14, fontweight='bold')
     ax.set_yscale('log')
-    ax.set_title('GVFK Summary: Impact and Severity', fontsize=18, fontweight='bold', pad=15)
+    # ax.set_title('GVFK Summary: Impact and Severity', fontsize=18, fontweight='bold', pad=15)
 
     # Colorbar
     cbar = plt.colorbar(scatter, ax=ax)
-    cbar.set_label('Max Exceedance Ratio', fontsize=12, fontweight='bold')
+    cbar.set_label('Maks overskridelsesratio', fontsize=12, fontweight='bold')
 
     # Add legend for size
     for size in [1, 5, 10, 20]:
         ax.scatter([], [], s=size*30, c='gray', alpha=0.5, edgecolors='black',
                   label=f'{size} sites')
-    ax.legend(scatterpoints=1, frameon=True, labelspacing=1, title='Site Count', 
+    ax.legend(scatterpoints=1, frameon=True, labelspacing=1, title='Antal lokaliteter', 
               loc='upper left', fontsize=10)
 
     # Annotate top 5 GVFKs
@@ -341,14 +353,14 @@ def plot_flow_scenario_sensitivity(cmix_results: pd.DataFrame, output_dir: Path)
     )
 
     ax.set_yscale('log')
-    ax.set_xlabel('Category', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Exceedance Ratio (Cmix/MKK)', fontsize=14, fontweight='bold')
-    ax.set_title(
-        f'Flow Scenario Sensitivity: Impact of River Flow on Exceedances\n'
-        f'(Q95=low flow/worst case → Q05=high flow/best case)',
-        fontsize=16, fontweight='bold', pad=15
-    )
-    ax.legend(title='Flow Scenario', loc='upper right', fontsize=11)
+    ax.set_xlabel('Kategori', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Overskridelsesratio (Cmix/MKK)', fontsize=14, fontweight='bold')
+    # ax.set_title(
+    #     f'Flow Scenario Sensitivity: Impact of River Flow on Exceedances\n'
+    #     f'(Q95=low flow/worst case → Q05=high flow/best case)',
+    #     fontsize=16, fontweight='bold', pad=15
+    # )
+    ax.legend(title='Vandføringsscenarie', loc='upper right', fontsize=11)
     plt.xticks(rotation=45, ha='right')
 
     plt.tight_layout()
@@ -399,9 +411,9 @@ def plot_exceedance_severity_distribution(cmix_results: pd.DataFrame, output_dir
             ax.text(bar.get_x() + bar.get_width()/2., height + max(severity_counts)*0.02,
                    f'{count:,}', ha='center', va='bottom', fontsize=14, fontweight='bold')
     
-    ax.set_xlabel('Exceedance Severity (Cmix/MKK ratio)', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Number of Exceedances', fontsize=14, fontweight='bold')
-    ax.set_title('MKK Exceedance Severity Distribution', fontsize=18, fontweight='bold', pad=15)
+    ax.set_xlabel('Overskridelsens alvorlighed (Cmix/MKK ratio)', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Antal overskridelser', fontsize=14, fontweight='bold')
+    # ax.set_title('MKK Exceedance Severity Distribution', fontsize=18, fontweight='bold', pad=15)
     
     # Add summary stats
     total = len(exceedances)
@@ -409,9 +421,9 @@ def plot_exceedance_severity_distribution(cmix_results: pd.DataFrame, output_dir
     median = exceedances['Exceedance_Ratio'].median()
     
     stats_text = (
-        f"Total exceedances: {total:,}\n"
+        f"Totale overskridelser: {total:,}\n"
         f"Median: {median:.1f}× MKK\n"
-        f"Worst: {worst:,.0f}× MKK"
+        f"Værst: {worst:,.0f}× MKK"
     )
     ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, fontsize=12,
             verticalalignment='top', horizontalalignment='right',
@@ -443,7 +455,7 @@ def plot_site_river_impact(site_flux: pd.DataFrame, cmix_results: pd.DataFrame, 
     # Parse Contributing_Site_IDs and count rivers per site
     site_river_pairs = []
     for _, row in exceedances.iterrows():
-        site_ids = str(row['Contributing_Site_IDs']).split(';')
+        site_ids = str(row['Contributing_Site_IDs']).split(', ')
         gvfk = row['River_Segment_GVFK']
         for site_id in site_ids:
             site_id = site_id.strip()
@@ -470,10 +482,11 @@ def plot_site_river_impact(site_flux: pd.DataFrame, cmix_results: pd.DataFrame, 
     counts, edges, bars = ax1.hist(site_gvfk_counts['Rivers_Affected'], bins=bins, 
                                     color='#2E86AB', edgecolor='white', linewidth=1.5)
     
-    ax1.set_xlabel('Number of River Segments Affected', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('Number of Sites', fontsize=14, fontweight='bold')
-    ax1.set_title('Site Impact Distribution\n(How Many Rivers Does Each Site Affect?)', 
-                  fontsize=16, fontweight='bold', pad=15)
+    ax1.set_xlabel('Antal påvirkede vandløbssegmenter', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Antal lokaliteter', fontsize=14, fontweight='bold')
+    # ax1.set_title('Site Impact Distribution\n(How Many Rivers Does Each Site Affect?)', 
+    #               fontsize=16, fontweight='bold', pad=15)
+    ax1.set_title('Lokalitetspåvirkning', fontsize=16, fontweight='bold', pad=15) # Keep Subtitle
     
     # Add labels on significant bars
     max_count = max(counts) if len(counts) > 0 else 1
@@ -494,8 +507,8 @@ def plot_site_river_impact(site_flux: pd.DataFrame, cmix_results: pd.DataFrame, 
     ax2.set_yticklabels([f"{str(sid)[:20]}..." if len(str(sid)) > 20 else str(sid) 
                          for sid in top_sites['Site_ID']], fontsize=10)
     ax2.invert_yaxis()
-    ax2.set_xlabel('Number of River Segments Affected', fontsize=14, fontweight='bold')
-    ax2.set_title('Top 15 Most Impactful Sites', fontsize=16, fontweight='bold', pad=15)
+    ax2.set_xlabel('Antal påvirkede vandløbssegmenter', fontsize=14, fontweight='bold')
+    ax2.set_title('Top 15 mest påvirkende lokaliteter', fontsize=16, fontweight='bold', pad=15) # Keep Subtitle
     
     # Add value labels
     max_rivers_val = max(top_sites['Rivers_Affected']) if len(top_sites) > 0 else 1
@@ -509,10 +522,10 @@ def plot_site_river_impact(site_flux: pd.DataFrame, cmix_results: pd.DataFrame, 
     avg_per_site = site_gvfk_counts['Rivers_Affected'].mean()
     
     stats_text = (
-        f"Summary:\n"
-        f"• {total_sites:,} sites with exceedances\n"
-        f"• {total_rivers:,} river segments affected\n"
-        f"• Avg: {avg_per_site:.1f} rivers per site"
+        f"Sammenfatning:\n"
+        f"• {total_sites:,} lokaliteter med overskridelser\n"
+        f"• {total_rivers:,} påvirkede vandløb\n"
+        f"• Gns: {avg_per_site:.1f} vandløb pr. site"
     )
     ax1.text(0.98, 0.98, stats_text, transform=ax1.transAxes, fontsize=11,
              verticalalignment='top', horizontalalignment='right',
@@ -554,8 +567,8 @@ def plot_category_exceedance_contribution(site_flux: pd.DataFrame, cmix_results:
                    color=colors, edgecolor='white', linewidth=2)
     ax1.set_xticks(range(len(category_counts)))
     ax1.set_xticklabels(category_counts.index, rotation=45, ha='right', fontsize=11)
-    ax1.set_ylabel('Number of Exceedances', fontsize=14, fontweight='bold')
-    ax1.set_title('Exceedances by Site Category', fontsize=18, fontweight='bold', pad=15)
+    ax1.set_ylabel('Antal overskridelser', fontsize=14, fontweight='bold')
+    ax1.set_title('Overskridelser pr. kategori', fontsize=18, fontweight='bold', pad=15) # Keep Subtitle
     
     # Add value labels
     max_cat_count = max(category_counts) if len(category_counts) > 0 else 1
@@ -574,8 +587,8 @@ def plot_category_exceedance_contribution(site_flux: pd.DataFrame, cmix_results:
                     color=severity_colors, edgecolor='white', linewidth=2)
     ax2.set_xticks(range(len(avg_severity)))
     ax2.set_xticklabels(avg_severity.index, rotation=45, ha='right', fontsize=11)
-    ax2.set_ylabel('Median Exceedance Ratio (Cmix/MKK)', fontsize=14, fontweight='bold')
-    ax2.set_title('Exceedance Severity by Category', fontsize=18, fontweight='bold', pad=15)
+    ax2.set_ylabel('Median overskridelsesratio (Cmix/MKK)', fontsize=14, fontweight='bold')
+    ax2.set_title('Overskridelses-alvorlighed pr. kategori', fontsize=18, fontweight='bold', pad=15) # Keep Subtitle
     ax2.set_yscale('log')  # Log scale for severity
     
     # Add value labels
@@ -589,10 +602,10 @@ def plot_category_exceedance_contribution(site_flux: pd.DataFrame, cmix_results:
     most_freq_cat = category_counts.idxmax()
     
     stats_text = (
-        f"Key Findings:\n"
-        f"• Most exceedances: {most_freq_cat}\n"
-        f"  ({category_counts.max():,} exceedances)\n"
-        f"• Worst severity: {worst_cat}\n"
+        f"Nøglefund:\n"
+        f"• Flest overskridelser: {most_freq_cat}\n"
+        f"  ({category_counts.max():,} overskridelser)\n"
+        f"• Værst alvorlighed: {worst_cat}\n"
         f"  ({avg_severity.max():.1f}× median ratio)"
     )
     fig.text(0.5, 0.02, stats_text, ha='center', fontsize=12,

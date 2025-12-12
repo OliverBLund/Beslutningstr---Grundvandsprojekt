@@ -1,4 +1,4 @@
-"""
+﻿"""
 Workflow Validation Script: Step 1-6 Verification
 ==================================================
 
@@ -42,7 +42,7 @@ class ValidationResult:
         self.critical = critical  # If False, it's a warning not an error
     
     def __str__(self):
-        status = "✓ PASS" if self.passed else ("✗ FAIL" if self.critical else "⚠ WARN")
+        status = "âœ“ PASS" if self.passed else ("âœ— FAIL" if self.critical else "âš  WARN")
         return f"{status}: {self.name}\n       {self.details}"
 
 
@@ -59,74 +59,83 @@ def load_step_data():
     if GRUNDVAND_PATH.exists():
         try:
             data['step1_gvfk'] = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
-            print(f"✓ Step 1 GVFKs (source): {len(data['step1_gvfk'])} polygon rows")
+            print(f"âœ“ Step 1 GVFKs (source): {len(data['step1_gvfk'])} polygon rows")
         except Exception as e:
-            print(f"✗ Step 1 load error: {e}")
+            print(f"âœ— Step 1 load error: {e}")
     else:
-        print(f"✗ Step 1 source not found: {GRUNDVAND_PATH}")
+        print(f"âœ— Step 1 source not found: {GRUNDVAND_PATH}")
     
     # Step 2: River contact GVFKs
     step2_path = get_output_path("step2_river_gvfk")
     if step2_path.exists():
         data['step2_river'] = gpd.read_file(step2_path)
-        print(f"✓ Step 2 River Contact: {len(data['step2_river'])} polygon rows")
+        print(f"âœ“ Step 2 River Contact: {len(data['step2_river'])} polygon rows")
     else:
-        print(f"✗ Step 2 not found: {step2_path}")
+        print(f"âœ— Step 2 not found: {step2_path}")
     
     # Step 3: V1/V2 sites and GVFKs with sites
     step3_sites_path = get_output_path("step3_v1v2_sites")
     if step3_sites_path.exists():
         data['step3_sites'] = gpd.read_file(step3_sites_path)
-        print(f"✓ Step 3 Sites: {len(data['step3_sites'])} sites")
+        print(f"âœ“ Step 3 Sites: {len(data['step3_sites'])} sites")
     else:
-        print(f"✗ Step 3 sites not found: {step3_sites_path}")
+        print(f"âœ— Step 3 sites not found: {step3_sites_path}")
     
     step3_gvfk_path = get_output_path("step3_gvfk_polygons")
     if step3_gvfk_path.exists():
         data['step3_gvfk'] = gpd.read_file(step3_gvfk_path)
-        print(f"✓ Step 3 GVFKs: {len(data['step3_gvfk'])} polygon rows")
+        print(f"âœ“ Step 3 GVFKs: {len(data['step3_gvfk'])} polygon rows")
     else:
-        print(f"✗ Step 3 GVFKs not found: {step3_gvfk_path}")
+        print(f"âœ— Step 3 GVFKs not found: {step3_gvfk_path}")
+    
+    # Step 3b: Infiltration-filtered sites
+    step3b_path = get_output_path("step3b_filtered_sites")
+    if step3b_path.exists():
+        data['step3b_filtered'] = gpd.read_file(step3b_path)
+        print(f"âœ“ Step 3b Filtered Sites: {len(data['step3b_filtered'])} site-GVFK combinations")
+    else:
+        print(f"âœ— Step 3b not found: {step3b_path}")
     
     # Step 4: Distance calculations
     step4_path = get_output_path("step4_final_distances_for_risk_assessment")
     if step4_path.exists():
         data['step4_distances'] = pd.read_csv(step4_path)
-        print(f"✓ Step 4 Distances: {len(data['step4_distances'])} site-GVFK combinations")
+        print(f"âœ“ Step 4 Distances: {len(data['step4_distances'])} site-GVFK combinations")
     else:
-        print(f"✗ Step 4 not found: {step4_path}")
+        print(f"âœ— Step 4 not found: {step4_path}")
     
     # Step 5a: High-risk sites (general)
     step5a_path = get_output_path("step5_high_risk_sites")
     if step5a_path.exists():
         data['step5a_general'] = pd.read_csv(step5a_path)
-        print(f"✓ Step 5a General: {len(data['step5a_general'])} rows")
+        print(f"âœ“ Step 5a General: {len(data['step5a_general'])} rows")
     else:
-        print(f"✗ Step 5a not found: {step5a_path}")
+        print(f"âœ— Step 5a not found: {step5a_path}")
     
     # Step 5b: Compound-specific (PRE-filter)
     step5b_path = get_output_path("step5b_compound_combinations")
     if step5b_path.exists():
         data['step5b_compound'] = pd.read_csv(step5b_path)
-        print(f"✓ Step 5b Compound: {len(data['step5b_compound'])} site-GVFK-compound combinations")
+        print(f"âœ“ Step 5b Compound: {len(data['step5b_compound'])} site-GVFK-compound combinations")
     else:
-        print(f"✗ Step 5b not found: {step5b_path}")
+        print(f"âœ— Step 5b not found: {step5b_path}")
     
-    # Step 5c: After infiltration filter
+    # Note: Step 5c is DEPRECATED - infiltration filtering now happens at Step 3b
+    # Keeping for backward compatibility with old output files
     step5c_path = get_output_path("step5c_filtered_combinations")
     if step5c_path.exists():
         data['step5c_filtered'] = pd.read_csv(step5c_path)
-        print(f"✓ Step 5c Filtered: {len(data['step5c_filtered'])} rows after infiltration filter")
+        print(f"âœ“ Step 5c Filtered (LEGACY): {len(data['step5c_filtered'])} rows")
     else:
-        print(f"✗ Step 5c not found: {step5c_path}")
+        print(f"  Step 5c not found (expected - now deprecated)")
     
     # Step 6: MKK exceedances
     step6_path = get_output_path("step6_site_mkk_exceedances")
     if step6_path.exists():
         data['step6_mkk'] = pd.read_csv(step6_path)
-        print(f"✓ Step 6 MKK: {len(data['step6_mkk'])} rows with MKK exceedances")
+        print(f"âœ“ Step 6 MKK: {len(data['step6_mkk'])} rows with MKK exceedances")
     else:
-        print(f"✗ Step 6 not found: {step6_path}")
+        print(f"âœ— Step 6 not found: {step6_path}")
     
     return data
 
@@ -152,8 +161,16 @@ def validate_gvfk_funnel(data):
     if 'step2_river' in data:
         counts['Step 2: River Contact'] = data['step2_river'][gvfk_col].nunique()
     
+    if 'step3b_filtered' in data:
+        # Step 3b uses different column names (Lokalitet_, Navn)
+        data_3b = data['step3b_filtered']
+        if 'Navn' in data_3b.columns:
+            counts['Step 3b: Infiltration Filtered'] = data_3b['Navn'].nunique()
+        elif 'GVFK' in data_3b.columns:
+            counts['Step 3b: Infiltration Filtered'] = data_3b['GVFK'].nunique()
+    
     if 'step4_distances' in data and 'GVFK' in data['step4_distances'].columns:
-        counts['Step 4: With Sites'] = data['step4_distances']['GVFK'].nunique()
+        counts['Step 4: With Distances'] = data['step4_distances']['GVFK'].nunique()
     
     if 'step5a_general' in data and 'GVFK' in data['step5a_general'].columns:
         counts['Step 5a: General Risk'] = data['step5a_general']['GVFK'].nunique()
@@ -161,8 +178,7 @@ def validate_gvfk_funnel(data):
     if 'step5b_compound' in data and 'GVFK' in data['step5b_compound'].columns:
         counts['Step 5b: Compound-Specific'] = data['step5b_compound']['GVFK'].nunique()
     
-    if 'step5c_filtered' in data and 'GVFK' in data['step5c_filtered'].columns:
-        counts['Step 5c: Infiltration Filtered'] = data['step5c_filtered']['GVFK'].nunique()
+    # Skip step5c in funnel (deprecated)
     
     if 'step6_mkk' in data and 'GVFK' in data['step6_mkk'].columns:
         counts['Step 6: MKK Exceedances'] = data['step6_mkk']['GVFK'].nunique()
@@ -177,9 +193,9 @@ def validate_gvfk_funnel(data):
         arrow = ""
         if prev_count is not None:
             if count <= prev_count:
-                arrow = f" (↓ {prev_count - count})"
+                arrow = f" (â†“ {prev_count - count})"
             else:
-                arrow = f" (↑ +{count - prev_count} ⚠ UNEXPECTED INCREASE!)"
+                arrow = f" (â†‘ +{count - prev_count} âš  UNEXPECTED INCREASE!)"
                 all_decreasing = False
         print(f"  {step}: {count:,}{arrow}")
         prev_count = count
@@ -189,7 +205,7 @@ def validate_gvfk_funnel(data):
     result = ValidationResult(
         "GVFK Funnel",
         all_decreasing,
-        f"GVFKs correctly decrease from {list(counts.values())[0]:,} → {list(counts.values())[-1]:,}" 
+        f"GVFKs correctly decrease from {list(counts.values())[0]:,} â†’ {list(counts.values())[-1]:,}" 
         if all_decreasing else "GVFK counts increased unexpectedly!"
     )
     results.append(result)
@@ -242,8 +258,8 @@ def validate_site_consistency(data):
             if orphans > 0:
                 all_consistent = False
         
-        status = "✓" if orphans == 0 else "✗"
-        orphan_note = f" (⚠ {orphans} orphan sites!)" if orphans > 0 else ""
+        status = "âœ“" if orphans == 0 else "âœ—"
+        orphan_note = f" (âš  {orphans} orphan sites!)" if orphans > 0 else ""
         print(f"  {status} {step}: {count:,} sites{orphan_note}")
     
     result = ValidationResult(
@@ -269,7 +285,7 @@ def validate_combination_logic(data):
     
     results = []
     
-    # Check Step 4 → Step 5a: Site-GVFK pairs should be subset
+    # Check Step 4 â†’ Step 5a: Site-GVFK pairs should be subset
     if 'step4_distances' in data and 'step5a_general' in data:
         step4_pairs = set(zip(
             data['step4_distances']['Lokalitet_ID'],
@@ -283,13 +299,13 @@ def validate_combination_logic(data):
         orphan_pairs = step5a_pairs - step4_pairs
         is_subset = len(orphan_pairs) == 0
         
-        print(f"\nStep 4 → Step 5a (Site-GVFK pairs):")
+        print(f"\nStep 4 â†’ Step 5a (Site-GVFK pairs):")
         print(f"  Step 4 pairs: {len(step4_pairs):,}")
         print(f"  Step 5a pairs: {len(step5a_pairs):,}")
         print(f"  Orphan pairs: {len(orphan_pairs)}")
         
         result = ValidationResult(
-            "Step 4→5a Pair Consistency",
+            "Step 4â†’5a Pair Consistency",
             is_subset,
             f"All {len(step5a_pairs):,} Step 5a pairs exist in Step 4" if is_subset
             else f"{len(orphan_pairs)} pairs in Step 5a not found in Step 4!"
@@ -321,7 +337,7 @@ def validate_combination_logic(data):
             result = ValidationResult(
                 "Step 5b Combination Expansion",
                 expansion_ok,
-                f"Correct hierarchy: sites({site_count}) ≤ pairs({pair_count}) ≤ triplets({triplet_count}) ≤ rows({row_count})"
+                f"Correct hierarchy: sites({site_count}) â‰¤ pairs({pair_count}) â‰¤ triplets({triplet_count}) â‰¤ rows({row_count})"
                 if expansion_ok else "Combination hierarchy violated!"
             )
             results.append(result)
@@ -361,101 +377,135 @@ def validate_threshold_application(data):
             result = ValidationResult(
                 "Threshold Compliance",
                 threshold_ok,
-                f"All {len(df):,} combinations satisfy distance ≤ threshold" if threshold_ok
+                f"All {len(df):,} combinations satisfy distance â‰¤ threshold" if threshold_ok
                 else f"{len(violators)} combinations violate their threshold!"
             )
             results.append(result)
             print(f"\n{result}")
         else:
-            print("  ⚠ Missing threshold or distance columns")
+            print("  âš  Missing threshold or distance columns")
     
     return results
 
 
-def validate_step5c_filtering(data):
+def validate_step3b_filtering(data):
     """
-    Verify that Step 5c (infiltration filter) correctly reduces the dataset.
+    Verify that Step 3b (infiltration filter) correctly reduces the dataset.
+    This is where infiltration filtering now happens (moved from Step 5c).
     """
     print("\n" + "=" * 80)
-    print("CHECK 5: INFILTRATION FILTER (Step 5b → 5c)")
+    print("CHECK 5: INFILTRATION FILTER (Step 3 â†’ Step 3b)")
     print("=" * 80)
     
     results = []
     
-    if 'step5b_compound' in data and 'step5c_filtered' in data:
-        pre_count = len(data['step5b_compound'])
-        post_count = len(data['step5c_filtered'])
+    if 'step3_sites' in data and 'step3b_filtered' in data:
+        pre_count = len(data['step3_sites'])
+        post_count = len(data['step3b_filtered'])
         removed = pre_count - post_count
         
-        print(f"\nInfiltration filtering:")
-        print(f"  Step 5b (before): {pre_count:,} rows")
-        print(f"  Step 5c (after): {post_count:,} rows")
+        print(f"\nInfiltration filtering at Step 3b:")
+        print(f"  Step 3 (before): {pre_count:,} site-GVFK combinations")
+        print(f"  Step 3b (after): {post_count:,} site-GVFK combinations")
         print(f"  Removed by filter: {removed:,} ({removed/pre_count*100:.1f}%)")
         
         # Filtering should not add rows
         filter_ok = post_count <= pre_count
         
-        # Step 5c should be a subset of Step 5b
-        if 'Lokalitet_ID' in data['step5c_filtered'].columns and 'GVFK' in data['step5c_filtered'].columns:
-            pre_pairs = set(zip(
-                data['step5b_compound']['Lokalitet_ID'],
-                data['step5b_compound']['GVFK']
-            ))
-            post_pairs = set(zip(
-                data['step5c_filtered']['Lokalitet_ID'],
-                data['step5c_filtered']['GVFK']
-            ))
-            orphans = post_pairs - pre_pairs
-            subset_ok = len(orphans) == 0
-            filter_ok = filter_ok and subset_ok
+        # Step 3b should be subset of Step 3
+        # Get site IDs (column names differ between steps)
+        site_col_3 = 'Lokalitet_' if 'Lokalitet_' in data['step3_sites'].columns else 'Lokalitet_ID'
+        gvfk_col_3 = 'Navn' if 'Navn' in data['step3_sites'].columns else 'GVFK'
+        site_col_3b = 'Lokalitet_' if 'Lokalitet_' in data['step3b_filtered'].columns else 'Lokalitet_ID'
+        gvfk_col_3b = 'Navn' if 'Navn' in data['step3b_filtered'].columns else 'GVFK'
+        
+        pre_pairs = set(zip(
+            data['step3_sites'][site_col_3],
+            data['step3_sites'][gvfk_col_3]
+        ))
+        post_pairs = set(zip(
+            data['step3b_filtered'][site_col_3b],
+            data['step3b_filtered'][gvfk_col_3b]
+        ))
+        orphans = post_pairs - pre_pairs
+        subset_ok = len(orphans) == 0
+        filter_ok = filter_ok and subset_ok
+        
+        # Check unique sites and GVFKs
+        pre_sites = data['step3_sites'][site_col_3].nunique()
+        post_sites = data['step3b_filtered'][site_col_3b].nunique()
+        pre_gvfks = data['step3_sites'][gvfk_col_3].nunique()
+        post_gvfks = data['step3b_filtered'][gvfk_col_3b].nunique()
+        
+        print(f"\n  Site-level impact:")
+        print(f"    Sites: {pre_sites:,} â†’ {post_sites:,} (-{pre_sites - post_sites:,})")
+        print(f"    GVFKs: {pre_gvfks:,} â†’ {post_gvfks:,} (-{pre_gvfks - post_gvfks:,})")
+        
+        if len(orphans) > 0:
+            print(f"\n  âš  {len(orphans)} orphan pairs found in Step 3b!")
         
         result = ValidationResult(
-            "Infiltration Filter",
+            "Step 3b Infiltration Filter",
             filter_ok,
-            f"Correctly filtered from {pre_count:,} to {post_count:,} rows" if filter_ok
-            else "Filter added rows or created orphans!"
+            f"Correctly filtered from {pre_count:,} to {post_count:,} combinations ({pre_sites:,} to {post_sites:,} sites)" if filter_ok
+            else "Filter added rows or created orphan pairs!"
         )
         results.append(result)
         print(f"\n{result}")
+    else:
+        print("  âš  Step 3 or Step 3b data not available for validation")
     
     return results
 
 
 def validate_step6_mkk(data):
     """
-    Verify Step 6 MKK exceedances are properly derived from Step 5c.
+    Verify Step 6 MKK exceedances are properly derived from Step 5b.
+    (Note: Previously checked Step 5c, but infiltration now happens at Step 3b)
     """
     print("\n" + "=" * 80)
-    print("CHECK 6: MKK EXCEEDANCES (Step 6 derives from Step 5c)")
+    print("CHECK 6: MKK EXCEEDANCES (Step 6 derives from Step 5b)")
     print("=" * 80)
     
     results = []
     
-    if 'step5c_filtered' in data and 'step6_mkk' in data:
-        step5c_sites = set(data['step5c_filtered']['Lokalitet_ID'].unique())
+    # Use Step 5b as the reference (Step 5c is deprecated)
+    reference_key = 'step5b_compound'
+    reference_name = 'Step 5b'
+    
+    if reference_key in data and 'step6_mkk' in data:
+        ref_sites = set(data[reference_key]['Lokalitet_ID'].unique())
         step6_sites = set(data['step6_mkk']['Lokalitet_ID'].unique())
         
-        orphan_sites = step6_sites - step5c_sites
+        orphan_sites = step6_sites - ref_sites
         derivation_ok = len(orphan_sites) == 0
         
-        print(f"\nStep 6 derivation from Step 5c:")
-        print(f"  Step 5c sites: {len(step5c_sites):,}")
+        print(f"\nStep 6 derivation from {reference_name}:")
+        print(f"  {reference_name} sites: {len(ref_sites):,}")
         print(f"  Step 6 sites: {len(step6_sites):,}")
-        print(f"  Orphan sites (in 6 but not 5c): {len(orphan_sites)}")
+        print(f"  Orphan sites (in 6 but not {reference_name}): {len(orphan_sites)}")
+        
+        if len(orphan_sites) > 0:
+            print(f"\n  Sample orphan sites: {list(orphan_sites)[:5]}")
         
         if 'Exceedance_Ratio' in data['step6_mkk'].columns:
-            all_exceed = (data['step6_mkk']['Exceedance_Ratio'] >= 1).all()
-            print(f"  All have Exceedance_Ratio ≥ 1: {all_exceed}")
-            derivation_ok = derivation_ok and all_exceed
+            # Check that all rows have exceedance ratio >= 1 (that's the definition of MKK exceedance file)
+            has_ratio = data['step6_mkk']['Exceedance_Ratio'].notna()
+            if has_ratio.any():
+                all_exceed = (data['step6_mkk'].loc[has_ratio, 'Exceedance_Ratio'] >= 1).all()
+                print(f"  All have Exceedance_Ratio â‰¥ 1: {all_exceed}")
+                derivation_ok = derivation_ok and all_exceed
         
         result = ValidationResult(
             "MKK Derivation",
             derivation_ok,
-            f"All {len(step6_sites):,} Step 6 sites properly derived from Step 5c" if derivation_ok
-            else "Step 6 contains sites not in Step 5c or invalid exceedances!"
+            f"All {len(step6_sites):,} Step 6 sites properly derived from {reference_name}" if derivation_ok
+            else f"Step 6 contains sites not in {reference_name} or invalid exceedances!"
         )
         results.append(result)
         print(f"\n{result}")
+    else:
+        print(f"  âš  {reference_name} or Step 6 data not available")
     
     return results
 
@@ -471,17 +521,17 @@ def generate_summary(all_results):
     warnings = sum(1 for r in all_results if not r.passed and not r.critical)
     
     print(f"\nTotal checks: {len(all_results)}")
-    print(f"  ✓ Passed: {passed}")
-    print(f"  ✗ Failed: {failed}")
-    print(f"  ⚠ Warnings: {warnings}")
+    print(f"  âœ“ Passed: {passed}")
+    print(f"  âœ— Failed: {failed}")
+    print(f"  âš  Warnings: {warnings}")
     
     if failed == 0:
         print("\n" + "=" * 80)
-        print("🎉 ALL CRITICAL CHECKS PASSED - WORKFLOW VALIDATED!")
+        print("ðŸŽ‰ ALL CRITICAL CHECKS PASSED - WORKFLOW VALIDATED!")
         print("=" * 80)
     else:
         print("\n" + "=" * 80)
-        print("❌ VALIDATION FAILED - REVIEW ISSUES ABOVE")
+        print("âŒ VALIDATION FAILED - REVIEW ISSUES ABOVE")
         print("=" * 80)
     
     # Save summary to file
@@ -518,7 +568,7 @@ def main():
     data = load_step_data()
     
     if not data:
-        print("\n❌ No workflow outputs found. Run main_workflow.py first!")
+        print("\nâŒ No workflow outputs found. Run main_workflow.py first!")
         return False
     
     # Run all validation checks
@@ -528,7 +578,7 @@ def main():
     all_results.extend(validate_site_consistency(data))
     all_results.extend(validate_combination_logic(data))
     all_results.extend(validate_threshold_application(data))
-    all_results.extend(validate_step5c_filtering(data))
+    all_results.extend(validate_step3b_filtering(data))
     all_results.extend(validate_step6_mkk(data))
     
     # Generate summary
@@ -540,3 +590,4 @@ def main():
 if __name__ == '__main__':
     success = main()
     sys.exit(0 if success else 1)
+

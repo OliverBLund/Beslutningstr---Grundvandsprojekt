@@ -265,10 +265,10 @@ def print_final_summary(results):
     compound_sites_count = _safe_nunique(compound_sites, "Lokalitet_ID")
     compound_gvfk_count = _safe_nunique(compound_sites, "GVFK")
 
-    # Step 5c
-    step5c = results.get("step5c", {})
-    filtered_sites_count = step5c.get("filtered_sites_count", 0) if step5c.get("success") else compound_sites_count
-    removed_sites_count = step5c.get("removed_sites_count", 0)
+    # Step 3b (infiltration filter)
+    step3b = results.get("step3b", {})
+    v1v2_filtered = step3b.get("v1v2_sites_filtered")
+    filtered_sites_count = _safe_nunique(v1v2_filtered, "Lokalitet_") if v1v2_filtered is not None else sites_count
 
     # Step 6
     step6 = results.get("step6", {})
@@ -296,8 +296,8 @@ def print_final_summary(results):
     print(f"        Contaminated sites identified: {sites_count:,}")
     print(f"Step 5a: High-risk sites (≤500m): {general_sites_count:,} sites in {general_gvfk_count:,} GVFKs")
     print(f"Step 5b: Compound-specific risk: {compound_sites_count:,} sites in {compound_gvfk_count:,} GVFKs")
-    if step5c.get("success"):
-        print(f"Step 5c: After infiltration filter: {filtered_sites_count:,} sites ({removed_sites_count:,} removed - upward flow)")
+    # Step 3b already filtered before Step 4, so compound_sites_count reflects post-filter
+    # No separate "Step 5c" line needed
 
     # Step 6 - always show if completed, even if no exceedances
     if step6.get("success"):

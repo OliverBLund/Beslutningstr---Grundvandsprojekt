@@ -105,7 +105,7 @@ WORKFLOW_SETTINGS = {
     # TESTING MODE: Set to a value between 0.0-1.0 to sample that fraction of data
     # Example: 0.1 = 10% of sites, 0.25 = 25% of sites, 1.0 = full data (production)
     # Set to None or 1.0 to disable sampling
-    "sample_fraction": None,  # Change to 0.1 for quick testing with 10% of data
+    "sample_fraction": 0.1,  # Change to 0.1 for quick testing with 10% of data
 
     # Distance threshold for risk assessment (meters)
     "risk_threshold_m": 500,

@@ -1002,12 +1002,17 @@ def _aggregate_gvfk_impacts(
     site_flux: pd.DataFrame,
 ) -> Dict[str, object] | None:
     """
-    Aggregate impact counts per GVFK using all Step 6 flux rows (binary impact view).
-
-    Counts per GVFK:
-    - unique_segment_counts: unique river segments receiving flux
-    - scenario_occurrence_counts: total flux rows (site x scenario) impacting the GVFK
-    Also builds segment-level lookup for popups.
+    Aggregate impact counts per GVFK using Step 6 flux rows.
+    
+    DATA SOURCE: site_flux (step6_flux_site_segment.csv)
+    
+    This function reads from site_flux and builds:
+    - segment_lookup: Groups by Nearest_River_FID to get sites per segment
+    - unique_segment_counts: Unique FIDs per GVFK
+    - scenario_occurrence_counts: Total flux rows per GVFK
+    
+    Note: Site counts are per-segment (FID), not per-river (ov_id).
+    Multiple FIDs can share the same ov_id if a river has multiple segments.
     """
 
     if site_flux is None or site_flux.empty:

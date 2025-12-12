@@ -71,8 +71,18 @@ def run_branch_analysis(sites_without_substances, sites_with_substances=None):
     # Set up output directory
     branch_output_dir = _setup_output_directory()
 
+    # CRITICAL: Deduplicate by Lokalitet_ID first to get unique sites
+    # (The input contains site-GVFK combinations, not unique sites)
+    print(f"\nInput data: {len(sites_without_substances):,} site-GVFK combinations")
+    unique_parked_sites = sites_without_substances.drop_duplicates(subset="Lokalitet_ID")
+    print(f"Unique parked sites: {len(unique_parked_sites):,}")
+    
+    # Filter to ≤500m for the main analysis (general risk assessment threshold)
+    parked_500m = unique_parked_sites[unique_parked_sites["Distance_to_River_m"] <= 500]
+    print(f"Unique parked sites ≤500m: {len(parked_500m):,}\n")
+
     # Basic statistics
-    print(f"Analyzing {len(sites_without_substances):,} sites without substance data")
+    print(f"Analyzing {len(unique_parked_sites):,} unique sites without substance data")
 
     # Run analysis components
     results = {}
@@ -81,20 +91,20 @@ def run_branch_analysis(sites_without_substances, sites_with_substances=None):
     print(f"\n1. Distance Analysis")
     print(f"-" * 20)
     distance_stats = _analyze_distances(
-        sites_without_substances, sites_with_substances, branch_output_dir
+        unique_parked_sites, sites_with_substances, branch_output_dir
     )
     results["distance_analysis"] = distance_stats
 
     # 2. Branch frequency analysis
     print(f"\n2. Branch Analysis")
     print(f"-" * 18)
-    branch_stats = _analyze_branches(sites_without_substances, branch_output_dir)
+    branch_stats = _analyze_branches(unique_parked_sites, branch_output_dir)
     results["branch_analysis"] = branch_stats
 
     # 2b. Activity frequency analysis
     print(f"\n2b. Activity Analysis")
     print(f"-" * 19)
-    activity_stats = _analyze_activities(sites_without_substances, branch_output_dir)
+    activity_stats = _analyze_activities(unique_parked_sites, branch_output_dir)
     results["activity_analysis"] = activity_stats
 
     # 2c. Industry comparison (if substance sites available)
@@ -102,7 +112,7 @@ def run_branch_analysis(sites_without_substances, sites_with_substances=None):
         print(f"\n2c. Industry Comparison")
         print(f"-" * 21)
         industry_comparison = _compare_industries(
-            sites_without_substances, sites_with_substances, branch_output_dir
+            unique_parked_sites, sites_with_substances, branch_output_dir
         )
         results["industry_comparison"] = industry_comparison
 
@@ -110,42 +120,42 @@ def run_branch_analysis(sites_without_substances, sites_with_substances=None):
         print(f"\n2d. Activity Comparison")
         print(f"-" * 21)
         activity_comparison = _compare_activities(
-            sites_without_substances, sites_with_substances, branch_output_dir
+            unique_parked_sites, sites_with_substances, branch_output_dir
         )
         results["activity_comparison"] = activity_comparison
 
-    # 3. Geographic distribution
-    print(f"\n3. Geographic Distribution")
+    # 3. Geographic distribution (≤500m only for consistency with impact analysis)
+    print(f"\n3. Geographic Distribution (≤500m)")
     print(f"-" * 25)
-    geo_stats = _analyze_geography(sites_without_substances, branch_output_dir)
+    geo_stats = _analyze_geography(parked_500m, branch_output_dir)
     results["geographic_analysis"] = geo_stats
 
     # 4. GVFK analysis
     print(f"\n4. GVFK Distribution")
     print(f"-" * 19)
-    gvfk_stats = _analyze_gvfk_distribution(sites_without_substances, branch_output_dir)
+    gvfk_stats = _analyze_gvfk_distribution(unique_parked_sites, branch_output_dir)
     results["gvfk_analysis"] = gvfk_stats
 
     # 5. "Generel Risiko" GVFK Impact Analysis
     print(f"\n5. 'Generel Risiko' GVFK Impact Analysis")
     print(f"-" * 40)
     generel_risiko_impact = _analyze_generel_risiko_impact(
-        sites_without_substances, branch_output_dir
+        unique_parked_sites, branch_output_dir
     )
     results["generel_risiko_impact"] = generel_risiko_impact
 
     # Save comprehensive summary
-    _save_analysis_summary(results, sites_without_substances, branch_output_dir)
+    _save_analysis_summary(results, unique_parked_sites, branch_output_dir)
 
     # Create comprehensive professional visualizations
     _create_professional_visualizations(
-        sites_without_substances, sites_with_substances, results, branch_output_dir
+        unique_parked_sites, sites_with_substances, results, branch_output_dir
     )
 
     # Final comparison summary
     if sites_with_substances is not None:
         _print_final_comparison(
-            results, len(sites_without_substances), len(sites_with_substances)
+            results, len(unique_parked_sites), len(sites_with_substances)
         )
 
     print(f"\nâœ“ BRANCH ANALYSIS COMPLETED")
@@ -606,24 +616,25 @@ def _analyze_generel_risiko_impact(sites_without_substances, output_dir):
 
     # Load current Step 5a general assessment (500m sites) - this is the true "generel risiko" baseline
     try:
-        # Try GVFK risk summary first
-        current_gvfk_file = os.path.join(RESULTS_PATH, "step5_gvfk_risk_summary.csv")
-        if os.path.exists(current_gvfk_file):
-            current_gvfk_df = pd.read_csv(current_gvfk_file)
-            current_generel_risiko_gvfks = set(current_gvfk_df["GVFK"].unique())
+        # Try using Step 5a general assessment (current workflow output)
+        from config import get_output_path
+        step5a_file = get_output_path("step5_high_risk_sites")
+        if os.path.exists(step5a_file):
+            step5a_df = pd.read_csv(step5a_file)
+            current_generel_risiko_gvfks = set(step5a_df["GVFK"].dropna().unique())
             current_count = len(current_generel_risiko_gvfks)
-            print(f"  Using GVFK risk summary file: {current_count} GVFKs")
+            print(f"  Using Step 5a general assessment file: {current_count} GVFKs")
         else:
-            # Fallback to Step 5a general assessment sites (the actual 500m baseline)
-            step5a_file = os.path.join(RESULTS_PATH, "step5_high_risk_sites_500m.csv")
-            if os.path.exists(step5a_file):
-                step5a_df = pd.read_csv(step5a_file)
-                current_generel_risiko_gvfks = set(step5a_df["GVFK"].unique())
+            # Fallback: Try GVFK risk summary if it exists
+            current_gvfk_file = os.path.join(RESULTS_PATH, "step5_gvfk_risk_summary.csv")
+            if os.path.exists(current_gvfk_file):
+                current_gvfk_df = pd.read_csv(current_gvfk_file)
+                current_generel_risiko_gvfks = set(current_gvfk_df["GVFK"].dropna().unique())
                 current_count = len(current_generel_risiko_gvfks)
-                print(f"  Using Step 5a general assessment file: {current_count} GVFKs")
+                print(f"  Using GVFK risk summary file: {current_count} GVFKs")
             else:
                 raise FileNotFoundError(
-                    f"Neither GVFK risk summary nor Step 5a file found"
+                    f"Neither Step 5a file ({step5a_file}) nor GVFK risk summary found"
                 )
 
     except Exception as e:
@@ -1624,7 +1635,9 @@ FILES GENERATED:
 
     # Save detailed CSV
     sites_data.to_csv(
-        os.path.join(output_dir, "branch_only_sites_detailed.csv", encoding="utf-8"), index=False
+        os.path.join(output_dir, "branch_only_sites_detailed.csv"), 
+        index=False,
+        encoding="utf-8"
     )
 
     print(f"  âœ“ Analysis summary and detailed data saved")
@@ -2114,51 +2127,40 @@ def _create_distance_distribution_danish_chart(results, output_dir, colors):
 if __name__ == "__main__":
     import pandas as pd
     import os
+    from config import get_output_path
+    from risikovurdering.step5_utils import separate_sites_by_substance_data
 
     print("Running Branch Analysis on Parked Sites")
     print("=" * 50)
 
-    # Load parked sites (sites without substance data)
-    parked_sites_file = os.path.join(RESULTS_PATH, "step5_unknown_substance_sites.csv")
-    if not os.path.exists(parked_sites_file):
-        print(f"Error: Could not find {parked_sites_file}")
+    # Generate parked sites from step4 output (same logic as step5_risk_assessment)
+    step4_file = get_output_path("step4_final_distances_for_risk_assessment")
+    if not os.path.exists(step4_file):
+        print(f"Error: Could not find Step 4 results: {step4_file}")
+        print("Please run the main workflow first (Steps 2-4)")
         exit(1)
 
-    print(f"Loading parked sites from: {parked_sites_file}")
-    parked_sites = pd.read_csv(parked_sites_file)
-    print(f"Loaded {len(parked_sites):,} parked sites")
+    print(f"Loading Step 4 results...")
+    distance_results = pd.read_csv(step4_file)
+    print(f"  Loaded {len(distance_results):,} site-GVFK combinations")
 
-    # Try to load substance sites for comparison
+    # Separate into qualifying (substance data) and parked (no substance data) sites
+    print("\nSeparating sites by substance data availability...")
+    sites_with_substances, parked_sites = separate_sites_by_substance_data(distance_results)
+    
+    print(f"\n  Sites with qualifying data: {len(sites_with_substances):,}")
+    print(f"  Parked sites (branch-only): {len(parked_sites):,}")
+
+    # Load step5b compound combinations for comparison
     substance_sites = None
-    potential_substance_files = [
-        "step5_general_assessment_500m.csv",
-        "step5_all_combinations_ethylen.csv",
-        "step5_all_combinations_vinylchlorid.csv",
-        "step5_all_combinations_benzene.csv",
-        "step5_all_combinations_trioxan.csv",
-    ]
-
-    substance_sites_list = []
-    for filename in potential_substance_files:
-        filepath = os.path.join(RESULTS_PATH, filename)
-        if os.path.exists(filepath):
-            df = pd.read_csv(filepath)
-            substance_sites_list.append(df)
-            print(f"Found substance file: {filename} ({len(df):,} sites)")
-
-    if substance_sites_list:
-        # Combine and dedupe substance sites
-        substance_sites = pd.concat(substance_sites_list, ignore_index=True)
-        # Remove duplicates based on Lokalitet_ID if it exists
+    step5b_file = get_output_path("step5b_compound_combinations")
+    if os.path.exists(step5b_file):
+        substance_sites = pd.read_csv(step5b_file)
         if "Lokalitet_ID" in substance_sites.columns:
             substance_sites = substance_sites.drop_duplicates(subset="Lokalitet_ID")
-        print(
-            f"Combined substance sites: {len(substance_sites):,} (after deduplication)"
-        )
+        print(f"  Step 5b substance sites: {len(substance_sites):,} (after deduplication)")
     else:
-        print(
-            "No substance site files found - running analysis on branch-only sites only"
-        )
+        print("  Step 5b file not found - running analysis on branch-only sites only")
 
     # Run the branch analysis
     print(f"\nStarting comprehensive branch analysis...")
@@ -2169,7 +2171,7 @@ if __name__ == "__main__":
         output_dir = os.path.join(RESULTS_PATH, "branch_analysis")
         create_danish_presentation_charts(results, parked_sites, output_dir)
 
-        print(f"\nâœ“ Branch analysis completed successfully!")
+        print(f"\n✓ Branch analysis completed successfully!")
         print(f"Results saved to: {output_dir}")
         print(
             f"Danish presentation charts saved to: {os.path.join(output_dir, 'Presentation')}"

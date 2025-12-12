@@ -119,7 +119,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
          "description": "Unique Lokaliteter (minimum distance per site)"},
         {"data": all_combinations_df, "type": "lokalitet-GVFK kombinationer", 
          "suffix": "all_combinations",
-         "description": "All Lokalitet-GVFK Combinations"}
+         "description": "Alle Lokalitet-GVFK Kombinationer"}
     ]
 
     # Use configurable thresholds from config
@@ -259,8 +259,8 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
             ax2.set_ylabel("Procent af lokaliteter" if analysis_type == "unikke lokaliteter" else "Procent af kombinationer", fontsize=12)
             ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: "{:.1%}".format(y / len(df))))
 
-            plt.title(f"{title_main}\n{title_sub}\nmed fremhævede tærskelværdier (afstande >20km grupperet)",
-                     fontsize=14, pad=20)
+    # plt.title(f"{title_main}\n{title_sub}\nmed fremhævede tærskelværdier (afstande >20km grupperet)",
+    #              fontsize=14, pad=20)
             ax1.set_xlabel("Afstand (meter) - maksimum 20.000m", fontsize=12)
             ax1.set_ylabel(ax1_ylabel, fontsize=12)
             ax1.grid(True, alpha=0.3)
@@ -306,7 +306,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
                 cdf_title = f"Kumulativ fordeling: Lokalitet-GVFK kombinationer\n{unique_sites:,} unikke lokaliteter i {all_stats['Count']:,} kombinationer"
                 cdf_ylabel = "Kumulativ andel af kombinationer"
             
-            ax.set_title(cdf_title, fontsize=14, pad=20)
+    # ax.set_title(cdf_title, fontsize=14, pad=20)
             ax.set_xlabel("Afstand (meter)", fontsize=12)
             ax.set_ylabel(cdf_ylabel, fontsize=12)
             
@@ -413,7 +413,7 @@ def create_compound_category_boxplot(compound_df, figures_path):
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, pad=0.01)
-    cbar.set_label('Number of Occurrences', fontweight='bold', fontsize=12)
+    cbar.set_label('Antal forekomster', fontweight='bold', fontsize=12)
 
     # Add labels with site counts and occurrences
     labels_with_counts = [f"{cat}\n({stats['Unique_Sites']} sites, {stats['Occurrences']} occur.)"
@@ -426,18 +426,18 @@ def create_compound_category_boxplot(compound_df, figures_path):
     total_occurrences = len(compound_df)
     avg_occur_per_site = total_occurrences / total_sites
 
-    summary_text = f"Categories: {total_categories}\n"
-    summary_text += f"Unique sites: {total_sites:,}\n"
-    summary_text += f"Total occurrences: {total_occurrences:,}\n"
-    summary_text += f"Avg occurrences/site: {avg_occur_per_site:.1f}"
+    summary_text = f"Kategorier: {total_categories}\n"
+    summary_text += f"Unikke sites: {total_sites:,}\n"
+    summary_text += f"Total forekomster: {total_occurrences:,}\n"
+    summary_text += f"Gns. forekomster/site: {avg_occur_per_site:.1f}"
 
     ax.text(0.02, 0.98, summary_text, transform=ax.transAxes,
             verticalalignment='top', fontsize=11,
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
-    ax.set_ylabel('Distance to River (meters)', fontweight='bold', fontsize=12)
-    ax.set_title('Distance Distribution by Compound Category (Colored by Occurrence Count)',
-                fontweight='bold', fontsize=14, pad=15)
+    ax.set_ylabel('Afstand til vandløb (meter)', fontweight='bold', fontsize=12)
+    # ax.set_title('Distance Distribution by Compound Category (Colored by Occurrence Count)',
+    #             fontweight='bold', fontsize=14, pad=15)
     
     # Ensure all spines are visible
     for spine in ax.spines.values():
@@ -478,8 +478,8 @@ def create_top_activities_chart(compound_df, figures_path):
     ax.set_yticks(range(len(activity_counts)))
     ax.set_yticklabels(activity_counts.index, fontsize=11)
     ax.set_xlabel('Antal forekomster', fontweight='bold', fontsize=14)
-    ax.set_title('Top 15 lokalitetsaktiviteter',
-                fontweight='bold', fontsize=18, pad=15)
+    # ax.set_title('Top 15 lokalitetsaktiviteter',
+    #             fontweight='bold', fontsize=18, pad=15)
 
     # Add summary
     ax.text(0.98, 0.02, f'Total: {len(all_activities):,} aktivitetsforekomster',
@@ -520,8 +520,8 @@ def create_top_branches_chart(compound_df, figures_path):
     ax.set_yticks(range(len(branch_counts)))
     ax.set_yticklabels(branch_counts.index, fontsize=11)
     ax.set_xlabel('Antal forekomster', fontweight='bold', fontsize=14)
-    ax.set_title('Top 15 lokalitetsbrancer',
-                fontweight='bold', fontsize=18, pad=15)
+    # ax.set_title('Top 15 lokalitetsbrancer',
+    #             fontweight='bold', fontsize=18, pad=15)
 
     # Add summary
     ax.text(0.98, 0.02, f'Total: {len(all_branches):,} brancheforekomster',
@@ -559,12 +559,12 @@ def create_threshold_comparison_chart(compound_df, figures_path):
 
     # Add 500m reference line
     ax.axvline(x=500, color='red', linestyle='--', linewidth=2, alpha=0.7,
-              label='General threshold (500m)')
+              label='Generel tærskel (500m)')
 
-    ax.set_xlabel('Threshold Distance (m)', fontweight='bold', fontsize=12)
-    ax.set_ylabel('Compound Category', fontweight='bold', fontsize=12)
-    ax.set_title('Compound-Specific Distance Thresholds (Step 5b)',
-                fontweight='bold', fontsize=14, pad=15)
+    ax.set_xlabel('Afstandstærskel (m)', fontweight='bold', fontsize=12)
+    ax.set_ylabel('Stofkategori', fontweight='bold', fontsize=12)
+    # ax.set_title('Compound-Specific Distance Thresholds (Step 5b)',
+    #             fontweight='bold', fontsize=14, pad=15)
     ax.legend(fontsize=11)
     ax.grid(axis='x', alpha=0.3)
 
@@ -588,9 +588,9 @@ def create_category_frequency_chart(compound_df, figures_path):
 
     ax.set_xticks(range(len(category_counts)))
     ax.set_xticklabels(category_counts.index, rotation=45, ha='right', fontsize=10)
-    ax.set_ylabel('Number of Site-GVFK-Substance Combinations', fontweight='bold', fontsize=12)
-    ax.set_title('Compound Category Frequency (Step 5b)',
-                fontweight='bold', fontsize=14, pad=15)
+    ax.set_ylabel('Antal Lokalitet-GVFK-Stof kombinationer', fontweight='bold', fontsize=12)
+    # ax.set_title('Compound Category Frequency (Step 5b)',
+    #             fontweight='bold', fontsize=14, pad=15)
     ax.grid(axis='y', alpha=0.3)
 
     # Add value labels on bars
@@ -627,16 +627,16 @@ def create_landfill_analysis_plots(compound_df, figures_path):
     x = np.arange(len(categories))
     width = 0.35
 
-    bars1 = ax.bar(x - width/2, regular_thresh, width, label='Regular Threshold',
+    bars1 = ax.bar(x - width/2, regular_thresh, width, label='Standard tærskel',
                    color='#4ECDC4', edgecolor='black')
-    bars2 = ax.bar(x + width/2, landfill_thresh, width, label='Landfill Threshold',
+    bars2 = ax.bar(x + width/2, landfill_thresh, width, label='Losseplads tærskel',
                    color='#FF6B6B', edgecolor='black')
 
     ax.set_xticks(x)
     ax.set_xticklabels(categories, rotation=45, ha='right', fontsize=10)
-    ax.set_ylabel('Threshold Distance (m)', fontweight='bold', fontsize=12)
-    ax.set_title('Landfill-Specific Thresholds vs Regular Thresholds',
-                fontweight='bold', fontsize=14, pad=15)
+    ax.set_ylabel('Afstandstærskel (m)', fontweight='bold', fontsize=12)
+    # ax.set_title('Landfill-Specific Thresholds vs Regular Thresholds',
+    #             fontweight='bold', fontsize=14, pad=15)
     ax.legend(fontsize=11)
     ax.grid(axis='y', alpha=0.3)
 
@@ -658,15 +658,15 @@ def create_landfill_analysis_plots(compound_df, figures_path):
     fig, ax = plt.subplots(figsize=(8, 8))
 
     sizes = [override_count, no_override_count]
-    labels = [f'Landfill Override\nApplied\n({override_count:,})',
-              f'No Override\n({no_override_count:,})']
+    labels = [f'Losseplads-regel\nAnvendt\n({override_count:,})',
+              f'Ingen regel\n({no_override_count:,})']
     colors = ['#FF6B6B', '#95E1D3']
     explode = (0.1, 0)
 
     ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%',
            shadow=True, startangle=90, textprops={'fontsize': 11, 'fontweight': 'bold'})
-    ax.set_title('Landfill Override Impact on Site-GVFK Combinations',
-                fontweight='bold', fontsize=14, pad=15)
+    # ax.set_title('Landfill Override Impact on Site-GVFK Combinations',
+    #             fontweight='bold', fontsize=14, pad=15)
 
     plt.tight_layout()
     plt.savefig(os.path.join(figures_path, 'landfill_override_impact.png'))
@@ -700,13 +700,13 @@ def create_step5_comparison_plot(figures_path):
     # Create comparison bar chart
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 6))
 
-    categories = ['Step 5a\n(General ≤500m)', 'Step 5b\n(Compound-Specific)']
+    categories = ['Trin 5a\n(Generel ≤500m)', 'Trin 5b\n(Stofspecifik)']
 
     # Sites comparison
     ax1.bar(categories, [step5a_sites, step5b_sites], color=['#4ECDC4', '#FF6B6B'],
             edgecolor='black', linewidth=2)
-    ax1.set_ylabel('Number of Sites', fontweight='bold')
-    ax1.set_title('Unique Sites', fontweight='bold', pad=10)
+    ax1.set_ylabel('Antal lokaliteter', fontweight='bold')
+    ax1.set_title('Unikke lokaliteter', fontweight='bold', pad=10)
     ax1.grid(axis='y', alpha=0.3)
     for i, v in enumerate([step5a_sites, step5b_sites]):
         ax1.text(i, v, f'{v:,}', ha='center', va='bottom', fontweight='bold', fontsize=11)
@@ -714,8 +714,8 @@ def create_step5_comparison_plot(figures_path):
     # GVFKs comparison
     ax2.bar(categories, [step5a_gvfk, step5b_gvfk], color=['#4ECDC4', '#FF6B6B'],
             edgecolor='black', linewidth=2)
-    ax2.set_ylabel('Number of GVFKs', fontweight='bold')
-    ax2.set_title('Affected GVFKs', fontweight='bold', pad=10)
+    ax2.set_ylabel("Antal GVF'er", fontweight='bold')
+    ax2.set_title("Påvirkede GVF'er", fontweight='bold', pad=10)
     ax2.grid(axis='y', alpha=0.3)
     for i, v in enumerate([step5a_gvfk, step5b_gvfk]):
         ax2.text(i, v, f'{v:,}', ha='center', va='bottom', fontweight='bold', fontsize=11)
@@ -723,14 +723,14 @@ def create_step5_comparison_plot(figures_path):
     # Combinations comparison
     ax3.bar(categories, [step5a_combinations, step5b_combinations],
             color=['#4ECDC4', '#FF6B6B'], edgecolor='black', linewidth=2)
-    ax3.set_ylabel('Number of Combinations', fontweight='bold')
-    ax3.set_title('Site-GVFK Combinations', fontweight='bold', pad=10)
+    ax3.set_ylabel('Antal kombinationer', fontweight='bold')
+    ax3.set_title('Lokalitet-GVFK kombinationer', fontweight='bold', pad=10)
     ax3.grid(axis='y', alpha=0.3)
     for i, v in enumerate([step5a_combinations, step5b_combinations]):
         ax3.text(i, v, f'{v:,}', ha='center', va='bottom', fontweight='bold', fontsize=11)
 
-    fig.suptitle('Step 5a (General) vs Step 5b (Compound-Specific) Comparison',
-                fontweight='bold', fontsize=16, y=1.02)
+    # fig.suptitle('Step 5a (General) vs Step 5b (Compound-Specific) Comparison',
+    #             fontweight='bold', fontsize=16, y=1.02)
 
     plt.tight_layout()
     plt.savefig(os.path.join(figures_path, 'step5a_vs_step5b_comparison.png'))

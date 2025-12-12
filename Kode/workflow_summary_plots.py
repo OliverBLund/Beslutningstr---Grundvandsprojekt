@@ -196,7 +196,7 @@ def create_gvfk_progression_plot(figures_path):
     ax.set_xticks(range(len(stages)))
     ax.set_xticklabels(stages, fontsize=12, fontweight="bold")
     ax.set_ylabel("Antal GVFK", fontsize=16, fontweight="bold")
-    ax.set_title("GVFK Progression Through Workflow", fontsize=20, fontweight="bold", pad=20)
+    # ax.set_title("GVFK Progression Through Workflow", fontsize=20, fontweight="bold", pad=20)
 
     # Set y-axis to start at 0
     ax.set_ylim(bottom=0)
@@ -301,7 +301,7 @@ def create_sites_progression_plot(figures_path):
     ax.set_xticks(range(len(stages)))
     ax.set_xticklabels(stages, fontsize=12, fontweight="bold")
     ax.set_ylabel("Antal lokaliteter", fontsize=16, fontweight="bold")
-    ax.set_title("Sites Progression Through Workflow", fontsize=20, fontweight="bold", pad=20)
+    # ax.set_title("Sites Progression Through Workflow", fontsize=20, fontweight="bold", pad=20)
 
     # Set y-axis to start at 0
     ax.set_ylim(bottom=0)
@@ -448,7 +448,7 @@ def create_gvfk_area_volume_plot(figures_path):
     ax1.set_xticks(range(len(stages)))
     ax1.set_xticklabels(stages, fontsize=10, fontweight="bold")
     ax1.set_ylabel("Areal (km²)", fontsize=14, fontweight="bold")
-    ax1.set_title("GVFK Areal gennem Workflow", fontsize=16, fontweight="bold", pad=15)
+    # ax1.set_title("GVFK Areal gennem Workflow", fontsize=16, fontweight="bold", pad=15)
     ax1.set_ylim(bottom=0)
 
     # Right: Volume progression
@@ -469,7 +469,7 @@ def create_gvfk_area_volume_plot(figures_path):
     ax2.set_xticks(range(len(stages)))
     ax2.set_xticklabels(stages, fontsize=10, fontweight="bold")
     ax2.set_ylabel("Volumen (km³)", fontsize=14, fontweight="bold")
-    ax2.set_title("GVFK Volumen gennem Workflow", fontsize=16, fontweight="bold", pad=15)
+    # ax2.set_title("GVFK Volumen gennem Workflow", fontsize=16, fontweight="bold", pad=15)
     ax2.set_ylim(bottom=0)
 
     # Add summary text at bottom
