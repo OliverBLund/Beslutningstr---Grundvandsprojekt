@@ -156,15 +156,14 @@ def create_gvfk_progression_plot(figures_path):
     # risikovurdering (risk assessment) only. Tilstandsvurdering (Step 6) has
     # its own separate analysis with MKK scenario sensitivity.
 
-    # Build data - Risikovurdering progression (Steps 1-3-3b-5a-5b)
-    # Note: Step 4 (distances) doesn't reduce GVFK count, just adds distances
+    # Build data - Risikovurdering progression
     stages = [
         "Alle GVFK\n(Danmark)",
-        "Vandløbskontakt\n(Trin 2)",
-        "V1/V2 lokaliteter\n(Trin 3)",
-        "Infiltrationsfilter\n(Trin 3b)",
-        "Generel risiko\n(Trin 5a: ≤500m)",
-        "Stofspecifik risiko\n(Trin 5b)",
+        "Vandløbskontakt",
+        "V1/V2 lokaliteter",
+        "Infiltrationsfilter",
+        "Generel risiko\n(≤500m)",
+        "Stofspecifik risiko",
     ]
     counts = [total_gvfks, river_gvfks, v1v2_gvfks, step3b_gvfks, step5a_gvfks, step5b_gvfks]
     
@@ -181,7 +180,7 @@ def create_gvfk_progression_plot(figures_path):
         height = bar.get_height()
         if height > 0:
             ax.text(bar.get_x() + bar.get_width() / 2.0, height * 1.02,
-                   f"{count:,}", ha="center", va="bottom", fontsize=14, fontweight="bold")
+                   f"{count:,}", ha="center", va="bottom", fontsize=16, fontweight="bold")
 
     # Add percentage labels inside bars (relative to Step 1)
     if total_gvfks > 0:
@@ -190,12 +189,12 @@ def create_gvfk_progression_plot(figures_path):
             if height > 0 and height < counts[0]:  # Don't show 100% for first bar
                 pct = count / total_gvfks * 100
                 ax.text(bar.get_x() + bar.get_width() / 2.0, height * 0.5,
-                       f"({pct:.1f}%)", ha="center", va="center", fontsize=12,
+                       f"({pct:.1f}%)", ha="center", va="center", fontsize=14,
                        color="white", fontweight="bold")
 
     ax.set_xticks(range(len(stages)))
-    ax.set_xticklabels(stages, fontsize=12, fontweight="bold")
-    ax.set_ylabel("Antal GVFK", fontsize=16, fontweight="bold")
+    ax.set_xticklabels(stages, fontsize=14, fontweight="bold")
+    ax.set_ylabel("Antal GVFK", fontsize=18, fontweight="bold")
     # ax.set_title("GVFK Progression Through Workflow", fontsize=20, fontweight="bold", pad=20)
 
     # Set y-axis to start at 0

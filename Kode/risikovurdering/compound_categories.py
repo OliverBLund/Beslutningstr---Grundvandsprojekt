@@ -59,17 +59,22 @@ COMPOUND_CATEGORIES = {
         'description': 'BTX compounds and oil products (diesel, heating oil, petroleum)',
     },
 
-    # 2. Chlorinated solvents - 500m
-    'KLOREREDE_OPLØSNINGSMIDLER': {
+    # 2. Chlorinated hydrocarbons - 500m (D3: "Klorerede kulbrinter")
+    # Merged from KLOREREDE_OPLØSNINGSMIDLER + KLOREDE_KULBRINTER
+    'KLOREDE_KULBRINTER': {
         'distance_m': 500,
         'keywords': [
+            # Original KLOREDE_KULBRINTER keywords
+            'chloroform', 'kloroform', 'kulbrinter', 'klorede', 'bromoform',
+            'dibromethane', 'bromerede',
+            # Merged from KLOREREDE_OPLØSNINGSMIDLER
             '1,1,1-tca', 'tce', 'tetrachlorethylen', 'trichlorethylen', 'trichlor',
             'tetrachlor', 'vinylchlorid', 'dichlorethylen', 'dichlorethan',
             'chlorerede', 'opl.midl', 'opløsningsmidl', 'cis-1,2-dichlorethyl',
             'trans-1,2-dichloreth', 'chlorethan', 'dichlormethan', 'pcb',
             'polychloreret', 'polykloreret'
         ],
-        'description': 'Chlorinated solvents and PCBs (very high groundwater mobility)',
+        'description': 'Chlorinated hydrocarbons and solvents (D3: Klorerede kulbrinter)',
     },
 
     # 3. Polar compounds - 300m
@@ -90,14 +95,14 @@ COMPOUND_CATEGORIES = {
         'description': 'Phenolic compounds',
     },
 
-    # 5. Chlorinated hydrocarbons - 200m
-    'KLOREDE_KULBRINTER': {
-        'distance_m': 200,
+    # 5. Other aromatic compounds - 150m (D3: "Andre aromatiske forbindelser")
+    'ANDRE_AROMATISKE_FORBINDELSER': {
+        'distance_m': 150,
         'keywords': [
-            'chloroform', 'kloroform', 'kulbrinter', 'klorede', 'bromoform',
-            'dibromethane', 'bromerede'
+            'chlorbenzen', 'chlorobenzene', 'monochlorbenzen', 'dichlorbenzen',
+            'trichlorbenzen', 'tetrachlorbenzen', 'pentachlorbenzen', 'hexachlorbenzen'
         ],
-        'description': 'Chlorinated/brominated hydrocarbons',
+        'description': 'Other aromatic compounds (D3: Andre aromatiske forbindelser)',
     },
 
     # 6. Chlorinated phenols - 200m

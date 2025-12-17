@@ -41,7 +41,8 @@ from step_reporter import report_step_header, report_counts, report_subsection, 
 # Landfill-specific thresholds for compound categories
 LANDFILL_THRESHOLDS = {
     "BTXER": 70,
-    "KLOREREDE_OPLØSNINGSMIDLER": 100,
+    "KLOREDE_KULBRINTER": 100,
+    "ANDRE_AROMATISKE_FORBINDELSER": 100,
     "PHENOLER": 35,
     "PESTICIDER": 180,
     "UORGANISKE_FORBINDELSER": 50,

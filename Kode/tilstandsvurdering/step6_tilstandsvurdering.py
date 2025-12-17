@@ -1314,6 +1314,10 @@ def _apply_mkk_thresholds(cmix_results: pd.DataFrame) -> pd.DataFrame:
         if substance and "Branch/Activity:" in substance:
             substance = substance.replace("Branch/Activity:", "").strip()
 
+        # Strip "Category__via_" pattern if present (from scenario generation)
+        if substance and "__via_" in substance:
+            substance = substance.split("__via_")[1].strip()
+
         # Per meeting decision: Only use substance-specific MKK for the 16 modelstoffer
         if substance in MODELSTOFFER and substance in MKK_THRESHOLDS:
             return MKK_THRESHOLDS[substance]

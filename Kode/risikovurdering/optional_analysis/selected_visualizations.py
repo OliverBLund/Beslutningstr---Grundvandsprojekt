@@ -956,21 +956,22 @@ def create_compound_category_table_from_data():
         # Define base thresholds and landfill overrides for reference
         base_thresholds = {
             "BTXER": 50,
-            "KLOREREDE_OPLØSNINGSMIDLER": 500,
+            "KLOREDE_KULBRINTER": 500,
+            "ANDRE_AROMATISKE_FORBINDELSER": 150,
             "PHENOLER": 100,
             "PESTICIDER": 500,
             "UORGANISKE_FORBINDELSER": 150,
             "PAH_FORBINDELSER": 30,
             "LOSSEPLADS": 100,
             "ANDRE": 500,
-            "KLOREDE_KULBRINTER": 200,
             "POLARE_FORBINDELSER": 300,
             "KLOREREDE_PHENOLER": 200,
         }
 
         landfill_overrides = {
             "BTXER": 70,
-            "KLOREREDE_OPLØSNINGSMIDLER": 100,
+            "KLOREDE_KULBRINTER": 100,
+            "ANDRE_AROMATISKE_FORBINDELSER": 100,
             "PHENOLER": 35,
             "PESTICIDER": 180,
             "UORGANISKE_FORBINDELSER": 50,
@@ -1138,11 +1139,16 @@ def create_losseplads_subcategory_table_from_data():
         print("-" * 60)
 
         landfill_thresholds = {
-            "BTXER": {"base": 50, "landfill": 70, "effect": "LÃ¸sere (+20m)"},
-            "KLOREREDE_OPLØSNINGSMIDLER": {
+            "BTXER": {"base": 50, "landfill": 70, "effect": "Løsere (+20m)"},
+            "KLOREDE_KULBRINTER": {
                 "base": 500,
                 "landfill": 100,
                 "effect": "Strengere (-400m)",
+            },
+            "ANDRE_AROMATISKE_FORBINDELSER": {
+                "base": 150,
+                "landfill": 100,
+                "effect": "Strengere (-50m)",
             },
             "PHENOLER": {"base": 100, "landfill": 35, "effect": "Strengere (-65m)"},
             "PESTICIDER": {"base": 500, "landfill": 180, "effect": "Strengere (-320m)"},

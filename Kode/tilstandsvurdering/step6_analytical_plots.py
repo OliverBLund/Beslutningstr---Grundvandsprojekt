@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from Kode.config import get_visualization_path
+from Kode.config import get_visualization_path, CATEGORY_DISPLAY_NAMES
 
 # Reset and apply professional PowerPoint-ready styling
 plt.style.use('default')
@@ -58,6 +58,13 @@ def create_analytical_plots(
 
     output_dir = get_visualization_path("step6", "analytical")
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Apply standardized category names
+    for df in [site_flux, segment_flux, cmix_results]:
+        if 'Qualifying_Category' in df.columns:
+            df['Qualifying_Category'] = df['Qualifying_Category'].map(
+                lambda x: CATEGORY_DISPLAY_NAMES.get(x, x)
+            )
 
     # Plot 1: Category Impact Overview
     plot_category_impact_overview(site_flux, segment_flux, cmix_results, output_dir)
@@ -152,7 +159,12 @@ def plot_category_impact_overview(
 
 
 def plot_exceedance_analysis(cmix_results: pd.DataFrame, output_dir: Path) -> None:
-    """Exceedance frequency and severity by category."""
+    """Exceedance frequency and severity by category.
+    
+    Shows UNIQUE SEGMENTS affected per category (not total exceedance rows).
+    This provides a cleaner metric that matches the report table.
+    """
+    from config import CATEGORY_DISPLAY_NAMES
 
     exceedances = cmix_results[cmix_results['Exceedance_Flag'] == True]
 
@@ -160,36 +172,45 @@ def plot_exceedance_analysis(cmix_results: pd.DataFrame, output_dir: Path) -> No
         print("    Warning: No exceedances found for exceedance analysis plot")
         return
 
-    # Aggregate by category
+    # Aggregate by category - use nunique for segments, not count of rows
     category_exc = exceedances.groupby('Qualifying_Category').agg({
-        'Exceedance_Flag': 'count',
-        'Exceedance_Ratio': 'mean'
+        'Nearest_River_FID': 'nunique',  # Unique segments, not row count
+        'Exceedance_Ratio': ['median', 'max']
     }).reset_index()
 
-    category_exc.columns = ['Category', 'Count', 'Mean_Ratio']
-    category_exc = category_exc.sort_values('Count', ascending=False)
+    category_exc.columns = ['Category', 'Unique_Segments', 'Median_Ratio', 'Max_Ratio']
+    category_exc = category_exc.sort_values('Unique_Segments', ascending=False)
+    
+    # Apply display names for cleaner labels
+    category_exc['Display_Name'] = category_exc['Category'].map(
+        lambda x: CATEGORY_DISPLAY_NAMES.get(x, x)
+    )
 
     fig, ax1 = plt.subplots(figsize=(14, 8))
 
-    # Bar plot for counts
+    # Bar plot for unique segment counts
     x = np.arange(len(category_exc))
-    bars = ax1.bar(x, category_exc['Count'], color='#D14545', edgecolor='white', label='Antal overskridelser')
-    ax1.set_xlabel('Kategori', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('Antal overskridelser', fontsize=14, fontweight='bold', color='#D14545')
-    ax1.tick_params(axis='y', labelcolor='#D14545')
+    bars = ax1.bar(x, category_exc['Unique_Segments'], color='#D14545', edgecolor='white', 
+                   label='Påvirkede segmenter')
+    ax1.set_xlabel('Kategori', fontsize=16, fontweight='bold')
+    ax1.set_ylabel('Antal påvirkede segmenter', fontsize=16, fontweight='bold', color='#D14545')
+    ax1.tick_params(axis='y', labelcolor='#D14545', labelsize=14)
+    ax1.tick_params(axis='x', labelsize=14)
     ax1.set_xticks(x)
-    ax1.set_xticklabels(category_exc['Category'], rotation=45, ha='right')
+    ax1.set_xticklabels(category_exc['Display_Name'], rotation=45, ha='right')
+    
+    # Add value labels on bars
+    for bar, val in zip(bars, category_exc['Unique_Segments']):
+        ax1.text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                f'{val}', ha='center', va='bottom', fontweight='bold', fontsize=11)
 
-    # Line plot for mean ratio
+    # Line plot for median ratio
     ax2 = ax1.twinx()
-    line = ax2.plot(x, category_exc['Mean_Ratio'], color='#F5A623', marker='o',
-                    linewidth=3, markersize=10, label='Gns. overskridelsesratio')
-    ax2.set_ylabel('Gns. overskridelsesratio (log skala)', fontsize=14, fontweight='bold', color='#F5A623')
-    ax2.tick_params(axis='y', labelcolor='#F5A623')
+    line = ax2.plot(x, category_exc['Median_Ratio'], color='#F5A623', marker='o',
+                    linewidth=3, markersize=10, label='Median overskridelsesratio')
+    ax2.set_ylabel('Median overskridelsesratio (log skala)', fontsize=16, fontweight='bold', color='#F5A623')
+    ax2.tick_params(axis='y', labelcolor='#F5A623', labelsize=14)
     ax2.set_yscale('log')
-
-    # Title
-    # ax1.set_title('MKK Exceedance Analysis: Frequency vs Severity', fontsize=18, fontweight='bold', pad=15)
 
     # Combine legends
     lines1, labels1 = ax1.get_legend_handles_labels()

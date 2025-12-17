@@ -76,14 +76,14 @@ Den stof-specifikke risikovurdering anvender litteraturbaserede afstandstærskle
 
 | Kategori | Afstandstærskel | Eksempler på stoffer |
 |----------|-----------------|----------------------|
-| PAH-forbindelser | 30 m | Polycykliske aromatiske kulbrinter |
-| BTXER | 50 m | Benzen, toluen, xylen, olieprodukter |
+| PAH'er | 30 m | Polycykliske aromatiske kulbrinter |
+| BTX'er | 50 m | Benzen, toluen, xylen, olieprodukter |
 | Phenoler | 100 m | Phenolforbindelser |
 | Uorganiske forbindelser | 150 m | Tungmetaller, salte |
-| Klorerede phenoler | 200 m | Klorerede fenolforbindelser |
-| Chlorerede kulbrinter | 200 m | Chlorerede/bromerede kulbrinter |
-| Polare forbindelser | 300 m | MTBE, alkoholer, phthalater |
-| Chlorerede opløsningsmidler | 500 m | TCE, PCE, vinylchlorid |
+| Chlorphenoler | 200 m | Klorerede fenolforbindelser |
+| Klorede kulbrinter | 200 m | Chlorerede/bromerede kulbrinter |
+| Polære | 300 m | MTBE, alkoholer, phthalater |
+| Klorerede opløsningsmidler | 500 m | TCE, PCE, vinylchlorid |
 | Pesticider | 500 m | Herbicider, fungicider, insekticider |
 | PFAS | 500 m* | Per- og polyfluoralkylstoffer |
 
@@ -177,7 +177,9 @@ Den trinvise filtrering reducerer fokusområdet systematisk:
 
 Tilstandsvurderingen kvantificerer forureningsflux fra de identificerede risiko-lokaliteter og beregner blandingskoncentrationer i vandløbssegmenterne. Disse sammenlignes med miljøkvalitetskrav (MKK) for at identificere segmenter med potentiel overskridelse.
 
-### Inputdata (Tilstandsvurdering)
+### Metode
+
+#### Datagrundlag
 
 Tilstandsvurderingen bygger på resultaterne fra risikovurderingen samt:
 
@@ -191,7 +193,7 @@ Tilstandsvurderingen bygger på resultaterne fra risikovurderingen samt:
 
 ---
 
-### Fluxberegning
+#### Fluxberegning
 
 Forureningsflux fra hver lokalitet beregnes ud fra formlen:
 
@@ -201,16 +203,18 @@ hvor J er flux (masse pr. tid), A er lokalitetsareal (m²), C er standardkoncent
 
 **Modelstof-scenarier:** Da de fleste lokaliteter har mange stoffer registreret indenfor samme kategori, anvendes en scenariobaseret aggregering. Hver stofkategori har et sæt definerede *modelstoffer* med validerede standardkoncentrationer fra Delprojekt 3:
 
-| Kategori | Modelstoffer | Koncentrationer (µg/L) |
-|----------|--------------|------------------------|
-| BTXER | Benzen, Olie C10-C25 | 400, 3.000 |
-| KLOREREDE_OPLØSNINGSMIDLER | 1,1,1-Trichlorethan, TCE, Chloroform, Chlorbenzen | 100, 42.000, 100, 100 |
-| POLARE_FORBINDELSER | MTBE, 4-Nonylphenol | 50.000, 9 |
-| PHENOLER | Phenol | 1.300 |
-| KLOREREDE_PHENOLER | 2,6-dichlorphenol | 10.000 |
-| PESTICIDER | Mechlorprop, Atrazin | 1.000, 12 |
-| PAH_FORBINDELSER | Fluoranthen | 30 |
-| UORGANISKE_FORBINDELSER | Arsen, Cyanid | 100, 3.500 |
+| Kategori | Modelstoffer | Koncentration (µg/L) | MKK (µg/L) |
+|----------|--------------|----------------------|------------|
+| BTXER | Benzen<br>Olie C10-C25 | 400<br>3.000 | 10<br>Ingen* |
+| KLOREREDE_OPLØSNINGSMIDLER | 1,1,1-Trichlorethan<br>TCE (Trichlorethylen)<br>Chloroform<br>Chlorbenzen | 100<br>42.000<br>100<br>100 | 21<br>10<br>2,5<br>Ingen* |
+| POLARE_FORBINDELSER | MTBE<br>4-Nonylphenol | 50.000<br>9 | 10<br>0,3 |
+| PHENOLER | Phenol | 1.300 | 7,7 |
+| KLOREREDE_PHENOLER | 2,6-dichlorphenol | 10.000 | 3,4 |
+| PESTICIDER | Mechlorprop<br>Atrazin | 1.000<br>12 | 18<br>0,6 |
+| PAH_FORBINDELSER | Fluoranthen | 30 | 0,0063 |
+| UORGANISKE_FORBINDELSER | Arsen<br>Cyanid | 100<br>3.500 | 4,3<br>10 |
+
+*\*Stoffer markeret med 'Ingen' har ingen fastsat MKK-værdi for enkeltstoffet i analysen og udløser derfor ikke selvstændigt overskridelser.*
 
 **Scenariehåndtering:** Hvert modelstof-scenarie behandles separat gennem flux- og Cmix-beregningen. Ved tælling af påvirkede GVF'er aggregeres dog alle scenarier: en GVFK tælles som påvirket hvis *mindst ét* scenarie viser MKK-overskridelse.
 
@@ -226,19 +230,19 @@ Standardkoncentrationerne stammer fra Delprojekt 3, Bilag D3 [REFERENCE: fuld re
 
 ---
 
-### Blandingskoncentration og MKK-vurdering
+#### Blandingskoncentration og MKK-vurdering
 
 For hvert vandløbssegment summeres flux fra alle bidragende lokaliteter, og blandingskoncentrationen (Cmix) beregnes:
 
-**Cmix = Σ Flux / (Q × 1000)**
+**Cmix = (Σ Flux) / (Q × 1000)**
 
-hvor Q er vandføringen (m³/s). Vurderingen udføres primært ved Q95 (lavvandsvandføring), som repræsenterer kritiske forhold.
+hvor Q er vandføringen (m³/s). Flux (µg/år) omregnes først til µg/s (via division med sekunder pr. år), og Q omregnes til L/s (via faktor 1000) for at opnå koncentrationen i µg/L. Vurderingen udføres primært ved Q95 (lavvandsvandføring), som repræsenterer kritiske forhold.
 
 Cmix sammenlignes med miljøkvalitetskrav (MKK) baseret på AA-EQS for ferskvand fra BEK nr. 1022 af 25/08/2010 [REFERENCE: fuld BEK reference] og BEK nr. 796/2023 for PFAS [REFERENCE: fuld BEK reference]. En overskridelsesratio (Cmix/MKK) over 1 indikerer potentiel overskridelse af miljøkvalitetskrav.
 
 ---
 
-### Resultater: Tilstandsvurdering
+### Resultater
 
 Tilstandsvurderingen kvantificerer påvirkningen af de kortlagte lokaliteter på vandløb:
 
@@ -251,7 +255,9 @@ Tilstandsvurderingen kvantificerer påvirkningen af de kortlagte lokaliteter på
 | Højeste Cmix/MKK-forhold | 41.337× |
 | Median Cmix/MKK-forhold | 7,2× |
 
-**Vandføringsscenariets betydning:** Antallet af segmenter med MKK-overskridelse afhænger markant af vandføringsscenariet:
+#### Vandføringsscenariets betydning
+
+Antallet af segmenter med MKK-overskridelse afhænger markant af vandføringsscenariet:
 
 | Scenario | Segmenter med overskridelse | Beskrivelse |
 |----------|----------------------------|-------------|
@@ -261,19 +267,30 @@ Tilstandsvurderingen kvantificerer påvirkningen af de kortlagte lokaliteter på
 
 124 segmenter overskrider kun MKK ved lavvandsvandføring (Q95), mens 158 segmenter overskrider ved alle vandføringsscenarier.
 
-**Overskridelser fordelt på stofkategorier (Q95):**
+#### Analyse af Stofkategorier (Q95)
 
 | Stofkategori | Segmenter | Max ratio | Median ratio |
 |--------------|-----------|-----------|--------------|
 | Klorerede opløsningsmidler | 147 | 41.337× | 12× |
 | Pesticider | 63 | 3.529× | 11× |
 | Uorganiske forbindelser | 39 | 344× | 5× |
-| BTXER | 34 | 1.520× | 9× |
-| Polare forbindelser | 31 | 2.899× | 13× |
+| BTX'er | 34 | 1.520× | 9× |
+| Polære | 31 | 2.899× | 13× |
 | Klorede kulbrinter | 13 | 35.567× | 12× |
-| PAH-forbindelser | 10 | 238× | 22× |
-| Klorerede phenoler | 7 | 6.227× | 35× |
+| PAH'er | 10 | 238× | 22× |
+| Chlorphenoler | 7 | 6.227× | 35× |
 | Phenoler | 6 | 9.174× | 24× |
+
+**MKK Overskridelsesanalyse: Frekvens og Alvorlighed**
+
+Figuren nedenfor viser en analyse af overskridelser af miljøkvalitetskrav (MKK) fordelt på stofkategorier. Grafen sammenholder to centrale parametre:
+
+1.  **Frekvens (Søjler, Venstre akse):** Antallet af MKK-overskridelser for hver kategori. Dette indikerer, hvor *udbredt* problemet er.
+2.  **Alvorlighed (Linje, Højre akse):** Den **mediane** overskridelsesratio (Cmix/MKK) på en logaritmisk skala. Dette indikerer den *typiske* alvorlighed, renset for ekstreme værdier.
+
+![MKK Overskridelsesanalyse: Frekvens vs Alvorlighed](Resultater/step6/analytical/exceedance_analysis.png)
+
+Grafen tydeliggør forskellen mellem kategorier med mange, men mindre alvorlige overskridelser, og kategorier med færre, men typisk meget kraftigere overskridelser. Eksempelvis ser vi ofte mange overskridelser for *Klorerede opløsningsmidler*, der også har en høj median alvorlighed, hvilket gør denne kategori til en primær risikofaktor.
 
 > **Bemærk:** De høje overskridelsesratioer (op til 41.337×) skyldes primært tre faktorer: (1) lavvandsvandføring ved Q95, (2) høje standardkoncentrationer for visse stoffer, og (3) akkumulering af flux fra flere lokaliteter til samme segment.
 

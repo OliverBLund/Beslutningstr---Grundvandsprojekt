@@ -52,10 +52,10 @@ def create_all_risikovurdering_plots():
     """
     Create all risk assessment visualizations for Steps 4-5.
     Called from main_workflow.py after Step 5 completes.
-    
+
     Note: Workflow summary plots (GVFK/sites progression) are in workflow_summary_plots.py
     """
-    from config import get_output_path, get_visualization_path, WORKFLOW_SETTINGS
+    from config import get_output_path, get_visualization_path, WORKFLOW_SETTINGS, CATEGORY_DISPLAY_NAMES
 
     print("\n" + "="*60)
     print("RISIKOVURDERING VISUALIZATIONS (Steps 4-5)")
@@ -92,7 +92,7 @@ def create_step4_plots():
         return
 
     all_df = pd.read_csv(all_path)
-    
+
     # Calculate unique site distances (minimum distance per site)
     # Group by site ID and take the minimum distance
     if 'Lokalitet_ID' in all_df.columns:
@@ -117,7 +117,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
     datasets = [
         {"data": unique_df, "type": "unikke lokaliteter", "suffix": "unique",
          "description": "Unique Lokaliteter (minimum distance per site)"},
-        {"data": all_combinations_df, "type": "lokalitet-GVFK kombinationer", 
+        {"data": all_combinations_df, "type": "lokalitet-GVFK kombinationer",
          "suffix": "all_combinations",
          "description": "Alle Lokalitet-GVFK Kombinationer"}
     ]
@@ -125,7 +125,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
     # Use configurable thresholds from config
     thresholds = WORKFLOW_SETTINGS.get("additional_thresholds_m", [250, 500, 1000, 1500, 2000])
     threshold_colors = ["#006400", "#32CD32", "#FFD700", "#FF6347", "#FF0000"]
-    
+
     # Color palette for V1/V2 site types
     colors = {
         "v1": "#1f4e79",   # Dark blue for V1 only
@@ -159,11 +159,11 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
             if "Site_Type" in df.columns:
                 v1_mask = df["Site_Type"].str.contains("V1", case=False, na=False)
                 v2_mask = df["Site_Type"].str.contains("V2", case=False, na=False)
-                
+
                 v1_only_data = df[v1_mask & ~v2_mask]["Distance_to_River_m"]
                 v2_only_data = df[v2_mask & ~v1_mask]["Distance_to_River_m"]
                 both_data = df[v1_mask & v2_mask]["Distance_to_River_m"]
-                
+
                 ax1.hist(
                     [v1_only_data, v2_only_data, both_data],
                     bins=bins,
@@ -187,7 +187,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
             for i, threshold in enumerate(thresholds):
                 ax1.axvline(threshold, color=threshold_colors[i], linestyle="-",
                            alpha=0.8, linewidth=2, label=f"{threshold}m: {percentages[i]:.1f}%")
-                
+
                 # Add percentage label
                 label_y_position = ax1.get_ylim()[1] * (0.95 - i * 0.08)
                 ax1.text(threshold + 100, label_y_position,
@@ -196,7 +196,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
                         color=threshold_colors[i], fontweight="bold", fontsize=10,
                         bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
                                  alpha=0.9, edgecolor=threshold_colors[i]))
-                
+
                 # Add shaded region
                 ax1.axvspan(prev_threshold, threshold, color=threshold_colors[i], alpha=0.1)
                 prev_threshold = threshold
@@ -209,9 +209,9 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
                 "Mean": df["Distance_to_River_m"].mean(),
                 "Median": df["Distance_to_River_m"].median(),
             }
-            
+
             unique_sites = df["Lokalitet_ID"].nunique() if "Lokalitet_ID" in df.columns else all_stats["Count"]
-            
+
             if analysis_type == "unikke lokaliteter":
                 stats_text = (
                     f"Afstandsstatistik (unikke lokaliteter):\n"
@@ -236,9 +236,9 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
                 title_sub = f"{unique_sites:,} unikke lokaliteter i {all_stats['Count']:,} kombinationer"
                 ax1_ylabel = "Antal kombinationer"
 
-            ax1.text(0.99, 0.85, stats_text, transform=ax1.transAxes,
-                    verticalalignment="top", horizontalalignment="right",
-                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.9), fontsize=9)
+           # ax1.text(0.99, 0.85, stats_text, transform=ax1.transAxes,
+           #         verticalalignment="top", horizontalalignment="right",
+           #         bbox=dict(boxstyle="round", facecolor="white", alpha=0.9), fontsize=9)
 
             # Add note about data
             note_text = ""
@@ -247,11 +247,12 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
             else:
                 note_text = f"\nViser alle lokalitet-GVFK kombinationer (én lokalitet kan forekomme i flere GVFK)."
                 note_text += f"\n{unique_sites:,} unikke lokaliteter fordelt på {all_stats['Count']:,} kombinationer."
-            note_text += f"\nAfstande >20km ({distances_over_20k} entries) grupperet som 20km."
-            
-            ax1.text(0.02, 0.02, note_text, transform=ax1.transAxes,
-                    verticalalignment="bottom", horizontalalignment="left",
-                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.9), fontsize=10)
+
+            #note_text += f"\nAfstande >20km ({distances_over_20k} entries) grupperet som 20km."
+
+            #ax1.text(0.02, 0.02, note_text, transform=ax1.transAxes,
+            #        verticalalignment="bottom", horizontalalignment="left",
+            #        bbox=dict(boxstyle="round", facecolor="white", alpha=0.9), fontsize=10)
 
             # Add secondary y-axis with percentages
             ax2 = ax1.twinx()
@@ -259,10 +260,11 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
             ax2.set_ylabel("Procent af lokaliteter" if analysis_type == "unikke lokaliteter" else "Procent af kombinationer", fontsize=12)
             ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: "{:.1%}".format(y / len(df))))
 
-    # plt.title(f"{title_main}\n{title_sub}\nmed fremhævede tærskelværdier (afstande >20km grupperet)",
-    #              fontsize=14, pad=20)
-            ax1.set_xlabel("Afstand (meter) - maksimum 20.000m", fontsize=12)
-            ax1.set_ylabel(ax1_ylabel, fontsize=12)
+            # plt.title(f"{title_main}\n{title_sub}\nmed fremhævede tærskelværdier (afstande >20km grupperet)",
+            #              fontsize=14, pad=20)
+            ax1.set_xlabel("Afstand (meter) - maksimum 20.000m", fontsize=16)
+            ax1.set_ylabel(ax1_ylabel, fontsize=16)
+            ax1.tick_params(axis='both', which='major', labelsize=14)
             ax1.grid(True, alpha=0.3)
 
             # Add site type legend if we have type information
@@ -284,7 +286,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
             fig, ax = plt.subplots(figsize=(15, 10))
             sorted_distances = np.sort(df["Distance_to_River_m"])
             cumulative = np.arange(1, len(sorted_distances) + 1) / len(sorted_distances)
-            
+
             ax.plot(sorted_distances, cumulative, "k-", linewidth=3, label="Kumulativ fordeling")
 
             # Add threshold lines to CDF
@@ -298,18 +300,18 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
                        color=threshold_colors[i], fontweight="bold")
 
             ax.grid(True, alpha=0.3)
-            
+
             if analysis_type == "unikke lokaliteter":
                 cdf_title = "Kumulativ fordeling: Unikke lokaliteter\nÉn lokalitet per site (minimum afstand)"
                 cdf_ylabel = "Kumulativ andel af lokaliteter"
             else:
                 cdf_title = f"Kumulativ fordeling: Lokalitet-GVFK kombinationer\n{unique_sites:,} unikke lokaliteter i {all_stats['Count']:,} kombinationer"
                 cdf_ylabel = "Kumulativ andel af kombinationer"
-            
+
     # ax.set_title(cdf_title, fontsize=14, pad=20)
             ax.set_xlabel("Afstand (meter)", fontsize=12)
             ax.set_ylabel(cdf_ylabel, fontsize=12)
-            
+
             ax.text(0.02, 0.02, note_text, transform=ax.transAxes,
                    verticalalignment="bottom", horizontalalignment="left",
                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.9), fontsize=10)
@@ -333,7 +335,7 @@ def create_distance_histograms(unique_df, all_combinations_df, figures_path):
 
 def create_step5_plots():
     """Create all Step 5 risk assessment visualizations."""
-    from config import get_output_path, get_visualization_path
+    from config import get_output_path, get_visualization_path, CATEGORY_DISPLAY_NAMES
 
     figures_path = get_visualization_path("step5")
 
@@ -344,6 +346,12 @@ def create_step5_plots():
         return
 
     compound_df = pd.read_csv(compound_path)
+
+    # Apply standardized category names
+    if 'Qualifying_Category' in compound_df.columns:
+        compound_df['Qualifying_Category'] = compound_df['Qualifying_Category'].map(
+            lambda x: CATEGORY_DISPLAY_NAMES.get(x, x)
+        )
 
     # 1. Compound category boxplot
     create_compound_category_boxplot(compound_df, figures_path)
@@ -400,14 +408,14 @@ def create_compound_category_boxplot(compound_df, figures_path):
     bp = ax.boxplot(data_to_plot, labels=categories_ordered, patch_artist=True,
                     widths=0.6, showfliers=True, flierprops=dict(marker='o', markersize=3, alpha=0.5))
 
-    # Color by occurrence count
+    # Color by occurrence count - using a cleaner blue gradient
     occurrence_counts = category_stats['Occurrences'].values
     norm = plt.Normalize(vmin=occurrence_counts.min(), vmax=occurrence_counts.max())
-    cmap = plt.cm.YlOrRd
+    cmap = plt.cm.Blues  # Professional Blue gradient
 
     for patch, count in zip(bp['boxes'], occurrence_counts):
         patch.set_facecolor(cmap(norm(count)))
-        patch.set_alpha(0.7)
+        patch.set_alpha(0.8)
 
     # Add colorbar
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -435,10 +443,10 @@ def create_compound_category_boxplot(compound_df, figures_path):
             verticalalignment='top', fontsize=11,
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
-    ax.set_ylabel('Afstand til vandløb (meter)', fontweight='bold', fontsize=12)
+    ax.set_ylabel('Afstand til vandløb (meter)', fontweight='bold', fontsize=16)
     # ax.set_title('Distance Distribution by Compound Category (Colored by Occurrence Count)',
     #             fontweight='bold', fontsize=14, pad=15)
-    
+
     # Ensure all spines are visible
     for spine in ax.spines.values():
         spine.set_visible(True)
@@ -459,16 +467,16 @@ def create_top_activities_chart(compound_df, figures_path):
     for val in compound_df['Lokalitetensaktivitet'].dropna():
         activities = [a.strip() for a in str(val).split(';') if a.strip()]
         all_activities.extend(activities)
-    
+
     activity_counts = pd.Series(all_activities).value_counts().head(15)
-    
+
     if len(activity_counts) == 0:
         return
 
     fig, ax = plt.subplots(figsize=(12, 10))
 
     # Single professional color
-    bars = ax.barh(range(len(activity_counts)), activity_counts.values, 
+    bars = ax.barh(range(len(activity_counts)), activity_counts.values,
                    color='#4A90D9', edgecolor='white', linewidth=1)
 
     # Add value labels
@@ -501,16 +509,16 @@ def create_top_branches_chart(compound_df, figures_path):
     for val in compound_df['Lokalitetensbranche'].dropna():
         branches = [b.strip() for b in str(val).split(';') if b.strip()]
         all_branches.extend(branches)
-    
+
     branch_counts = pd.Series(all_branches).value_counts().head(15)
-    
+
     if len(branch_counts) == 0:
         return
 
     fig, ax = plt.subplots(figsize=(12, 10))
 
     # Single professional color (different from activities)
-    bars = ax.barh(range(len(branch_counts)), branch_counts.values, 
+    bars = ax.barh(range(len(branch_counts)), branch_counts.values,
                    color='#5BA55B', edgecolor='white', linewidth=1)
 
     # Add value labels
@@ -582,13 +590,13 @@ def create_category_frequency_chart(compound_df, figures_path):
 
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    colors = plt.cm.Set3(range(len(category_counts)))
+    # Single professional color instead of rainbow
     bars = ax.bar(range(len(category_counts)), category_counts.values,
-                  color=colors, edgecolor='black', linewidth=1.5)
+                  color='#4A90D9', edgecolor='white', linewidth=1.5)
 
     ax.set_xticks(range(len(category_counts)))
-    ax.set_xticklabels(category_counts.index, rotation=45, ha='right', fontsize=10)
-    ax.set_ylabel('Antal Lokalitet-GVFK-Stof kombinationer', fontweight='bold', fontsize=12)
+    ax.set_xticklabels(category_counts.index, rotation=45, ha='right', fontsize=12)
+    ax.set_ylabel('Antal Lokalitet-GVFK-Stof kombinationer', fontweight='bold', fontsize=14)
     # ax.set_title('Compound Category Frequency (Step 5b)',
     #             fontweight='bold', fontsize=14, pad=15)
     ax.grid(axis='y', alpha=0.3)
@@ -597,7 +605,7 @@ def create_category_frequency_chart(compound_df, figures_path):
     for bar, count in zip(bars, category_counts.values):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height,
-               f'{count:,}', ha='center', va='bottom', fontweight='bold', fontsize=9)
+               f'{count:,}', ha='center', va='bottom', fontweight='bold', fontsize=11)
 
     plt.tight_layout()
     plt.savefig(os.path.join(figures_path, 'category_frequency.png'))
@@ -610,12 +618,15 @@ def create_landfill_analysis_plots(compound_df, figures_path):
         return
 
     # Landfill threshold comparison
+    # Use standardized names for keys
+    from config import CATEGORY_DISPLAY_NAMES
     landfill_thresholds = {
-        "BTXER": (250, 70),
-        "KLOREREDE_OPLØSNINGSMIDLER": (500, 100),
-        "PHENOLER": (250, 35),
-        "PESTICIDER": (500, 180),
-        "UORGANISKE_FORBINDELSER": (250, 50),
+        CATEGORY_DISPLAY_NAMES.get("BTXER", "BTXER"): (250, 70),
+        CATEGORY_DISPLAY_NAMES.get("KLOREDE_KULBRINTER", "KLOREDE_KULBRINTER"): (500, 100),
+        CATEGORY_DISPLAY_NAMES.get("ANDRE_AROMATISKE_FORBINDELSER", "ANDRE_AROMATISKE_FORBINDELSER"): (150, 100),
+        CATEGORY_DISPLAY_NAMES.get("PHENOLER", "PHENOLER"): (250, 35),
+        CATEGORY_DISPLAY_NAMES.get("PESTICIDER", "PESTICIDER"): (500, 180),
+        CATEGORY_DISPLAY_NAMES.get("UORGANISKE_FORBINDELSER", "UORGANISKE_FORBINDELSER"): (250, 50),
     }
 
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -743,4 +754,3 @@ def create_step5_comparison_plot(figures_path):
 
 if __name__ == "__main__":
     create_all_risikovurdering_plots()
-

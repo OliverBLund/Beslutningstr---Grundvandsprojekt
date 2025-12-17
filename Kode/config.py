@@ -105,7 +105,7 @@ WORKFLOW_SETTINGS = {
     # TESTING MODE: Set to a value between 0.0-1.0 to sample that fraction of data
     # Example: 0.1 = 10% of sites, 0.25 = 25% of sites, 1.0 = full data (production)
     # Set to None or 1.0 to disable sampling
-    "sample_fraction": 0.1,  # Change to 0.1 for quick testing with 10% of data
+    "sample_fraction": 1,  # Change to 0.1 for quick testing with 10% of data
 
     # Distance threshold for risk assessment (meters)
     "risk_threshold_m": 500,
@@ -125,6 +125,23 @@ WORKFLOW_SETTINGS = {
     # Maximum infiltration value cap (mm/year) - values above this are capped
     # Values below 0 (upward flux) are always zeroed
     "gvd_max_infiltration_cap": 750,
+}
+
+# Standardized Category Display Names
+# Maps code constants to report-friendly Danish names
+CATEGORY_DISPLAY_NAMES = {
+    "BTXER": "BTX'er",
+    "KLOREDE_KULBRINTER": "Klorede kulbrinter",
+    "POLARE_FORBINDELSER": "Polære",
+    "PHENOLER": "Phenoler",
+    "ANDRE_AROMATISKE_FORBINDELSER": "Andre aromatiske",
+    "KLOREREDE_PHENOLER": "Chlorphenoler",
+    "PAH_FORBINDELSER": "PAH'er",
+    "PESTICIDER": "Pesticider",
+    "UORGANISKE_FORBINDELSER": "Uorganiske forbindelser",
+    "PFAS": "PFAS",
+    "LOSSEPLADS": "Losseplads",
+    "ANDRE": "Andre",
 }
 
 # -------------------------------------------------------------------
@@ -537,7 +554,8 @@ STANDARD_CONCENTRATIONS = {
         "PAH_FORBINDELSER": 2500.0,
         "UORGANISKE_FORBINDELSER": 1800.0,
         "PHENOLER": 1500.0,
-        "KLOREREDE_OPLØSNINGSMIDLER": 2800.0,
+        "KLOREDE_KULBRINTER": 2800.0,
+        "ANDRE_AROMATISKE_FORBINDELSER": 100.0,
         "PESTICIDER": 1000.0,
     },
     # Level 4: Specific compound defaults (general worst-case)
@@ -561,19 +579,15 @@ STANDARD_CONCENTRATIONS = {
     },
     # Level 5: Category scenarios (one per modelstof)
     "category": {
-        # BTEX / Oil (2 scenarios)
+        # BTEX / Oil (3 scenarios)
         "BTXER__via_Benzen": 400.0,
         "BTXER__via_Olie C10-C25": 3000.0,
-        # Chlorinated solvents (4 scenarios)
-        "KLOREREDE_OPLØSNINGSMIDLER__via_1,1,1-Trichlorethan": 100.0,
-        "KLOREREDE_OPLØSNINGSMIDLER__via_Trichlorethylen": 42000.0,
-        "KLOREREDE_OPLØSNINGSMIDLER__via_Chloroform": 100.0,
-        "KLOREREDE_OPLØSNINGSMIDLER__via_Chlorbenzen": 100.0,
-        # Synonym category (KLOREDE_KULBRINTER)
+        # Klorerede kulbrinter (3 scenarios - D3 merged category)
         "KLOREDE_KULBRINTER__via_1,1,1-Trichlorethan": 100.0,
         "KLOREDE_KULBRINTER__via_Trichlorethylen": 42000.0,
         "KLOREDE_KULBRINTER__via_Chloroform": 100.0,
-        "KLOREDE_KULBRINTER__via_Chlorbenzen": 100.0,
+        # Andre aromatiske forbindelser (1 scenario)
+        "ANDRE_AROMATISKE_FORBINDELSER__via_Chlorbenzen": 100.0,
         # Polar compounds (2 scenarios)
         "POLARE_FORBINDELSER__via_MTBE": 50000.0,
         "POLARE_FORBINDELSER__via_4-Nonylphenol": 9.0,
@@ -602,18 +616,12 @@ STANDARD_CONCENTRATIONS = {
 # Category to modelstof scenario mapping
 CATEGORY_SCENARIOS = {
     "BTXER": ["Benzen", "Olie C10-C25"],
-    "KLOREREDE_OPLØSNINGSMIDLER": [
-        "1,1,1-Trichlorethan",
-        "Trichlorethylen",
-        "Chloroform",
-        "Chlorbenzen",
-    ],
     "KLOREDE_KULBRINTER": [
         "1,1,1-Trichlorethan",
         "Trichlorethylen",
         "Chloroform",
-        "Chlorbenzen",
     ],
+    "ANDRE_AROMATISKE_FORBINDELSER": ["Chlorbenzen"],
     "POLARE_FORBINDELSER": ["MTBE", "4-Nonylphenol"],
     "PHENOLER": ["Phenol"],
     "KLOREREDE_PHENOLER": ["2,6-dichlorphenol"],
@@ -655,7 +663,7 @@ MKK_THRESHOLDS = {
     "1,1,1-Trichlorethan": 21.0,
     "Trichlorethylen": 10.0,
     "Chloroform": 2.5,
-    "Chlorbenzen": None,
+    "Chlorbenzen": 0.3 , #Based on other Chlorbenzen compounds.
     "Phenol": 7.7,
     "4-Nonylphenol": 0.3,
     "2,6-dichlorphenol": 3.4,
@@ -672,8 +680,8 @@ MKK_THRESHOLDS = {
     "PHENOLER": 0.3,
     "KLOREREDE_PHENOLER": 3.4,
     "POLARE_FORBINDELSER": 10.0,
-    "KLOREREDE_OPLØSNINGSMIDLER": 2.5,
     "KLOREDE_KULBRINTER": 2.5,
+    "ANDRE_AROMATISKE_FORBINDELSER": 0.3,  # Based on other compounds
     "PESTICIDER": 0.6,
     "UORGANISKE_FORBINDELSER": 4.3,
     "PFAS": 0.0044,  # BEK 796/2023

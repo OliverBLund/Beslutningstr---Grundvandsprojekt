@@ -106,46 +106,59 @@ def create_distance_distribution(high_risk_sites, figures_path, threshold_m=500)
 def create_category_breakdown(compound_combinations, figures_path):
     """
     Create bar chart showing number of site-GVFK-substance combinations per category.
-    Verifies that compound categorization is working correctly.
+    Uses display names for cleaner labels and shows percentages.
     """
+    from config import CATEGORY_DISPLAY_NAMES
+    
     if 'Qualifying_Category' not in compound_combinations.columns:
         print("  Warning: No category column found in data")
         return
 
     # Count combinations per category
     category_counts = compound_combinations['Qualifying_Category'].value_counts()
+    total = category_counts.sum()
 
-    # Sort by count
+    # Sort by count (ascending for horizontal bar)
     category_counts = category_counts.sort_values(ascending=True)
+    
+    # Map to display names
+    display_names = [CATEGORY_DISPLAY_NAMES.get(cat, cat) for cat in category_counts.index]
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(12, 8))
 
-    # Create horizontal bar chart
-    colors = plt.cm.Set3(range(len(category_counts)))
-    ax.barh(category_counts.index, category_counts.values, color=colors, edgecolor='black')
+    # Create horizontal bar chart with professional color
+    bars = ax.barh(range(len(category_counts)), category_counts.values, 
+                   color='#4A90D9', edgecolor='white', linewidth=1.5)
+    
+    ax.set_yticks(range(len(category_counts)))
+    ax.set_yticklabels(display_names, fontsize=12)
 
-    # Labels and title
-    ax.set_xlabel('Number of Site-GVFK-Substance Combinations', fontweight='bold')
-    ax.set_ylabel('Compound Category', fontweight='bold')
-    ax.set_title('Compound Category Distribution (Step 5b)', fontweight='bold', pad=15)
+    # Labels
+    ax.set_xlabel('Antal kombinationer', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Stofkategori', fontsize=14, fontweight='bold')
     ax.grid(axis='x', alpha=0.3)
 
-    # Add value labels on bars
-    for i, (cat, count) in enumerate(category_counts.items()):
-        ax.text(count, i, f'  {count:,}', va='center', ha='left', fontweight='bold')
+    # Add value labels on bars with count and percentage
+    for i, (count, bar) in enumerate(zip(category_counts.values, bars)):
+        pct = count / total * 100
+        ax.text(count + total*0.01, bar.get_y() + bar.get_height()/2,
+                f'{count:,} ({pct:.1f}%)', va='center', ha='left', 
+                fontweight='bold', fontsize=11)
+    
+    # Extend x-axis to fit labels
+    ax.set_xlim(0, category_counts.max() * 1.25)
 
     # Add summary statistics
-    total_combinations = len(compound_combinations)
     unique_sites = compound_combinations['Lokalitet_ID'].nunique() if 'Lokalitet_ID' in compound_combinations.columns else 0
     unique_gvfks = compound_combinations['GVFK'].nunique() if 'GVFK' in compound_combinations.columns else 0
 
-    summary_text = f"Total: {total_combinations:,} combinations\n{unique_sites:,} sites | {unique_gvfks} GVFKs"
+    summary_text = f"Total: {total:,} kombinationer\n{unique_sites:,} lokaliteter | {unique_gvfks} GVF'er"
     ax.text(0.98, 0.02, summary_text, transform=ax.transAxes,
             verticalalignment='bottom', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
+            fontsize=11, bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
 
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_path, 'step5b_category_breakdown.png'))
+    plt.savefig(os.path.join(figures_path, 'step5b_category_breakdown.png'), dpi=150)
     plt.close()
 
 
