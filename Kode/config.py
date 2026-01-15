@@ -96,6 +96,13 @@ WORKFLOW_SUMMARY_DIR = RESULTS_DIR / "workflow_summary"
 # FIGURES_DIR removed to enforce strict structure
 
 # -------------------------------------------------------------------
+# Dataset Constants
+# -------------------------------------------------------------------
+# Total number of groundwater aquifers (GVFK) in Denmark
+# Update this if the input dataset changes
+TOTAL_GVFK_DENMARK = 2043
+
+# -------------------------------------------------------------------
 # Workflow Settings
 # -------------------------------------------------------------------
 # User-configurable settings for the workflow.

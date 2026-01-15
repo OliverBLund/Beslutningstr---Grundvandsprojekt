@@ -8,7 +8,7 @@ Analysis, summary, and reporting functions for Step 5 risk assessment.
 import pandas as pd
 import os
 from collections import Counter
-from config import get_output_path
+from config import get_output_path, TOTAL_GVFK_DENMARK
 from .step5_utils import _extract_unique_gvfk_names, get_keyword_stats
 
 
@@ -167,7 +167,7 @@ def print_summary(
     # General assessment (500m)
     if not general_sites.empty and "GVFK" in general_sites.columns:
         general_gvfks = general_sites["GVFK"].dropna().nunique()
-        general_pct = (general_gvfks / 2043) * 100
+        general_pct = (general_gvfks / TOTAL_GVFK_DENMARK) * 100
         print(
             f"{'With sites <=500m (General)':<45} {general_gvfks:<8,} {general_pct:<10.1f}%"
         )
@@ -176,7 +176,7 @@ def print_summary(
     # (compound_sites is deduplicated by lokalitet, losing some GVFK associations)
     if not compound_combinations.empty and "GVFK" in compound_combinations.columns:
         compound_gvfks = compound_combinations["GVFK"].dropna().nunique()
-        compound_pct = (compound_gvfks / 2043) * 100
+        compound_pct = (compound_gvfks / TOTAL_GVFK_DENMARK) * 100
         print(
             f"{'With compound-specific risk (Step 5)':<45} {compound_gvfks:<8,} {compound_pct:<10.1f}%"
         )

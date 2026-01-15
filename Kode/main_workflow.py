@@ -109,45 +109,29 @@ def main():
         return False
     print("Input files validated\n")
 
-    # Initialize results storage
-    results = {}
-
     # STEP 1
     gvf, total_gvfk = run_step1()
     if gvf is None:
         print("✗ Step 1 failed - cannot proceed")
         return False
-    results["step1"] = {"gvf": gvf, "total_gvfk": total_gvfk}
 
     # STEP 2
     rivers_gvfk, river_contact_count, gvf_with_rivers = run_step2()
     if not rivers_gvfk:
         print("✗ Step 2 failed - no GVFKs with river contact")
         return False
-    results["step2"] = {
-        "rivers_gvfk": rivers_gvfk,
-        "river_contact_count": river_contact_count,
-        "gvf_with_rivers": gvf_with_rivers,
-    }
 
     # STEP 3
     gvfk_with_v1v2_names, v1v2_sites = run_step3(rivers_gvfk)
     if v1v2_sites.empty:
         print("✗ Step 3 failed - no V1/V2 sites found")
         return False
-    results["step3"] = {
-        "gvfk_with_v1v2_names": gvfk_with_v1v2_names,
-        "v1v2_sites": v1v2_sites,
-    }
 
     # STEP 3b: Infiltration filter (filter sites in upward flow zones)
-    v1v2_sites_filtered = run_step3b(v1v2_sites)
+    v1v2_sites_filtered = run_step3b(v1v2_sites, verbose=True)
     if v1v2_sites_filtered.empty:
         print("✗ Step 3b failed - all sites filtered (no downward flow sites)")
         return False
-    results["step3b"] = {
-        "v1v2_sites_filtered": v1v2_sites_filtered,
-    }
 
     # STEP 4 - Uses filtered sites from Step 3b
     from risikovurdering.step4_distances import run_step4
@@ -155,139 +139,110 @@ def main():
     if distance_results is None:
         print("✗ Step 4 failed - distance calculation unsuccessful")
         return False
-    # Store all results from step 4 (includes distance_results, unique_distances for plotting)
-    results["step4"] = distance_results
 
     # STEP 5
     step5_results = run_step5()
-
     if not step5_results["success"]:
-        print(f"ERROR: Step 5 failed")
-        results["step5"] = {
-            "general_high_risk_sites": None,
-            "general_analysis": None,
-            "compound_high_risk_sites": None,
-            "compound_analysis": None,
-            "high_risk_gvfk_count": 0,
-        }
-    else:
-        # Extract data from step5 results
-        general_results = step5_results["general_results"]
-        compound_results = step5_results["compound_results"]
-
-        general_sites, general_analysis = general_results
-        compound_sites, compound_analysis = compound_results
-
-        # Use general results for summary statistics
-        high_risk_sites = general_sites if general_sites is not None else pd.DataFrame()
-
-        # Extract GVFK count from general results
-        high_risk_gvfk_count = 0
-        if not high_risk_sites.empty:
-            if "All_Affected_GVFKs" in high_risk_sites.columns:
-                all_gvfks = set()
-                for gvfk_list in high_risk_sites["All_Affected_GVFKs"].dropna():
-                    if pd.isna(gvfk_list) or gvfk_list == "":
-                        continue
-                    gvfks = [
-                        gvfk.strip()
-                        for gvfk in str(gvfk_list).split(";")
-                        if gvfk.strip()
-                    ]
-                    all_gvfks.update(gvfks)
-                high_risk_gvfk_count = len(all_gvfks)
-            elif "Closest_GVFK" in high_risk_sites.columns:
-                high_risk_gvfk_count = high_risk_sites["Closest_GVFK"].nunique()
-
-        results["step5"] = {
-            "general_high_risk_sites": general_sites,
-            "general_analysis": general_analysis,
-            "compound_high_risk_sites": compound_sites,
-            "compound_analysis": compound_analysis,
-            "high_risk_gvfk_count": high_risk_gvfk_count,
-            "success": True,
-            # Backward compatibility
-            "high_risk_sites": high_risk_sites,
-            "risk_analysis": general_analysis,
-        }
-
-    # NOTE: Step 5c (infiltration filtering) is DEPRECATED.
-    # Infiltration filtering now happens at Step 3b, BEFORE distance calculation.
-    # The step5b output is now the final output (already filtered from Step 3b).
+        print("ERROR: Step 5 failed")
+        return False
 
     # Step 6: Tilstandsvurdering (State Assessment)
     try:
-        step6_results = run_step6()
-        results["step6"] = step6_results
+        run_step6()
     except Exception as e:
         print(f"✗ Step 6 failed: {e}")
-        results["step6"] = {"success": False, "error": str(e)}
 
-    # Create visualizations if available
-    create_visualizations_if_available(results)
+    # Create visualizations
+    create_visualizations_if_available()
 
-    # Print final consolidated summary
-    print_final_summary(results)
+    # Print final summary
+    print_final_summary()
 
     return True
 
-def _safe_nunique(df, col_name):
-    """Safely get nunique with error handling."""
-    try:
-        if df is not None and not df.empty and col_name in df.columns:
-            return df[col_name].nunique()
-    except:
-        pass
-    return 0
 
-
-def print_final_summary(results):
-    """Print consolidated workflow summary with key metrics from all steps."""
+def print_final_summary():
+    """Print consolidated workflow summary by reading results from files."""
     print("\n" + "=" * 80)
     print("WORKFLOW SUMMARY")
     print("=" * 80)
 
-    # Step 1-2
-    total_gvfk = results.get("step1", {}).get("total_gvfk", 0)
-    river_gvfk = results.get("step2", {}).get("river_contact_count", 0)
+    import os
 
-    # Step 3 - try both possible column names (Lokalitetsnr is from shapefile, Lokalitet_ID is created by step4)
-    v1v2_sites = results.get("step3", {}).get("v1v2_sites")
-    sites_count = _safe_nunique(v1v2_sites, "Lokalitetsnr") or _safe_nunique(v1v2_sites, "Lokalitet_ID")
-    gvfk_with_sites = len(results.get("step3", {}).get("gvfk_with_v1v2_names", []))
+    # Load results from files
+    step2_path = get_output_path("step2_river_gvfk")
+    step3_path = get_output_path("step3_v1v2_sites")
+    step5a_path = get_output_path("step5_high_risk_sites")
+    step5b_path = get_output_path("step5b_compound_combinations")
+    step6_site_exc_path = get_output_path("step6_site_mkk_exceedances")
+    step6_gvfk_exc_path = get_output_path("step6_gvfk_mkk_exceedances")
+    step6_segment_path = get_output_path("step6_segment_summary")
 
-    # Step 5
-    step5 = results.get("step5", {})
-    general_sites = step5.get("general_high_risk_sites")
-    compound_sites = step5.get("compound_high_risk_sites")
-    general_sites_count = _safe_nunique(general_sites, "Lokalitet_ID")
-    general_gvfk_count = _safe_nunique(general_sites, "GVFK")
-    compound_sites_count = _safe_nunique(compound_sites, "Lokalitet_ID")
-    compound_gvfk_count = _safe_nunique(compound_sites, "GVFK")
+    # Step 1 - total GVFK is a constant
+    from config import TOTAL_GVFK_DENMARK
+    total_gvfk = TOTAL_GVFK_DENMARK
 
-    # Step 3b (infiltration filter)
-    step3b = results.get("step3b", {})
-    v1v2_filtered = step3b.get("v1v2_sites_filtered")
-    filtered_sites_count = _safe_nunique(v1v2_filtered, "Lokalitet_") if v1v2_filtered is not None else sites_count
+    # Step 2
+    river_gvfk = 0
+    if os.path.exists(step2_path):
+        try:
+            import geopandas as gpd
+            gvf_rivers = gpd.read_file(step2_path)
+            river_gvfk = gvf_rivers["Navn"].nunique()
+        except:
+            pass
+
+    # Step 3
+    sites_count = gvfk_with_sites = 0
+    if os.path.exists(step3_path):
+        try:
+            import geopandas as gpd
+            v1v2_df = gpd.read_file(step3_path)
+            sites_count = v1v2_df["Lokalitet_"].nunique()
+            gvfk_with_sites = v1v2_df["Navn"].nunique()
+        except:
+            pass
+
+    # Step 5a and 5b
+    general_sites_count = general_gvfk_count = 0
+    compound_sites_count = compound_gvfk_count = 0
+    if os.path.exists(step5a_path):
+        try:
+            general_df = pd.read_csv(step5a_path)
+            general_sites_count = general_df["Lokalitet_ID"].nunique()
+            general_gvfk_count = general_df["GVFK"].nunique()
+        except:
+            pass
+    if os.path.exists(step5b_path):
+        try:
+            compound_df = pd.read_csv(step5b_path)
+            compound_sites_count = compound_df["Lokalitet_ID"].nunique()
+            compound_gvfk_count = compound_df["GVFK"].nunique()
+        except:
+            pass
 
     # Step 6
-    step6 = results.get("step6", {})
     exc_sites = exc_gvfk = exc_segments = max_exc = 0
-    if step6.get("success"):
-        site_exc = step6.get("site_exceedances")
-        gvfk_exc = step6.get("gvfk_exceedances")
-        segment_summary = step6.get("segment_summary")
-
-        exc_sites = _safe_nunique(site_exc, "Lokalitet_ID")
-        exc_gvfk = _safe_nunique(gvfk_exc, "GVFK")
-        if segment_summary is not None and not segment_summary.empty:
-            try:
-                if "Max_Exceedance_Ratio" in segment_summary.columns:
-                    exc_segments = int((segment_summary["Max_Exceedance_Ratio"] > 1).sum())
-                    max_exc = float(segment_summary["Max_Exceedance_Ratio"].max())
-            except Exception as e:
-                # Gracefully handle any calculation errors
-                pass
+    if os.path.exists(step6_site_exc_path):
+        try:
+            site_exc_df = pd.read_csv(step6_site_exc_path)
+            exc_sites = site_exc_df["Lokalitet_ID"].nunique()
+        except:
+            pass
+    if os.path.exists(step6_gvfk_exc_path):
+        try:
+            gvfk_exc_df = pd.read_csv(step6_gvfk_exc_path)
+            exc_gvfk = gvfk_exc_df["GVFK"].nunique()
+        except:
+            pass
+    if os.path.exists(step6_segment_path):
+        try:
+            segment_df = pd.read_csv(step6_segment_path)
+            if "Max_Exceedance_Ratio" in segment_df.columns:
+                exc_segments = int((segment_df["Max_Exceedance_Ratio"] > 1).sum())
+                max_exc = float(segment_df["Max_Exceedance_Ratio"].max())
+        except:
+            pass
 
     # Print summary
     print(f"\nStep 1: Total GVFKs in Denmark: {total_gvfk:,}")
@@ -296,14 +251,7 @@ def print_final_summary(results):
     print(f"        Contaminated sites identified: {sites_count:,}")
     print(f"Step 5a: High-risk sites (≤500m): {general_sites_count:,} sites in {general_gvfk_count:,} GVFKs")
     print(f"Step 5b: Compound-specific risk: {compound_sites_count:,} sites in {compound_gvfk_count:,} GVFKs")
-    # Step 3b already filtered before Step 4, so compound_sites_count reflects post-filter
-    # No separate "Step 5c" line needed
-
-    # Step 6 - always show if completed, even if no exceedances
-    if step6.get("success"):
-        print(f"Step 6: MKK exceedances: {exc_sites:,} sites in {exc_gvfk:,} GVFKs affecting {exc_segments:,} river segments")
-        if max_exc > 1:
-            print(f"        Worst exceedance: {max_exc:,.0f}x MKK")
+    print(f"        (Step 6 summary printed above)")
 
     print("\n" + "=" * 80)
     print("WORKFLOW COMPLETED")
@@ -311,30 +259,39 @@ def print_final_summary(results):
     print(f"\nResults saved to: Resultater/\n")
 
 
-def create_visualizations_if_available(results):
+def create_visualizations_if_available():
     """
     Create core workflow visualizations.
-    
+
     Calls:
     - risikovurdering_plots: Step 4 distance histograms, Step 5 category plots
     - workflow_summary_plots: GVFK and sites progression charts (all steps)
-    
+
     Optional (not called by default):
     - risikovurdering/optional_analysis/step5_branch_analysis.py: Branch analysis for sites without substances
     """
+    plot_failures = []
+
     # Create Step 4-5 risikovurdering plots
     try:
         from risikovurdering.risikovurdering_plots import create_all_risikovurdering_plots
         create_all_risikovurdering_plots()
     except Exception as e:
-        print(f"  ⚠ Risikovurdering plots failed: {e}")
+        plot_failures.append(f"Risikovurdering plots: {e}")
 
     # Create workflow summary plots (progression through all steps)
     try:
         from workflow_summary_plots import create_workflow_summary_plots
         create_workflow_summary_plots()
     except Exception as e:
-        print(f"  ⚠ Workflow summary plots failed: {e}")
+        plot_failures.append(f"Workflow summary plots: {e}")
+
+    # Report any failures
+    if plot_failures:
+        print("\n⚠️  WARNING: Some visualizations failed:")
+        for failure in plot_failures:
+            print(f"    - {failure}")
+        print("    Results are still valid, but plots are incomplete.\n")
 
 
 

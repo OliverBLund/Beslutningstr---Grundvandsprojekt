@@ -64,10 +64,10 @@ def analyze_and_visualize_step6(
     sites = site_flux["Lokalitet_ID"].nunique() if "Lokalitet_ID" in site_flux.columns else 0
     segments = segment_summary["River_FID"].nunique() if "River_FID" in segment_summary.columns else len(segment_summary)
     exc_sites = site_exceedances["Lokalitet_ID"].nunique() if site_exceedances is not None and not site_exceedances.empty and "Lokalitet_ID" in site_exceedances.columns else 0
-    exc_segments = (segment_summary["Max_Exceedance_Factor"] > 1).sum() if "Max_Exceedance_Factor" in segment_summary.columns else 0
+    exc_segments = (segment_summary["Max_Exceedance_Ratio"] > 1).sum() if "Max_Exceedance_Ratio" in segment_summary.columns else 0
     exc_gvfk = gvfk_exceedances["GVFK"].nunique() if gvfk_exceedances is not None and not gvfk_exceedances.empty and "GVFK" in gvfk_exceedances.columns else 0
 
-    max_exceedance = segment_summary["Max_Exceedance_Factor"].max() if "Max_Exceedance_Factor" in segment_summary.columns else 0
+    max_exceedance = segment_summary["Max_Exceedance_Ratio"].max() if "Max_Exceedance_Ratio" in segment_summary.columns else 0
 
     print(f"  Sites analyzed: {sites:,}")
     print(f"  River segments affected: {segments:,}")

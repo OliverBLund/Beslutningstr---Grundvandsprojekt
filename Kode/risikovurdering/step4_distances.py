@@ -262,14 +262,14 @@ def run_step4(v1v2_combined):
             f"  Distance stats (min per site): mean={min_distances_only.mean():.0f}m, median={min_distances_only.median():.0f}m"
         )
 
-    # Save results (Modified to ONLY save critical Step 5 input)
+    # Save results
     _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col)
 
     # Create interactive map
     if len(valid_results) > 0:
         _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results)
 
-    # Return BOTH the full results (for Step 5) AND unique distances (for visualization)
+    # Return results for Step 5 and visualization
     return {
         "results_df": results_df,
         "distance_results": valid_results,
@@ -325,7 +325,6 @@ def _save_distance_results(results_df, valid_results, v1v2_combined, site_id_col
 
 def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
     """Create interactive map visualization using sampled data."""
-
     gvfk_name_col = COLUMN_MAPPINGS["contamination_csv"]["gvfk_id"]
     site_id_col = COLUMN_MAPPINGS["contamination_shp"]["site_id"]
     gvfk_polygon_col = COLUMN_MAPPINGS["grundvand"]["gvfk_id"]
@@ -339,9 +338,7 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
             valid_results["Lokalitet_ID"].unique(), size=1000, replace=False
         )
 
-    sampled_results = valid_results[
-        valid_results["Lokalitet_ID"].isin(sampled_site_ids)
-    ].copy()
+    sampled_results = valid_results[valid_results["Lokalitet_ID"].isin(sampled_site_ids)].copy()
 
     # Get GVFK polygons for visualization
     gvf = gpd.read_file(GRUNDVAND_PATH, layer=GRUNDVAND_LAYER_NAME)
@@ -350,47 +347,38 @@ def _create_interactive_map(v1v2_combined, rivers_with_contact, valid_results):
 
     # Add distance data to combined data for mapping
     v1v2_with_distances = v1v2_combined.copy()
-    lookup_data = {}
-    for _, row in sampled_results.iterrows():
-        key = f"{row['Lokalitet_ID']}_{row['GVFK']}"
-        lookup_data[key] = {
+    lookup_data = {
+        f"{row['Lokalitet_ID']}_{row['GVFK']}": {
             "Distance_m": row["Distance_to_River_m"],
             "Is_Min_Dist": row["Is_Min_Distance"],
             "Min_Dist_m": row.get("Min_Distance_m", row["Distance_to_River_m"]),
         }
+        for _, row in sampled_results.iterrows()
+    }
 
     v1v2_with_distances["lookup_key"] = (
-        v1v2_with_distances[site_id_col].astype(str)
-        + "_"
-        + v1v2_with_distances[gvfk_name_col].astype(str)
+        v1v2_with_distances[site_id_col].astype(str) + "_" +
+        v1v2_with_distances[gvfk_name_col].astype(str)
     )
 
     for key, data in lookup_data.items():
         mask = v1v2_with_distances["lookup_key"] == key
-        v1v2_with_distances.loc[mask, "Distance_m"] = data["Distance_m"]
-        v1v2_with_distances.loc[mask, "Is_Min_Dist"] = data["Is_Min_Dist"]
-        v1v2_with_distances.loc[mask, "Min_Dist_m"] = data["Min_Dist_m"]
+        for col, val in data.items():
+            v1v2_with_distances.loc[mask, col] = val
 
     # Filter to sampled combinations
     sampled_combinations = v1v2_with_distances[
-        v1v2_with_distances[site_id_col].isin(sampled_results["Lokalitet_ID"])
-        & v1v2_with_distances[gvfk_name_col].isin(sampled_results["GVFK"])
+        v1v2_with_distances[site_id_col].isin(sampled_results["Lokalitet_ID"]) &
+        v1v2_with_distances[gvfk_name_col].isin(sampled_results["GVFK"])
     ]
 
     if not sampled_combinations.empty:
         try:
-            from .create_interactive_map import create_map
-
-            create_map(
-                sampled_combinations,
-                rivers_with_contact,
-                sampled_results,
-                relevant_gvfk_polygons,
-            )
-            print(
-                f"  Interactive map saved: {get_output_path('interactive_distance_map').name}"
-            )
-        except ImportError:
-            print("  Note: Interactive map module not available")
+            # Correct import path to optional_analysis directory
+            from ..optional_analysis.create_interactive_map import create_map
+            create_map(sampled_combinations, rivers_with_contact, sampled_results, relevant_gvfk_polygons)
+            print(f"  Interactive map saved: {get_output_path('interactive_distance_map').name}")
+        except ImportError as e:
+            print(f"  Note: Interactive map module not available ({e})")
         except Exception as e:
             print(f"  Note: Interactive map creation failed - {type(e).__name__}: {e}")
