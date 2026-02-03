@@ -51,7 +51,6 @@ TODO step6:
 Check polygoner vs centroid resultaterne
 Check mængden af pixels capped? Der er mange.
 Check mængden af pixels zeroed.
-
 '''
 import pandas as pd
 import os
@@ -292,10 +291,6 @@ def create_visualizations_if_available():
         for failure in plot_failures:
             print(f"    - {failure}")
         print("    Results are still valid, but plots are incomplete.\n")
-
-
-
-
 
 if __name__ == "__main__":
     try:
