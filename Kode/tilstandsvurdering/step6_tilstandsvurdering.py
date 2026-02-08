@@ -127,6 +127,7 @@ def run_step6() -> Dict[str, pd.DataFrame]:
 
     cmix_results = _calculate_cmix(segment_flux, flow_scenarios, qpoints_gdf)
     cmix_results = _apply_mkk_thresholds(cmix_results)
+    _report_cmix_exceedance_summary(cmix_results)
 
     # Build summaries
     print("\n[6/6] Building summaries & exporting...")
@@ -186,6 +187,28 @@ def run_step6() -> Dict[str, pd.DataFrame]:
         "gvfk_exceedances": gvfk_exceedances,
         "negative_infiltration": negative_infiltration,
     }
+
+
+def _report_cmix_exceedance_summary(cmix_results: pd.DataFrame) -> None:
+    """Print scenario-level exceedance counts for segments and GVFK."""
+    if cmix_results.empty:
+        print("  No Cmix results available for exceedance summary.")
+        return
+
+    exceedances = cmix_results[cmix_results["Exceedance_Flag"] == True].copy()
+    if exceedances.empty:
+        print("  No MKK exceedances found in any flow scenario.")
+        return
+
+    scenario_order = ["Q95", "Q90", "Q50", "Q10", "Q05"]
+    available = [s for s in scenario_order if s in exceedances["Flow_Scenario"].unique()]
+
+    print("\n  Exceedance summary by flow scenario:")
+    for scenario in available:
+        scenario_rows = exceedances[exceedances["Flow_Scenario"] == scenario]
+        segment_count = scenario_rows["Nearest_River_FID"].nunique()
+        gvfk_count = scenario_rows["River_Segment_GVFK"].nunique()
+        print(f"    {scenario}: {segment_count} segments, {gvfk_count} GVFK")
 
 
 # ===========================================================================
@@ -884,6 +907,12 @@ def _lookup_concentration_for_scenario(
 
     # Determine which substance to use for hierarchy lookup
     lookup_substance = scenario_modelstof if scenario_modelstof else original_substance
+    if (
+        not scenario_modelstof
+        and isinstance(lookup_substance, str)
+        and lookup_substance.lower().startswith("landfill override:")
+    ):
+        lookup_substance = lookup_substance.split(":", 1)[1].strip()
 
     # Level 1: Activity + Substance
     for industry in all_industries:
@@ -1332,6 +1361,7 @@ def _apply_mkk_thresholds(cmix_results: pd.DataFrame) -> pd.DataFrame:
     cmix_results["Exceedance_Flag"] = cmix_results["MKK_ug_L"].notna() & (
         cmix_results["Cmix_ug_L"] > cmix_results["MKK_ug_L"]
     )
+
     cmix_results["Exceedance_Ratio"] = np.where(
         cmix_results["MKK_ug_L"].notna() & (cmix_results["MKK_ug_L"] > 0),
         cmix_results["Cmix_ug_L"] / cmix_results["MKK_ug_L"],

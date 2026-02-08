@@ -51,6 +51,7 @@ TODO step6:
 Check polygoner vs centroid resultaterne
 Check mængden af pixels capped? Der er mange.
 Check mængden af pixels zeroed.
+
 '''
 import pandas as pd
 import os

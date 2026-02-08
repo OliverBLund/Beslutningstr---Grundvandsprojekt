@@ -119,7 +119,7 @@ COMPOUND_CATEGORIES = {
             'pah', 'fluoranthen', 'benzo', 'naftalen', 'naphtalen', 'naphthalen',
             'naphthacen', 'pyren', 'anthracen', 'antracen', 'tjære', 'tar',
             'phenanthren', 'fluoren', 'acenaphthen', 'acenaphthylen', 'chrysen',
-            'chrysene', 'benzfluranthen', 'methylnaphthalen', 'benz(ghi)perylen'
+            'chrysene', 'benzfluranthen', 'methylnaphthalen', 'benz(ghi)perylen', '1-methyl-napthalen',
         ],
         'description': 'Polycyclic Aromatic Hydrocarbons (low mobility, high sorption)',
     },
