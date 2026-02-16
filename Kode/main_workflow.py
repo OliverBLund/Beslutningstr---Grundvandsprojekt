@@ -32,6 +32,7 @@ CORE OUTPUTS:
 OPTIONAL ANALYSIS:
 ------------------
 Extended analysis tools available in risikovurdering/optional_analysis/
+Validation tools available in tools/
 See that folder's README for details on branch analysis, comprehensive visualizations, etc.
 
 CONFIGURATION:
@@ -96,7 +97,7 @@ def main():
     print("GROUNDWATER CONTAMINATION ASSESSMENT - COMPLETE WORKFLOW (Steps 1-6)")
     print("=" * 80)
 
-    # Show sampling mode if enabled
+    # Show sampling mode if enabled, used for testing and quicker runs
     from config import WORKFLOW_SETTINGS
     sample_fraction = WORKFLOW_SETTINGS.get('sample_fraction')
     if sample_fraction and sample_fraction < 1.0:

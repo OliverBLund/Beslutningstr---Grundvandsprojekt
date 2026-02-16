@@ -2,7 +2,7 @@
 Step 2: Count how many GVFK are in contact with targeted rivers.
 
 This step identifies groundwater aquifers that have contact with river segments
-where Kontakt = 1, indicating actual groundwater-surface water interaction.
+where Kontakt = 1 OR non-empty GVFK ID for a river segment, indicating actual groundwater-surface water interaction.
 """
 
 import geopandas as gpd

@@ -110,7 +110,7 @@ def run_step4(v1v2_combined):
                 str(val) if pd.notna(val) else ""
                 for val in matching_rivers["ov_id"]
             ]
-
+        
         segment_indices_str = ";".join(str(idx) for idx in segment_indices) if segment_indices else ""
         segment_ov_ids_str = ";".join(segment_ov_ids) if segment_ov_ids else ""
 
