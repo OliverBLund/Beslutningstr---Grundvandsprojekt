@@ -46,12 +46,44 @@ from Kode.config import (
     RIVER_FLOW_POINTS_PATH,
     RIVERS_LAYER_NAME,
     RIVERS_PATH,
-    STEP6_MAP_SETTINGS,
     STEP6_PRIMARY_FLOW_SCENARIO,
     STEP6_FLOW_SELECTION_MODE,
     get_output_path,
     get_visualization_path,
 )
+
+# ---------------------------------------------------------------------------
+# Map generation settings — edit here to control which maps are produced
+# ---------------------------------------------------------------------------
+STEP6_MAP_SETTINGS = {
+    "generate_combined_maps": False,  # Per-scenario site/Q-point maps
+    "generate_overall_maps": True,    # Aggregated GVFK exceedance maps
+    "overall_map_count_methods": [
+        "unique_segments",
+        "scenario_occurrences",
+    ],
+    "generate_category_maps": True,   # One map per compound category
+    "generate_compound_maps": True,   # One map per specific compound below
+    "compounds_to_map": [
+        "Benzen",
+        "Toluen",
+        "Ethylbenzen",
+        "Xylener",
+        "Naphthalen",
+        "Vinylchlorid",
+        "1,1,1-Trichlorethan",
+        "Tetrachlorethylen (PCE)",
+        "Trichlorethylen (TCE)",
+        "cis-1,2-Dichlorethylen",
+    ],
+    "river_metrics_overall": [        # Metrics used for overall maps
+        "cmix_pct_mkk",
+        "cmix_absolute",
+        "exceedance_ratio",
+        "total_flux",
+    ],
+    "river_metric_filtered": "cmix_pct_mkk",  # Metric for category/compound maps
+}
 
 
 def create_combined_impact_maps(

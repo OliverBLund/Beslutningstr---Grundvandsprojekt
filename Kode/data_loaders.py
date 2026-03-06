@@ -229,7 +229,43 @@ def load_flow_scenarios() -> pd.DataFrame:
     return flow_max
 
 
+def apply_sampling(df, id_column: str = "Lokalitet_ID", seed: int = 42):
+    """Sample a fraction of the data for testing purposes.
+
+    Controlled by WORKFLOW_SETTINGS['sample_fraction'] in config.py.
+    Set sample_fraction to a value between 0.0-1.0 to use a subset of sites,
+    or None/1.0 to use the full dataset (production mode).
+
+    Args:
+        df: DataFrame to sample
+        id_column: Column of unique site IDs to sample on (not rows directly)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Sampled DataFrame, or the original if sampling is disabled.
+    """
+    sample_fraction = WORKFLOW_SETTINGS.get("sample_fraction")
+
+    if sample_fraction is None or sample_fraction >= 1.0:
+        return df
+
+    if sample_fraction <= 0.0:
+        raise ValueError("sample_fraction must be > 0.0")
+
+    unique_ids = df[id_column].unique()
+    n_sample = max(1, int(len(unique_ids) * sample_fraction))
+    sampled_ids = pd.Series(unique_ids).sample(n=n_sample, random_state=seed).values
+    sampled_df = df[df[id_column].isin(sampled_ids)].copy()
+
+    print(
+        f"  [SAMPLING MODE] Using {sample_fraction*100:.0f}% of data: "
+        f"{len(sampled_ids):,} / {len(unique_ids):,} unique {id_column}"
+    )
+    return sampled_df
+
+
 __all__ = [
+    "apply_sampling",
     "load_step5_results",
     "load_site_geometries",
     "load_gvfk_layer_mapping",

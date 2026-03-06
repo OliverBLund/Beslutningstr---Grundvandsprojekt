@@ -151,48 +151,12 @@ CATEGORY_DISPLAY_NAMES = {
     "ANDRE": "Andre",
 }
 
-# -------------------------------------------------------------------
-# Step 6 Map Generation Settings
-# -------------------------------------------------------------------
-STEP6_MAP_SETTINGS = {
-    "generate_combined_maps": False,  # Generate combined site/Q-point maps
-    "generate_overall_maps": True,  # Generate aggregated GVFK exceedance maps
-    "overall_map_count_methods": [
-        "unique_segments",
-        "scenario_occurrences",
-    ],
-    "generate_category_maps": True,  # Generate maps for all categories
-    "generate_compound_maps": True,  # Generate specific compound maps
-    # Specific compounds to generate maps for (expandable list)
-    "compounds_to_map": [
-        "Benzen",
-        "Toluen",
-        "Ethylbenzen",
-        "Xylener",
-        "Naphthalen",
-        "Vinylchlorid",
-        "1,1,1-Trichlorethan",
-        "Tetrachlorethylen (PCE)",
-        "Trichlorethylen (TCE)",
-        "cis-1,2-Dichlorethylen",
-    ],
-    # Which river metrics to generate (all 4 for overall maps)
-    "river_metrics_overall": [
-        "cmix_pct_mkk",
-        "cmix_absolute",
-        "exceedance_ratio",
-        "total_flux",
-    ],
-    # Which river metric to use for category/compound maps (default: Cmix % of MKK)
-    "river_metric_filtered": "cmix_pct_mkk",
-}
-
 # Primary flow scenario to use for overall map / reporting context
 STEP6_PRIMARY_FLOW_SCENARIO = "Q95"
 # Flow selection mode for Step 6 (Q-point choice per segment)
 # - "max_per_ov": max Q per ov_id per scenario (entire river)
 # - "max_near_segment": max Q from Q-points within 100m buffer of segment
-# - "downstream_per_segment": nearest Q-point downstream of segment (NEW, hydrologically correct)
+# - "downstream_per_segment": nearest Q-point downstream of segment (hydrologically correct)
 STEP6_FLOW_SELECTION_MODE = "downstream_per_segment"
 # -------------------------------------------------------------------
 # Input Data Column Mappings
@@ -336,28 +300,7 @@ CORE_OUTPUTS = {
     "interactive_distance_map": WORKFLOW_SUMMARY_DIR / "interactive_distance_map.html",
 }
 
-# -------------------------------------------------------------------
-# Output file paths - OPTIONAL ANALYSIS
-# -------------------------------------------------------------------
-# These files are created by optional analysis modules in risikovurdering/optional_analysis/
-# and are not part of the core workflow. See optional_analysis/ folder for details.
-OPTIONAL_OUTPUTS = {
-    # Step 5: Additional summary files (optional)
-    "step5_gvfk_risk_summary": STEP5_DATA_DIR / "step5_gvfk_risk_summary.csv",
-    "step5_category_summary": STEP5_DATA_DIR / "step5_category_summary.csv",
-    "step5_category_substance_summary": STEP5_DATA_DIR
-    / "step5_category_substance_summary.csv",
-    "step5_category_flags": STEP5_DATA_DIR / "step5_category_flags.csv",
-    "step5_multi_threshold_analysis": STEP5_DATA_DIR
-    / "step5_multi_threshold_analysis.csv",
-    "step5_category_distance_statistics": STEP5_DATA_DIR
-    / "step5_category_distance_statistics.csv",
-    "step5_threshold_effectiveness": STEP5_DATA_DIR / "step5_threshold_effectiveness.csv",
-    "step5_compound_catalog": STEP5_DATA_DIR / "step5_compound_catalog.csv",
-}
-
-# Combined dictionary for get_output_path() compatibility
-OUTPUT_FILES = {**CORE_OUTPUTS, **OPTIONAL_OUTPUTS}
+OUTPUT_FILES = CORE_OUTPUTS
 
 
 # -------------------------------------------------------------------
@@ -448,41 +391,6 @@ def get_visualization_path(*parts: str) -> Path:
 
     viz_path.mkdir(parents=True, exist_ok=True)
     return viz_path
-
-
-def apply_sampling(df, id_column: str = 'Lokalitet_ID', seed: int = 42):
-    """
-    Sample a fraction of the data based on WORKFLOW_SETTINGS['sample_fraction'].
-
-    Args:
-        df: DataFrame to sample
-        id_column: Column name to use for sampling (samples unique IDs, not rows)
-        seed: Random seed for reproducibility
-
-    Returns:
-        Sampled DataFrame (or original if sampling is disabled)
-    """
-    sample_fraction = WORKFLOW_SETTINGS.get('sample_fraction')
-
-    # If sampling disabled or invalid, return full data
-    if sample_fraction is None or sample_fraction >= 1.0:
-        return df
-
-    if sample_fraction <= 0.0:
-        raise ValueError("sample_fraction must be > 0.0")
-
-    # Sample unique IDs
-    import pandas as pd
-    unique_ids = df[id_column].unique()
-    n_sample = max(1, int(len(unique_ids) * sample_fraction))
-    sampled_ids = pd.Series(unique_ids).sample(n=n_sample, random_state=seed).values
-
-    # Filter dataframe to sampled IDs
-    sampled_df = df[df[id_column].isin(sampled_ids)].copy()
-
-    print(f"  [SAMPLING MODE] Using {sample_fraction*100:.0f}% of data: {len(sampled_ids):,} / {len(unique_ids):,} unique {id_column}")
-
-    return sampled_df
 
 
 def validate_input_files() -> bool:

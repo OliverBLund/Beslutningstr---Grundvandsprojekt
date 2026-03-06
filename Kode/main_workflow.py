@@ -48,11 +48,9 @@ USAGE:
 Expected runtime: ~10-20 minutes depending on data size.
 """
 
-import pandas as pd
-import os
 import warnings
 from shapely.errors import ShapelyDeprecationWarning
-from config import validate_input_files, get_output_path
+from config import validate_input_files, get_output_path, WORKFLOW_SETTINGS, TOTAL_GVFK_DENMARK
 
 # Import step modules
 from risikovurdering.step1_all_gvfk import run_step1
@@ -92,11 +90,10 @@ def main():
     print("=" * 80)
 
     # Show sampling mode if enabled, used for testing and quicker runs
-    from config import WORKFLOW_SETTINGS
     sample_fraction = WORKFLOW_SETTINGS.get('sample_fraction')
     if sample_fraction and sample_fraction < 1.0:
-        print(f"\n⚠️  TESTING MODE: Using {sample_fraction*100:.0f}% sample of data")
-        print("   (Set sample_fraction=None in config.py for full production run)\n")
+        print(f"\n[TESTING MODE] Using {sample_fraction*100:.0f}% sample of data")
+        print("   (Set sample_fraction=1 in config.py for full production run)\n")
 
     # Validate input files before starting
     if not validate_input_files():
@@ -129,7 +126,6 @@ def main():
         return False
 
     # STEP 4 - Uses filtered sites from Step 3b
-    from risikovurdering.step4_distances import run_step4
     distance_results = run_step4(v1v2_sites_filtered)
     if distance_results is None:
         print("✗ Step 4 failed - distance calculation unsuccessful")
@@ -150,108 +146,12 @@ def main():
     # Create visualizations
     create_visualizations_if_available()
 
-    # Print final summary
-    print_final_summary()
-
-    return True
-
-
-def print_final_summary():
-    """Print consolidated workflow summary by reading results from files."""
-    print("\n" + "=" * 80)
-    print("WORKFLOW SUMMARY")
-    print("=" * 80)
-
-    import os
-
-    # Load results from files
-    step2_path = get_output_path("step2_river_gvfk")
-    step3_path = get_output_path("step3_v1v2_sites")
-    step5a_path = get_output_path("step5_high_risk_sites")
-    step5b_path = get_output_path("step5b_compound_combinations")
-    step6_site_exc_path = get_output_path("step6_site_mkk_exceedances")
-    step6_gvfk_exc_path = get_output_path("step6_gvfk_mkk_exceedances")
-    step6_segment_path = get_output_path("step6_segment_summary")
-
-    # Step 1 - total GVFK is a constant
-    from config import TOTAL_GVFK_DENMARK
-    total_gvfk = TOTAL_GVFK_DENMARK
-
-    # Step 2
-    river_gvfk = 0
-    if os.path.exists(step2_path):
-        try:
-            import geopandas as gpd
-            gvf_rivers = gpd.read_file(step2_path)
-            river_gvfk = gvf_rivers["Navn"].nunique()
-        except:
-            pass
-
-    # Step 3
-    sites_count = gvfk_with_sites = 0
-    if os.path.exists(step3_path):
-        try:
-            import geopandas as gpd
-            v1v2_df = gpd.read_file(step3_path)
-            sites_count = v1v2_df["Lokalitet_"].nunique()
-            gvfk_with_sites = v1v2_df["Navn"].nunique()
-        except:
-            pass
-
-    # Step 5a and 5b
-    general_sites_count = general_gvfk_count = 0
-    compound_sites_count = compound_gvfk_count = 0
-    if os.path.exists(step5a_path):
-        try:
-            general_df = pd.read_csv(step5a_path)
-            general_sites_count = general_df["Lokalitet_ID"].nunique()
-            general_gvfk_count = general_df["GVFK"].nunique()
-        except:
-            pass
-    if os.path.exists(step5b_path):
-        try:
-            compound_df = pd.read_csv(step5b_path)
-            compound_sites_count = compound_df["Lokalitet_ID"].nunique()
-            compound_gvfk_count = compound_df["GVFK"].nunique()
-        except:
-            pass
-
-    # Step 6
-    exc_sites = exc_gvfk = exc_segments = max_exc = 0
-    if os.path.exists(step6_site_exc_path):
-        try:
-            site_exc_df = pd.read_csv(step6_site_exc_path)
-            exc_sites = site_exc_df["Lokalitet_ID"].nunique()
-        except:
-            pass
-    if os.path.exists(step6_gvfk_exc_path):
-        try:
-            gvfk_exc_df = pd.read_csv(step6_gvfk_exc_path)
-            exc_gvfk = gvfk_exc_df["GVFK"].nunique()
-        except:
-            pass
-    if os.path.exists(step6_segment_path):
-        try:
-            segment_df = pd.read_csv(step6_segment_path)
-            if "Max_Exceedance_Ratio" in segment_df.columns:
-                exc_segments = int((segment_df["Max_Exceedance_Ratio"] > 1).sum())
-                max_exc = float(segment_df["Max_Exceedance_Ratio"].max())
-        except:
-            pass
-
-    # Print summary
-    print(f"\nStep 1: Total GVFKs in Denmark: {total_gvfk:,}")
-    print(f"Step 2: GVFKs with river contact: {river_gvfk:,} ({river_gvfk/total_gvfk*100:.1f}%)" if total_gvfk > 0 else f"Step 2: GVFKs with river contact: {river_gvfk:,}")
-    print(f"Step 3: GVFKs with contaminated sites: {gvfk_with_sites:,} ({gvfk_with_sites/river_gvfk*100:.1f}% of river-contact)" if river_gvfk > 0 else f"Step 3: GVFKs with contaminated sites: {gvfk_with_sites:,}")
-    print(f"        Contaminated sites identified: {sites_count:,}")
-    print(f"Step 5a: High-risk sites (≤500m): {general_sites_count:,} sites in {general_gvfk_count:,} GVFKs")
-    print(f"Step 5b: Compound-specific risk: {compound_sites_count:,} sites in {compound_gvfk_count:,} GVFKs")
-    print(f"        (Step 6 summary printed above)")
-
     print("\n" + "=" * 80)
     print("WORKFLOW COMPLETED")
     print("=" * 80)
     print(f"\nResults saved to: Resultater/\n")
+
+    return True
 
 
 def create_visualizations_if_available():

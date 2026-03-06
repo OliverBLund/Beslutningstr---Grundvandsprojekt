@@ -112,13 +112,6 @@ def run_step5():
         sites_without_substances,
     )
 
-    # Generate visualizations
-    try:
-        from .step5_visualizations import create_step5_visualizations
-        create_step5_visualizations()
-    except:
-        pass  # Skip silently if unavailable
-
     # Return format compatible with main_workflow.py
     return {
         "general_results": (general_sites, {"total_sites": len(general_sites)}),

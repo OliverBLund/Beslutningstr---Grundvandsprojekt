@@ -35,10 +35,10 @@ from Kode.config import (
     GRUNDVAND_PATH,
     GVD_RASTER_DIR,
     RIVERS_PATH,
-    STEP6_MAP_SETTINGS,
     get_output_path,
     get_visualization_path,
 )
+from Kode.tilstandsvurdering.step6_combined_map import STEP6_MAP_SETTINGS
 
 
 def analyze_and_visualize_step6(

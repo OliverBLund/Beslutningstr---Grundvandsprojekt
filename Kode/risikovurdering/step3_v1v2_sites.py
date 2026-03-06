@@ -24,12 +24,12 @@ from config import (
     V2_CSV_PATH,
     V2_DISSOLVED_CACHE,
     V2_SHP_PATH,
-    apply_sampling,
     ensure_cache_directory,
     ensure_results_directory,
     get_output_path,
     is_cache_valid,
 )
+from data_loaders import apply_sampling
 from step_reporter import (
     report_step_header,
     report_subsection,
